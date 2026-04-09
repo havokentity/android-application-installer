@@ -714,6 +714,9 @@ pub fn run() {
             tools::setup_bundletool,
             tools::setup_java,
             tools::check_for_stale_tools,
+            tools::get_recent_files,
+            tools::add_recent_file,
+            tools::remove_recent_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

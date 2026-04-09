@@ -42,3 +42,14 @@ export interface StaleTool {
 
 export type DetectionStatus = "unknown" | "found" | "not-found";
 
+export interface RecentFile {
+  path: string;
+  name: string;
+  last_used: number;
+}
+
+export interface RecentFilesConfig {
+  packages: RecentFile[];
+  keystores: RecentFile[];
+}
+

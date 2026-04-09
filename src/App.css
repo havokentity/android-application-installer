@@ -469,6 +469,90 @@ body {
   flex-wrap: wrap;
 }
 
+/* ─── Recent Files List ────────────────────────────────────────────────────── */
+
+.recent-list {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.recent-list-compact {
+  margin-top: 10px;
+}
+
+.recent-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  transition: background var(--transition);
+  min-width: 0;
+}
+
+.recent-item:hover {
+  background: var(--bg-2);
+}
+
+.recent-item + .recent-item {
+  border-top: 1px solid var(--border);
+}
+
+.recent-icon {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.recent-item:hover .recent-icon {
+  color: var(--green);
+}
+
+.recent-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-1);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.recent-path {
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.recent-remove {
+  padding: 3px !important;
+  min-width: auto !important;
+  opacity: 0;
+  transition: opacity var(--transition);
+  flex-shrink: 0;
+}
+
+.recent-item:hover .recent-remove {
+  opacity: 1;
+}
+
 /* ─── Collapsible Section ──────────────────────────────────────────────────── */
 
 .collapsible .section-header {

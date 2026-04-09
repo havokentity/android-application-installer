@@ -5,13 +5,13 @@ import { open } from "@tauri-apps/plugin-dialog";
   import {
   Smartphone, RefreshCw, FolderOpen, Download, Play, Rocket,
   Check, X, AlertTriangle, Search, Settings, Loader2, Package,
-  MonitorSmartphone, Coffee, ChevronDown, ChevronRight, Trash2, Key,
+  MonitorSmartphone, Coffee, ChevronDown, ChevronRight, Trash2, Key, Clock,
 } from "lucide-react";
 
 import "./App.css";
 import type {
   DeviceInfo, LogEntry, ToolsStatus, DownloadProgress,
-  StaleTool, DetectionStatus,
+  StaleTool, DetectionStatus, RecentFilesConfig,
 } from "./types";
 import { nextLogId, getFileName, getFileType, now } from "./helpers";
 import { StatusDot } from "./components/StatusIndicators";
@@ -63,6 +63,7 @@ function App() {
   // ── General state ─────────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
 
   // ─── Logging ──────────────────────────────────────────────────────────
 
@@ -105,6 +106,28 @@ function App() {
 
   useEffect(() => { checkToolsStatus(); }, [checkToolsStatus]);
   useEffect(() => { checkStaleTools(); }, [checkStaleTools]);
+
+  // ─── Recent files ────────────────────────────────────────────────────
+
+  const loadRecentFiles = useCallback(async () => {
+    try {
+      setRecentFiles(await invoke<RecentFilesConfig>("get_recent_files"));
+    } catch { /* non-critical */ }
+  }, []);
+
+  useEffect(() => { loadRecentFiles(); }, [loadRecentFiles]);
+
+  const recordRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
+    try {
+      setRecentFiles(await invoke<RecentFilesConfig>("add_recent_file", { path, category }));
+    } catch { /* non-critical */ }
+  }, []);
+
+  const removeRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
+    try {
+      setRecentFiles(await invoke<RecentFilesConfig>("remove_recent_file", { path, category }));
+    } catch { /* non-critical */ }
+  }, []);
 
   // ─── ADB detection ────────────────────────────────────────────────────
 
@@ -236,6 +259,7 @@ function App() {
     setSelectedFile(path);
     setFileType(ft);
     addLog("info", `Selected: ${getFileName(path)} (${ft.toUpperCase()})`);
+    recordRecentFile(path, "packages");
 
     if (ft === "apk") {
       try {
@@ -310,6 +334,7 @@ function App() {
         setKeystorePath(file as string);
         setKeyAlias("");
         setKeyAliases([]);
+        recordRecentFile(file as string, "keystores");
       }
     } catch (e) {
       addLog("error", `File dialog error: ${e}`);
@@ -507,6 +532,21 @@ function App() {
             </div>
           )}
         </div>
+        {!selectedFile && recentFiles.packages.length > 0 && (
+          <div className="recent-list">
+            <div className="recent-header"><Clock size={12} /> Recent Packages</div>
+            {recentFiles.packages.map((f) => (
+              <div key={f.path} className="recent-item" onClick={() => handleFileSelected(f.path)} title={f.path}>
+                <Package size={14} className="recent-icon" />
+                <span className="recent-name">{f.name}</span>
+                <span className="recent-path">{f.path}</span>
+                <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "packages"); }} title="Remove">
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="package-row">
           <label className="field-label">Package Name (for Launch / Uninstall)</label>
           <input type="text" className="input" value={packageName} onChange={(e) => setPackageName(e.target.value)} placeholder="com.example.myapp" />
@@ -564,6 +604,21 @@ function App() {
                 <input type="text" className="input" value={keystorePath} onChange={(e) => setKeystorePath(e.target.value)} placeholder="Path to .jks / .keystore (leave empty for debug key)" />
                 <button className="btn btn-icon" onClick={browseKeystore} title="Browse"><FolderOpen size={16} /></button>
               </div>
+              {!keystorePath && recentFiles.keystores.length > 0 && (
+                <div className="recent-list recent-list-compact">
+                  <div className="recent-header"><Clock size={12} /> Recent Keystores</div>
+                  {recentFiles.keystores.map((f) => (
+                    <div key={f.path} className="recent-item" onClick={() => { setKeystorePath(f.path); setKeyAlias(""); setKeyAliases([]); recordRecentFile(f.path, "keystores"); }} title={f.path}>
+                      <Key size={14} className="recent-icon" />
+                      <span className="recent-name">{f.name}</span>
+                      <span className="recent-path">{f.path}</span>
+                      <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "keystores"); }} title="Remove">
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             {keystorePath && (
               <>
