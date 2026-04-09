@@ -458,6 +458,87 @@ fn find_bundletool(app: tauri::AppHandle) -> Result<String, String> {
     Err("bundletool.jar not found. Use the \"Download\" button to install it automatically.".into())
 }
 
+/// List key aliases from a Java keystore file using `keytool`.
+/// Derives the keytool binary path from the java binary path (same bin/ directory).
+#[tauri::command]
+fn list_key_aliases(
+    java_path: String,
+    keystore_path: String,
+    keystore_pass: String,
+) -> Result<Vec<String>, String> {
+    // Derive keytool path from java path (sibling in the same bin/ directory)
+    let java = Path::new(&java_path);
+    let keytool_name = if cfg!(target_os = "windows") {
+        "keytool.exe"
+    } else {
+        "keytool"
+    };
+
+    let keytool_path = if let Some(bin_dir) = java.parent() {
+        let kt = bin_dir.join(keytool_name);
+        if kt.exists() {
+            kt.to_string_lossy().to_string()
+        } else {
+            // Fallback: try keytool on PATH
+            keytool_name.to_string()
+        }
+    } else {
+        keytool_name.to_string()
+    };
+
+    let (stdout, stderr, success) = run_cmd_lenient(
+        &keytool_path,
+        &["-list", "-keystore", &keystore_path, "-storepass", &keystore_pass],
+    )?;
+
+    if !success {
+        // Common error: wrong password
+        let combined = format!("{}\n{}", stdout.trim(), stderr.trim());
+        if combined.contains("password was incorrect")
+            || combined.contains("keystore was tampered with")
+        {
+            return Err("Incorrect keystore password.".into());
+        }
+        return Err(format!("keytool failed: {}", combined.trim()));
+    }
+
+    // Parse alias names from keytool output.
+    // Lines with aliases look like:
+    //   myalias, Apr 10, 2026, PrivateKeyEntry,
+    //   androiddebugkey, Jan 1, 2024, trustedCertEntry,
+    // We look for lines containing known entry types.
+    let entry_types = [
+        "PrivateKeyEntry",
+        "trustedCertEntry",
+        "SecretKeyEntry",
+        "keyEntry",
+    ];
+
+    let mut aliases = Vec::new();
+    for line in stdout.lines().chain(stderr.lines()) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Check if this line contains an entry type indicator
+        if entry_types.iter().any(|et| trimmed.contains(et)) {
+            // Alias is everything before the first comma
+            if let Some(comma_pos) = trimmed.find(',') {
+                let alias = trimmed[..comma_pos].trim().to_string();
+                if !alias.is_empty() {
+                    aliases.push(alias);
+                }
+            }
+        }
+    }
+
+    if aliases.is_empty() {
+        return Err("No key aliases found in the keystore.".into());
+    }
+
+    Ok(aliases)
+}
+
 /// Uninstall an app from the device by package name.
 #[tauri::command]
 fn uninstall_app(adb_path: String, device: String, package_name: String) -> Result<String, String> {
@@ -511,6 +592,7 @@ pub fn run() {
             find_bundletool,
             uninstall_app,
             list_packages,
+            list_key_aliases,
             tools::get_tools_status,
             tools::setup_platform_tools,
             tools::setup_bundletool,

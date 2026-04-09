@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import {
+  import {
   Smartphone, RefreshCw, FolderOpen, Download, Play, Rocket,
   Check, X, AlertTriangle, Search, Settings, Loader2, Package,
-  MonitorSmartphone, Coffee, ChevronDown, ChevronRight, Trash2,
+  MonitorSmartphone, Coffee, ChevronDown, ChevronRight, Trash2, Key,
 } from "lucide-react";
 
 import "./App.css";
@@ -57,6 +57,8 @@ function App() {
   const [keystorePass, setKeystorePass] = useState("");
   const [keyAlias, setKeyAlias] = useState("");
   const [keyPass, setKeyPass] = useState("");
+  const [keyAliases, setKeyAliases] = useState<string[]>([]);
+  const [loadingAliases, setLoadingAliases] = useState(false);
 
   // ── General state ─────────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
@@ -289,11 +291,46 @@ function App() {
           { name: "All Files", extensions: ["*"] },
         ],
       });
-      if (file) setKeystorePath(file as string);
+      if (file) {
+        setKeystorePath(file as string);
+        setKeyAlias("");
+        setKeyAliases([]);
+      }
     } catch (e) {
       addLog("error", `File dialog error: ${e}`);
     }
   };
+
+  // ─── Key alias listing ─────────────────────────────────────────────────
+
+  const fetchKeyAliases = useCallback(async (ksPath: string, ksPass: string) => {
+    if (!ksPath || !ksPass || !javaPath) return;
+    setLoadingAliases(true);
+    try {
+      const aliases = await invoke<string[]>("list_key_aliases", {
+        javaPath, keystorePath: ksPath, keystorePass: ksPass,
+      });
+      setKeyAliases(aliases);
+      if (aliases.length === 1) {
+        setKeyAlias(aliases[0]);
+      }
+      addLog("info", `Found ${aliases.length} key alias(es) in keystore`);
+    } catch (e) {
+      setKeyAliases([]);
+      addLog("warning", `Could not list key aliases: ${e}`);
+    } finally {
+      setLoadingAliases(false);
+    }
+  }, [javaPath, addLog]);
+
+  useEffect(() => {
+    if (keystorePath && keystorePass && javaPath) {
+      const timer = setTimeout(() => fetchKeyAliases(keystorePath, keystorePass), 500);
+      return () => clearTimeout(timer);
+    } else {
+      setKeyAliases([]);
+    }
+  }, [keystorePath, keystorePass, javaPath, fetchKeyAliases]);
 
   // ─── Installation ─────────────────────────────────────────────────────
 
@@ -520,8 +557,25 @@ function App() {
                   <input type="password" className="input" value={keystorePass} onChange={(e) => setKeystorePass(e.target.value)} placeholder="Keystore password" />
                 </div>
                 <div className="setting-row indent">
-                  <label className="field-label">Key Alias</label>
-                  <input type="text" className="input" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)} placeholder="Key alias" />
+                  <label className="field-label"><Key size={14} /> Key Alias</label>
+                  <div className="input-group">
+                    {keyAliases.length > 0 ? (
+                      <select className="select" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)}>
+                        <option value="">— Select alias —</option>
+                        {keyAliases.map((a) => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input type="text" className="input" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)} placeholder={loadingAliases ? "Loading aliases..." : "Key alias (enter password to list)"} />
+                    )}
+                    {loadingAliases && <Loader2 size={14} className="spin" />}
+                    {keystorePass && !loadingAliases && (
+                      <button className="btn btn-icon" onClick={() => fetchKeyAliases(keystorePath, keystorePass)} title="Refresh aliases">
+                        <RefreshCw size={14} />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="setting-row indent">
                   <label className="field-label">Key Password</label>
