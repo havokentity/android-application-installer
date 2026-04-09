@@ -183,11 +183,10 @@ body {
 }
 
 .select {
-  appearance: none;
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b949e'%3E%3Cpath d='M6 8.5L1 3.5h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 10px center;
-  padding-right: 30px;
+  -webkit-appearance: menulist-button;
+  appearance: auto;
+  background-color: var(--bg-2);
+  padding-right: 12px;
   cursor: pointer;
 }
 
