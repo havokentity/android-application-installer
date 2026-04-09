@@ -27,4 +27,5 @@ reqwest = { version = "0.12", features = ["stream", "rustls-tls"], default-featu
 tokio = { version = "1", features = ["rt", "fs", "io-util"] }
 futures-util = "0.3"
 zip = "2"
+axmldecoder = "0.5"
 

@@ -249,8 +249,23 @@ function App() {
 
     if (ft === "aab") {
       setShowAabSettings(true);
-      if (javaStatus === "unknown") checkJava();
-      if (bundletoolStatus === "unknown") detectBundletool();
+      if (javaStatus === "unknown") await checkJava();
+      if (bundletoolStatus === "unknown") await detectBundletool();
+
+      // Try to extract package name from AAB if Java + bundletool are available
+      try {
+        const jp = javaPath || (await invoke<string>("check_java")).split("|")[0];
+        const bt = bundletoolPath || (await invoke<string>("find_bundletool"));
+        if (jp && bt) {
+          const pkg = await invoke<string>("get_aab_package_name", {
+            aabPath: path, javaPath: jp, bundletoolPath: bt,
+          });
+          setPackageName(pkg);
+          addLog("info", `Package: ${pkg}`);
+        }
+      } catch {
+        addLog("info", "Could not auto-detect package name from AAB. You can enter it manually.");
+      }
     }
   };
 
