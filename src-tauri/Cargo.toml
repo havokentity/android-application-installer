@@ -5,7 +5,7 @@ description = "A cross-platform desktop app for installing APK & AAB files onto 
 authors = ["yahushadmonte"]
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/yahushadmonte/android-application-installer"
+repository = "https://github.com/havokentity/android-application-installer"
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
