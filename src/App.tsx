@@ -1,24 +1,23 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { open, save } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
-import { check } from "@tauri-apps/plugin-updater";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { relaunch } from "@tauri-apps/plugin-process";
 
 import "./App.css";
-import type {
-  DeviceInfo, LogEntry, ToolsStatus, DownloadProgress, OperationProgress,
-  StaleTool, DetectionStatus, RecentFilesConfig,
-} from "./types";
-import { nextLogId, getFileName, getFileType, now } from "./helpers";
+import type { LogEntry, OperationProgress, RecentFilesConfig } from "./types";
+import { nextLogId, getFileName, now } from "./helpers";
+import * as api from "./api";
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 import { useLayout } from "./hooks/useLayout";
 import { useEasterEgg } from "./hooks/useEasterEgg";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+import { useUpdater } from "./hooks/useUpdater";
+import { useToolsState } from "./hooks/useToolsState";
+import { useDeviceState } from "./hooks/useDeviceState";
+import { useFileState } from "./hooks/useFileState";
+import { useAabSettings } from "./hooks/useAabSettings";
 
 // ─── Components ──────────────────────────────────────────────────────────────
 import { Toolbar } from "./components/Toolbar";
@@ -33,150 +32,25 @@ import { LogPanel } from "./components/LogPanel";
 // ─── App Component ────────────────────────────────────────────────────────────
 
 function App() {
-  // ── Layout, theme & easter egg (extracted hooks) ──────────────────────
+  // ── Layout, theme & easter egg ────────────────────────────────────────
   const { layout, theme, setTheme, sidePanelWidth, toggleLayout, onDividerMouseDown, appRef } = useLayout();
   const { easterEggVisible, easterEggIndex, easterEggVerses, handleTitleClick } = useEasterEgg();
 
-  // ── Tools state ───────────────────────────────────────────────────────
-  const [toolsStatus, setToolsStatus] = useState<ToolsStatus | null>(null);
-  const [downloadingAdb, setDownloadingAdb] = useState(false);
-  const [downloadingBundletool, setDownloadingBundletool] = useState(false);
-  const [downloadingJava, setDownloadingJava] = useState(false);
-  const [adbProgress, setAdbProgress] = useState<DownloadProgress | null>(null);
-  const [btProgress, setBtProgress] = useState<DownloadProgress | null>(null);
-  const [javaProgress, setJavaProgress] = useState<DownloadProgress | null>(null);
-  const [staleTools, setStaleTools] = useState<StaleTool[]>([]);
-  const [staleDismissed, setStaleDismissed] = useState(false);
-
-  // ── ADB state ─────────────────────────────────────────────────────────
-  const [adbPath, setAdbPath] = useState("");
-  const [adbStatus, setAdbStatus] = useState<DetectionStatus>("unknown");
-
-  // ── Device state ──────────────────────────────────────────────────────
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
-  const [selectedDevice, setSelectedDevice] = useState("");
-  const [loadingDevices, setLoadingDevices] = useState(false);
-  const [deviceExpanded, setDeviceExpanded] = useState(true);
-  const [installAllDevices, setInstallAllDevices] = useState(false);
-
-  // ── File state ────────────────────────────────────────────────────────
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
-  const [packageName, setPackageName] = useState("");
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  // ── AAB settings ──────────────────────────────────────────────────────
-  const [showAabSettings, setShowAabSettings] = useState(false);
-  const [javaPath, setJavaPath] = useState("");
-  const [javaVersion, setJavaVersion] = useState("");
-  const [javaStatus, setJavaStatus] = useState<DetectionStatus>("unknown");
-  const [bundletoolPath, setBundletoolPath] = useState("");
-  const [bundletoolStatus, setBundletoolStatus] = useState<DetectionStatus>("unknown");
-  const [keystorePath, setKeystorePath] = useState("");
-  const [keystorePass, setKeystorePass] = useState("");
-  const [keyAlias, setKeyAlias] = useState("");
-  const [keyPass, setKeyPass] = useState("");
-  const [keyAliases, setKeyAliases] = useState<string[]>([]);
-  const [loadingAliases, setLoadingAliases] = useState(false);
-
-  // ── General state ─────────────────────────────────────────────────
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
+  // ── Logging ──────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
-  const [appVersion, setAppVersion] = useState("");
-  const [operationProgress, setOperationProgress] = useState<OperationProgress | null>(null);
-
-  const prevDeviceSerials = useRef("");
-  const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
-
-  // ─── Logging ──────────────────────────────────────────────────────────
-
   const addLog = useCallback((level: LogEntry["level"], message: string) => {
     setLogs((prev) => [...prev, { id: nextLogId(), time: now(), level, message }]);
   }, []);
 
-  // ── Auto updater ──────────────────────────────────────────────────────
-  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
-  const [updateProgress, setUpdateProgress] = useState<{ downloaded: number; total: number; percent: number } | null>(null);
-  const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean>(() => {
-    const saved = localStorage.getItem("autoCheckUpdates");
-    return saved === null ? true : saved === "true";
-  });
+  // ── General state ─────────────────────────────────────────────────
+  const [isInstalling, setIsInstalling] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
+  const [operationProgress, setOperationProgress] = useState<OperationProgress | null>(null);
 
-  const toggleAutoCheckUpdates = useCallback(() => {
-    setAutoCheckUpdates((prev) => {
-      const next = !prev;
-      localStorage.setItem("autoCheckUpdates", String(next));
-      return next;
-    });
-  }, []);
-
-  const checkForUpdates = useCallback(async (manual = false) => {
-    setCheckingForUpdates(true);
-    try {
-      const update = await check();
-      if (update) {
-        const yes = await ask(`Update to ${update.version} is available! \n\nRelease notes: ${update.body}`, {
-          title: 'Update Available',
-          kind: 'info',
-          okLabel: 'Update',
-          cancelLabel: 'Cancel'
-        });
-        if (yes) {
-          addLog("info", `Downloading update ${update.version}...`);
-          let downloaded = 0;
-          setUpdateProgress({ downloaded: 0, total: 0, percent: 0 });
-          await update.downloadAndInstall((event) => {
-            if (event.event === "Started" && event.data.contentLength) {
-              setUpdateProgress({ downloaded: 0, total: event.data.contentLength, percent: 0 });
-            } else if (event.event === "Progress") {
-              downloaded += event.data.chunkLength;
-              setUpdateProgress((prev) => {
-                const total = prev?.total || 0;
-                const percent = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0;
-                return { downloaded, total, percent };
-              });
-            } else if (event.event === "Finished") {
-              setUpdateProgress((prev) => ({ downloaded: prev?.total || 0, total: prev?.total || 0, percent: 100 }));
-            }
-          });
-          setUpdateProgress(null);
-          addLog("success", "Update installed. Relaunching...");
-          await relaunch();
-        }
-      } else if (manual) {
-        addLog("info", "You're on the latest version.");
-      }
-    } catch (e) {
-      setUpdateProgress(null);
-      addLog("warning", `Failed to check for updates: ${e}`);
-    } finally {
-      setCheckingForUpdates(false);
-    }
-  }, [addLog]);
-
-  useEffect(() => {
-    if (autoCheckUpdates) checkForUpdates(false);
-  }, [checkForUpdates]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Fetch app version ─────────────────────────────────────────────────
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
-  // ─── Download progress listener ───────────────────────────────────────
-
-  useEffect(() => {
-    const unlisten = listen<DownloadProgress>("download-progress", (event) => {
-      const p = event.payload;
-      if (p.tool === "platform-tools") setAdbProgress(p);
-      else if (p.tool === "bundletool") setBtProgress(p);
-      else if (p.tool === "java") setJavaProgress(p);
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, []);
-
-  // ─── Operation progress listener (install / launch / uninstall) ────
-
+  // ── Operation progress listener ────────────────────────────────────
   useEffect(() => {
     const unlisten = listen<OperationProgress>("operation-progress", (event) => {
       const p = event.payload;
@@ -192,57 +66,33 @@ function App() {
     return () => { unlisten.then((fn) => fn()); };
   }, []);
 
-  // ─── Tools status & staleness ─────────────────────────────────────────
-
-  const checkToolsStatus = useCallback(async () => {
-    try {
-      setToolsStatus(await invoke<ToolsStatus>("get_tools_status"));
-    } catch (e) {
-      addLog("warning", `Could not check tools status: ${e}`);
-    }
-  }, [addLog]);
-
-  const checkStaleTools = useCallback(async () => {
-    try {
-      const stale = await invoke<StaleTool[]>("check_for_stale_tools");
-      setStaleTools(stale);
-      if (stale.length > 0) {
-        const names = stale.map((s) => `${s.label} (${s.age_days}d ago)`).join(", ");
-        addLog("warning", `Some managed tools haven't been updated in 30+ days: ${names}`);
-      }
-    } catch { /* non-critical */ }
-  }, [addLog]);
-
-  useEffect(() => { checkToolsStatus(); }, [checkToolsStatus]);
-  useEffect(() => { checkStaleTools(); }, [checkStaleTools]);
-
-  // ─── Recent files ────────────────────────────────────────────────────
+  // ── Recent files ───────────────────────────────────────────────────
+  const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
 
   const loadRecentFiles = useCallback(async () => {
-    try {
-      setRecentFiles(await invoke<RecentFilesConfig>("get_recent_files"));
-    } catch { /* non-critical */ }
+    try { setRecentFiles(await api.getRecentFiles()); } catch { /* non-critical */ }
   }, []);
 
   useEffect(() => { loadRecentFiles(); }, [loadRecentFiles]);
 
   const recordRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
-    try {
-      setRecentFiles(await invoke<RecentFilesConfig>("add_recent_file", { path, category }));
-    } catch { /* non-critical */ }
+    try { setRecentFiles(await api.addRecentFile(path, category)); } catch { /* non-critical */ }
   }, []);
 
   const removeRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
-    try {
-      setRecentFiles(await invoke<RecentFilesConfig>("remove_recent_file", { path, category }));
-    } catch { /* non-critical */ }
+    try { setRecentFiles(await api.removeRecentFile(path, category)); } catch { /* non-critical */ }
   }, []);
 
-  // ─── ADB detection ────────────────────────────────────────────────────
+  // ── Auto updater ──────────────────────────────────────────────────────
+  const updater = useUpdater(addLog);
+
+  // ── ADB detection ────────────────────────────────────────────────────
+  const [adbPath, setAdbPath] = useState("");
+  const [adbStatus, setAdbStatus] = useState<"unknown" | "found" | "not-found">("unknown");
 
   const detectAdb = useCallback(async () => {
     try {
-      const path = await invoke<string>("find_adb");
+      const path = await api.findAdb();
       setAdbPath(path);
       setAdbStatus("found");
       addLog("success", `ADB found: ${path}`);
@@ -254,347 +104,96 @@ function App() {
 
   useEffect(() => { detectAdb(); }, [detectAdb]);
 
-  // ─── Tool setup actions ───────────────────────────────────────────────
+  // ── AAB settings ──────────────────────────────────────────────────────
+  const aab = useAabSettings({ addLog, recordRecentFile });
 
-  const setupAdb = async () => {
-    setDownloadingAdb(true);
-    setAdbProgress(null);
-    addLog("info", "Downloading ADB platform-tools from Google...");
-    try {
-      const path = await invoke<string>("setup_platform_tools");
-      addLog("success", `ADB installed: ${path}`);
+  // ── Devices ───────────────────────────────────────────────────────────
+  const dev = useDeviceState(adbPath, adbStatus, addLog);
+
+  // ── Tools ─────────────────────────────────────────────────────────────
+  const tools = useToolsState(addLog, {
+    onAdbSetup: (path) => {
       setAdbPath(path);
       setAdbStatus("found");
-      await checkToolsStatus();
-      await checkStaleTools();
-      refreshDevices();
-    } catch (e) {
-      addLog("error", `ADB setup failed: ${e}`);
-    } finally {
-      setDownloadingAdb(false);
-      setAdbProgress(null);
-    }
-  };
+      dev.refreshDevices();
+    },
+    onJavaSetup: (path) => {
+      aab.setJavaPath(path);
+      aab.setJavaStatus("found");
+      aab.checkJava();
+    },
+    onBundletoolSetup: () => {
+      aab.detectBundletool();
+    },
+  });
 
-  const setupBundletool = async () => {
-    setDownloadingBundletool(true);
-    setBtProgress(null);
-    addLog("info", "Downloading bundletool from GitHub...");
-    try {
-      addLog("success", await invoke<string>("setup_bundletool"));
-      await checkToolsStatus();
-      await checkStaleTools();
-      await detectBundletool();
-    } catch (e) {
-      addLog("error", `Bundletool setup failed: ${e}`);
-    } finally {
-      setDownloadingBundletool(false);
-      setBtProgress(null);
-    }
-  };
-
-  const setupJava = async () => {
-    setDownloadingJava(true);
-    setJavaProgress(null);
-    addLog("info", "Downloading Java JRE (Eclipse Temurin 21)...");
-    try {
-      const path = await invoke<string>("setup_java");
-      addLog("success", `Java JRE installed: ${path}`);
-      setJavaPath(path);
-      setJavaStatus("found");
-      await checkToolsStatus();
-      await checkStaleTools();
-      await checkJava();
-    } catch (e) {
-      addLog("error", `Java setup failed: ${e}`);
-    } finally {
-      setDownloadingJava(false);
-      setJavaProgress(null);
-    }
-  };
-
-  // ─── Device refresh ───────────────────────────────────────────────────
-
-  const refreshDevices = useCallback(async () => {
-    if (!adbPath) return;
-    setLoadingDevices(true);
-    try {
-      const devs = await invoke<DeviceInfo[]>("get_devices", { adbPath });
-      setDevices(devs);
-      if (devs.length > 0) {
-        if (!selectedDevice || !devs.find((d) => d.serial === selectedDevice)) {
-          setSelectedDevice(devs[0].serial);
-        }
-        addLog("info", `Found ${devs.length} device(s)`);
-      } else {
-        setSelectedDevice("");
-        addLog("warning", "No devices connected. Enable USB debugging on your phone and connect via USB.");
-      }
-    } catch (e) {
-      setDevices([]);
-      setSelectedDevice("");
-      addLog("error", `Failed to list devices: ${e}`);
-    } finally {
-      setLoadingDevices(false);
-    }
-  }, [adbPath, selectedDevice, addLog]);
-
-  useEffect(() => {
-    if (adbStatus === "found") refreshDevices();
-  }, [adbStatus]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── Auto device refresh (silent — only logs on change) ────────────────
-
-  const refreshDevicesQuiet = useCallback(async () => {
-    if (!adbPath) return;
-    try {
-      const devs = await invoke<DeviceInfo[]>("get_devices", { adbPath });
-      const newSerials = devs.map(d => d.serial).sort().join(",");
-      if (newSerials === prevDeviceSerials.current) return;
-      prevDeviceSerials.current = newSerials;
-      setDevices(devs);
-      if (devs.length > 0) {
-        setSelectedDevice(prev => {
-          if (!prev || !devs.find(d => d.serial === prev)) return devs[0].serial;
-          return prev;
-        });
-        addLog("info", `Device update: ${devs.length} device(s) connected`);
-      } else {
-        setSelectedDevice("");
-        addLog("info", "All devices disconnected.");
-      }
-    } catch { /* silent */ }
-  }, [adbPath, addLog]);
-
-  useEffect(() => {
-    prevDeviceSerials.current = devices.map(d => d.serial).sort().join(",");
-  }, [devices]);
-
-  useEffect(() => {
-    if (adbStatus !== "found" || !adbPath) return;
-    const interval = setInterval(refreshDevicesQuiet, 8000);
-    const onFocus = () => refreshDevicesQuiet();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [adbStatus, adbPath, refreshDevicesQuiet]);
-
-  useEffect(() => {
-    if (selectedDevice && devices.length > 0) setDeviceExpanded(false);
-    else setDeviceExpanded(true);
-  }, [selectedDevice, devices.length]);
-
-  // ─── File selection ───────────────────────────────────────────────────
-
-  const browseFile = async () => {
-    try {
-      const file = await open({
-        title: "Select APK or AAB file",
-        filters: [
-          { name: "Android Package", extensions: ["apk", "aab"] },
-          { name: "APK Files", extensions: ["apk"] },
-          { name: "AAB Files", extensions: ["aab"] },
-        ],
-      });
-      if (file) handleFileSelected(file as string);
-    } catch (e) {
-      addLog("error", `File dialog error: ${e}`);
-    }
-  };
-
-  const handleFileSelected = async (path: string) => {
-    const ft = getFileType(path);
-    if (!ft) { addLog("error", "Please select an APK or AAB file."); return; }
-
-    setSelectedFile(path);
-    setFileType(ft);
-    addLog("info", `Selected: ${getFileName(path)} (${ft.toUpperCase()})`);
-    recordRecentFile(path, "packages");
-
-    if (ft === "apk") {
+  // ── File state ────────────────────────────────────────────────────────
+  const file = useFileState({
+    addLog,
+    recordRecentFile,
+    onAabSelected: async (path) => {
+      aab.setShowAabSettings(true);
+      if (aab.javaStatus === "unknown") await aab.checkJava();
+      if (aab.bundletoolStatus === "unknown") await aab.detectBundletool();
       try {
-        const pkg = await invoke<string>("get_package_name", { apkPath: path });
-        setPackageName(pkg);
-        addLog("info", `Package: ${pkg}`);
-      } catch {
-        addLog("info", "Could not auto-detect package name. You can enter it manually for the Launch feature.");
-      }
-    }
-
-    if (ft === "aab") {
-      setShowAabSettings(true);
-      if (javaStatus === "unknown") await checkJava();
-      if (bundletoolStatus === "unknown") await detectBundletool();
-
-      try {
-        const jp = javaPath || (await invoke<string>("check_java")).split("|")[0];
-        const bt = bundletoolPath || (await invoke<string>("find_bundletool"));
-        if (jp && bt) {
-          const pkg = await invoke<string>("get_aab_package_name", {
-            aabPath: path, javaPath: jp, bundletoolPath: bt,
-          });
-          setPackageName(pkg);
+        const pkg = await aab.detectAabPackageName(path);
+        if (pkg) {
+          file.setPackageName(pkg);
           addLog("info", `Package: ${pkg}`);
         }
       } catch {
         addLog("info", "Could not auto-detect package name from AAB. You can enter it manually.");
       }
-    }
-  };
-
-  handleFileSelectedRef.current = handleFileSelected;
-
-  // ─── Drag & drop ───────────────────────────────────────────────────────
-
-  useEffect(() => {
-    const win = getCurrentWindow();
-    const unlisten = win.onDragDropEvent((event) => {
-      if (event.payload.type === "enter") {
-        setIsDragOver(true);
-      } else if (event.payload.type === "leave") {
-        setIsDragOver(false);
-      } else if (event.payload.type === "drop") {
-        setIsDragOver(false);
-        const paths = event.payload.paths;
-        if (paths && paths.length > 0) {
-          const file = paths[0];
-          if (getFileType(file)) {
-            handleFileSelectedRef.current?.(file);
-          } else {
-            addLog("error", "Unsupported file type. Please drop an APK or AAB file.");
-          }
-        }
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ─── Java & bundletool detection ──────────────────────────────────────
-
-  const checkJava = async () => {
-    try {
-      const result = await invoke<string>("check_java");
-      const [path, version] = result.split("|", 2);
-      setJavaPath(path);
-      setJavaVersion(version);
-      setJavaStatus("found");
-      addLog("success", `Java found: ${version}`);
-    } catch (e) {
-      setJavaStatus("not-found");
-      addLog("warning", String(e));
-    }
-  };
-
-  const detectBundletool = async () => {
-    try {
-      const path = await invoke<string>("find_bundletool");
-      setBundletoolPath(path);
-      setBundletoolStatus("found");
-      addLog("success", `bundletool found: ${path}`);
-    } catch {
-      setBundletoolStatus("not-found");
-      addLog("info", "bundletool not found — use the Download button in AAB Settings or in the Tools section above.");
-    }
-  };
-
-  const browseKeystore = async () => {
-    try {
-      const file = await open({
-        title: "Select Keystore File",
-        filters: [
-          { name: "Keystore", extensions: ["jks", "keystore"] },
-          { name: "All Files", extensions: ["*"] },
-        ],
-      });
-      if (file) {
-        setKeystorePath(file as string);
-        setKeyAlias("");
-        setKeyAliases([]);
-        recordRecentFile(file as string, "keystores");
-      }
-    } catch (e) {
-      addLog("error", `File dialog error: ${e}`);
-    }
-  };
-
-  // ─── Key alias listing ─────────────────────────────────────────────────
-
-  const fetchKeyAliases = useCallback(async (ksPath: string, ksPass: string) => {
-    if (!ksPath || !ksPass || !javaPath) return;
-    setLoadingAliases(true);
-    try {
-      const aliases = await invoke<string[]>("list_key_aliases", {
-        javaPath, keystorePath: ksPath, keystorePass: ksPass,
-      });
-      setKeyAliases(aliases);
-      if (aliases.length === 1) setKeyAlias(aliases[0]);
-      addLog("info", `Found ${aliases.length} key alias(es) in keystore`);
-    } catch (e) {
-      setKeyAliases([]);
-      addLog("warning", `Could not list key aliases: ${e}`);
-    } finally {
-      setLoadingAliases(false);
-    }
-  }, [javaPath, addLog]);
-
-  useEffect(() => {
-    if (keystorePath && keystorePass && javaPath) {
-      const timer = setTimeout(() => fetchKeyAliases(keystorePath, keystorePass), 500);
-      return () => clearTimeout(timer);
-    } else {
-      setKeyAliases([]);
-    }
-  }, [keystorePath, keystorePass, javaPath, fetchKeyAliases]);
+    },
+  });
 
   // ─── Installation ─────────────────────────────────────────────────────
 
   const install = async (andRun = false) => {
-    if (!selectedFile) { addLog("error", "Please select a file first."); return; }
+    if (!file.selectedFile) { addLog("error", "Please select a file first."); return; }
 
-    const targetDevices = installAllDevices && devices.length > 1
-      ? devices.filter(d => d.state === "device").map(d => d.serial)
-      : selectedDevice ? [selectedDevice] : [];
+    const targetDevices = dev.installAllDevices && dev.devices.length > 1
+      ? dev.devices.filter((d) => d.state === "device").map((d) => d.serial)
+      : dev.selectedDevice ? [dev.selectedDevice] : [];
 
     if (targetDevices.length === 0) { addLog("error", "Please select a device first."); return; }
 
-    if (fileType === "aab") {
-      if (!javaPath || javaStatus !== "found") { addLog("error", "Java is required for AAB installation. Please install a JDK."); return; }
-      if (!bundletoolPath || bundletoolStatus !== "found") { addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section."); return; }
+    if (file.fileType === "aab") {
+      if (!aab.javaPath || aab.javaStatus !== "found") { addLog("error", "Java is required for AAB installation. Please install a JDK."); return; }
+      if (!aab.bundletoolPath || aab.bundletoolStatus !== "found") { addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section."); return; }
     }
 
     setIsInstalling(true);
     setOperationProgress(null);
-    // Reset cancel flag before the batch
-    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
 
-    const fileName = getFileName(selectedFile);
+    const fileName = getFileName(file.selectedFile);
     const multi = targetDevices.length > 1;
 
     try {
       for (const device of targetDevices) {
-        const devInfo = devices.find(d => d.serial === device);
+        const devInfo = dev.devices.find((d) => d.serial === device);
         const deviceLabel = devInfo?.model || device;
         const prefix = multi ? `[${deviceLabel}] ` : "";
 
         try {
-          if (fileType === "apk") {
+          if (file.fileType === "apk") {
             addLog("info", `${prefix}Installing ${fileName}...`);
-            addLog("success", prefix + await invoke<string>("install_apk", { adbPath, device, apkPath: selectedFile }));
-          } else if (fileType === "aab") {
+            addLog("success", prefix + await api.installApk(adbPath, device, file.selectedFile));
+          } else if (file.fileType === "aab") {
             addLog("info", `${prefix}Installing ${fileName} via bundletool...`);
-            addLog("success", prefix + await invoke<string>("install_aab", {
-              adbPath, device, aabPath: selectedFile, javaPath, bundletoolPath,
-              keystorePath: keystorePath || null, keystorePass: keystorePass || null,
-              keyAlias: keyAlias || null, keyPass: keyPass || null,
+            addLog("success", prefix + await api.installAab({
+              adbPath, device, aabPath: file.selectedFile,
+              javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath,
+              keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
+              keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
             }));
           }
 
-          if (andRun && packageName) {
-            addLog("info", `${prefix}Launching ${packageName}...`);
-            addLog("success", prefix + await invoke<string>("launch_app", { adbPath, device, packageName }));
-          } else if (andRun && !packageName) {
+          if (andRun && file.packageName) {
+            addLog("info", `${prefix}Launching ${file.packageName}...`);
+            addLog("success", prefix + await api.launchApp(adbPath, device, file.packageName));
+          } else if (andRun && !file.packageName) {
             addLog("warning", `${prefix}Cannot launch — package name not set.`);
           }
         } catch (e) {
@@ -613,37 +212,39 @@ function App() {
   };
 
   const launchApp = async () => {
-    if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
-    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
-      addLog("info", `Launching ${packageName}...`);
-      addLog("success", await invoke<string>("launch_app", { adbPath, device: selectedDevice, packageName }));
+      addLog("info", `Launching ${file.packageName}...`);
+      addLog("success", await api.launchApp(adbPath, dev.selectedDevice, file.packageName));
     } catch (e) { addLog("error", String(e)); }
   };
 
   const stopApp = async () => {
-    if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
-    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
-      addLog("info", `Stopping ${packageName}...`);
-      addLog("success", await invoke<string>("stop_app", { adbPath, device: selectedDevice, packageName }));
+      addLog("info", `Stopping ${file.packageName}...`);
+      addLog("success", await api.stopApp(adbPath, dev.selectedDevice, file.packageName));
     } catch (e) { addLog("error", String(e)); }
   };
 
   const uninstallApp = async () => {
-    if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
-    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    const confirmed = await ask(`Are you sure you want to uninstall ${file.packageName}?\n\nThis will remove the app and all its data from the device.`, {
+      title: "Confirm Uninstall", kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel",
+    });
+    if (!confirmed) return;
+    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
-      addLog("info", `Uninstalling ${packageName}...`);
-      addLog("success", await invoke<string>("uninstall_app", { adbPath, device: selectedDevice, packageName }));
+      addLog("info", `Uninstalling ${file.packageName}...`);
+      addLog("success", await api.uninstallApp(adbPath, dev.selectedDevice, file.packageName));
     } catch (e) { addLog("error", String(e)); }
   };
 
-  // ─── Cancel operation ───────────────────────────────────────────────
-
   const cancelOperation = async () => {
     try {
-      await invoke("set_cancel_flag", { cancel: true });
+      await api.setCancelFlag(true);
       addLog("warning", "Cancelling operation...");
     } catch (e) {
       addLog("error", `Cancel failed: ${e}`);
@@ -653,33 +254,28 @@ function App() {
   // ─── Extract APK from AAB ─────────────────────────────────────────
 
   const extractApk = async () => {
-    if (!selectedFile || fileType !== "aab") { addLog("error", "Please select an AAB file first."); return; }
-    if (!javaPath || javaStatus !== "found") { addLog("error", "Java is required for APK extraction. Please install a JDK."); return; }
-    if (!bundletoolPath || bundletoolStatus !== "found") { addLog("error", "bundletool is required for APK extraction. Download it in the Tools or AAB Settings section."); return; }
+    if (!file.selectedFile || file.fileType !== "aab") { addLog("error", "Please select an AAB file first."); return; }
+    if (!aab.javaPath || aab.javaStatus !== "found") { addLog("error", "Java is required for APK extraction. Please install a JDK."); return; }
+    if (!aab.bundletoolPath || aab.bundletoolStatus !== "found") { addLog("error", "bundletool is required for APK extraction. Download it in the Tools or AAB Settings section."); return; }
 
-    const stem = getFileName(selectedFile).replace(/\.aab$/i, "");
+    const stem = getFileName(file.selectedFile).replace(/\.aab$/i, "");
     const outputPath = await save({
-      title: "Save extracted APK",
-      defaultPath: `${stem}.apk`,
+      title: "Save extracted APK", defaultPath: `${stem}.apk`,
       filters: [{ name: "APK Files", extensions: ["apk"] }],
     });
     if (!outputPath) return;
 
     setIsExtracting(true);
     setOperationProgress(null);
-    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
 
     try {
-      addLog("info", `Extracting universal APK from ${getFileName(selectedFile)}...`);
-      const result = await invoke<string>("extract_apk_from_aab", {
-        aabPath: selectedFile,
-        outputPath,
-        javaPath,
-        bundletoolPath,
-        keystorePath: keystorePath || null,
-        keystorePass: keystorePass || null,
-        keyAlias: keyAlias || null,
-        keyPass: keyPass || null,
+      addLog("info", `Extracting universal APK from ${getFileName(file.selectedFile)}...`);
+      const result = await api.extractApkFromAab({
+        aabPath: file.selectedFile, outputPath,
+        javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath,
+        keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
+        keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
       });
       addLog("success", result);
     } catch (e) {
@@ -692,55 +288,48 @@ function App() {
 
   // ─── Derived state ────────────────────────────────────────────────────
 
-  const canInstall = selectedFile &&
-    (selectedDevice || (installAllDevices && devices.length > 0)) &&
+  const canInstall = file.selectedFile &&
+    (dev.selectedDevice || (dev.installAllDevices && dev.devices.length > 0)) &&
     !isInstalling && !isExtracting && adbStatus === "found";
-  const canExtract = selectedFile && fileType === "aab" && !isExtracting && !isInstalling &&
-    javaStatus === "found" && bundletoolStatus === "found";
-  const adbManaged = toolsStatus?.adb_installed ?? false;
-  const javaManaged = toolsStatus?.java_installed ?? false;
-  const toolsMissing = toolsStatus !== null && (!toolsStatus.adb_installed || !toolsStatus.bundletool_installed || !toolsStatus.java_installed);
-  const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
-
-  // ── Window title with current file ─────────────────────────────────────
-  useEffect(() => {
-    const win = getCurrentWindow();
-    const base = "Android Application Installer";
-    win.setTitle(selectedFile ? `${base} — ${getFileName(selectedFile)}` : base);
-  }, [selectedFile]);
+  const canExtract = file.selectedFile && file.fileType === "aab" && !isExtracting && !isInstalling &&
+    aab.javaStatus === "found" && aab.bundletoolStatus === "found";
+  const adbManaged = tools.toolsStatus?.adb_installed ?? false;
+  const javaManaged = tools.toolsStatus?.java_installed ?? false;
+  const toolsMissing = tools.toolsStatus !== null && (!tools.toolsStatus.adb_installed || !tools.toolsStatus.bundletool_installed || !tools.toolsStatus.java_installed);
+  const canLaunchOrUninstall = !!file.packageName && !!dev.selectedDevice && !isInstalling;
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
   useKeyboardShortcuts({
-    browseFile, install, launchApp, stopApp, uninstallApp,
+    browseFile: file.browseFile, install, launchApp, stopApp, uninstallApp,
     canInstall, canLaunch: canLaunchOrUninstall, canStop: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall,
   });
 
   // ─── Shared UI elements ───────────────────────────────────────────────
 
-  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => checkForUpdates(true)} checkingForUpdates={checkingForUpdates} updateProgress={updateProgress} autoCheckUpdates={autoCheckUpdates} onToggleAutoCheck={toggleAutoCheckUpdates} />;
+  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => updater.checkForUpdates(true)} checkingForUpdates={updater.checkingForUpdates} updateProgress={updater.updateProgress} autoCheckUpdates={updater.autoCheckUpdates} onToggleAutoCheck={updater.toggleAutoCheckUpdates} />;
   const headerEl = <AppHeader appVersion={appVersion} onTitleClick={handleTitleClick} />;
-  const staleBannerEl = <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />;
+  const staleBannerEl = <StaleBanner staleTools={tools.staleTools} dismissed={tools.staleDismissed} onDismiss={() => tools.setStaleDismissed(true)} />;
 
   const toolsSectionEl = (
     <ToolsSection
-      toolsStatus={toolsStatus}
-      downloadingAdb={downloadingAdb} downloadingBundletool={downloadingBundletool} downloadingJava={downloadingJava}
-      adbProgress={adbProgress} btProgress={btProgress} javaProgress={javaProgress}
-      onSetupAdb={setupAdb} onSetupBundletool={setupBundletool} onSetupJava={setupJava}
+      toolsStatus={tools.toolsStatus}
+      downloadingAdb={tools.downloadingAdb} downloadingBundletool={tools.downloadingBundletool} downloadingJava={tools.downloadingJava}
+      adbProgress={tools.adbProgress} btProgress={tools.btProgress} javaProgress={tools.javaProgress}
+      onSetupAdb={tools.setupAdb} onSetupBundletool={tools.setupBundletool} onSetupJava={tools.setupJava}
       needsAttention={toolsMissing} compact={layout === "landscape"} collapsible
     />
   );
 
   const deviceSectionEl = (
     <DeviceSection
-      devices={devices} selectedDevice={selectedDevice} onSelectDevice={setSelectedDevice}
-      loadingDevices={loadingDevices} onRefreshDevices={refreshDevices}
+      devices={dev.devices} selectedDevice={dev.selectedDevice} onSelectDevice={dev.setSelectedDevice}
+      loadingDevices={dev.loadingDevices} onRefreshDevices={dev.refreshDevices}
       adbPath={adbPath} adbStatus={adbStatus} adbManaged={adbManaged}
       onAdbPathChange={(path, status) => { setAdbPath(path); setAdbStatus(status); }}
       onDetectAdb={detectAdb}
-      expanded={deviceExpanded} onToggleExpanded={() => setDeviceExpanded(!deviceExpanded)}
-      installAllDevices={installAllDevices} onInstallAllDevicesChange={setInstallAllDevices}
-      isInstalling={isInstalling} canInstall={canInstall} packageName={packageName}
+      expanded={dev.deviceExpanded} onToggleExpanded={() => dev.setDeviceExpanded(!dev.deviceExpanded)}
+      installAllDevices={dev.installAllDevices} onInstallAllDevicesChange={dev.setInstallAllDevices}
+      isInstalling={isInstalling} canInstall={canInstall} packageName={file.packageName}
       onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}
     />
@@ -748,10 +337,10 @@ function App() {
 
   const fileSectionEl = (
     <FileSection
-      selectedFile={selectedFile} fileType={fileType} isDragOver={isDragOver}
-      packageName={packageName} onPackageNameChange={setPackageName}
-      onBrowseFile={browseFile} onClearFile={() => { setSelectedFile(null); setFileType(null); setPackageName(""); }}
-      onFileSelected={handleFileSelected}
+      selectedFile={file.selectedFile} fileType={file.fileType} isDragOver={file.isDragOver}
+      packageName={file.packageName} onPackageNameChange={file.setPackageName}
+      onBrowseFile={file.browseFile} onClearFile={file.clearFile}
+      onFileSelected={file.handleFileSelected}
       recentFiles={recentFiles} onRemoveRecentFile={(path) => removeRecentFile(path, "packages")}
       canExtract={!!canExtract} isExtracting={isExtracting} onExtractApk={extractApk}
     />
@@ -759,19 +348,19 @@ function App() {
 
   const aabSettingsEl = (
     <AabSettingsSection
-      show={showAabSettings} onToggle={() => setShowAabSettings(!showAabSettings)}
-      javaPath={javaPath} javaVersion={javaVersion} javaStatus={javaStatus} javaManaged={javaManaged}
-      onJavaPathChange={setJavaPath} onCheckJava={checkJava} onSetupJava={setupJava} downloadingJava={downloadingJava}
-      bundletoolPath={bundletoolPath} bundletoolStatus={bundletoolStatus}
-      onBundletoolPathChange={(path, status) => { setBundletoolPath(path); setBundletoolStatus(status); }}
-      onDetectBundletool={detectBundletool} onSetupBundletool={setupBundletool} downloadingBundletool={downloadingBundletool}
-      keystorePath={keystorePath} keystorePass={keystorePass} keyAlias={keyAlias} keyPass={keyPass}
-      keyAliases={keyAliases} loadingAliases={loadingAliases}
-      onKeystorePathChange={setKeystorePath} onKeystorePassChange={setKeystorePass}
-      onKeyAliasChange={setKeyAlias} onKeyPassChange={setKeyPass}
-      onBrowseKeystore={browseKeystore} onFetchKeyAliases={() => fetchKeyAliases(keystorePath, keystorePass)}
+      show={aab.showAabSettings} onToggle={() => aab.setShowAabSettings(!aab.showAabSettings)}
+      javaPath={aab.javaPath} javaVersion={aab.javaVersion} javaStatus={aab.javaStatus} javaManaged={javaManaged}
+      onJavaPathChange={aab.setJavaPath} onCheckJava={aab.checkJava} onSetupJava={tools.setupJava} downloadingJava={tools.downloadingJava}
+      bundletoolPath={aab.bundletoolPath} bundletoolStatus={aab.bundletoolStatus}
+      onBundletoolPathChange={(path, status) => { aab.setBundletoolPath(path); aab.setBundletoolStatus(status); }}
+      onDetectBundletool={aab.detectBundletool} onSetupBundletool={tools.setupBundletool} downloadingBundletool={tools.downloadingBundletool}
+      keystorePath={aab.keystorePath} keystorePass={aab.keystorePass} keyAlias={aab.keyAlias} keyPass={aab.keyPass}
+      keyAliases={aab.keyAliases} loadingAliases={aab.loadingAliases}
+      onKeystorePathChange={aab.setKeystorePath} onKeystorePassChange={aab.setKeystorePass}
+      onKeyAliasChange={aab.setKeyAlias} onKeyPassChange={aab.setKeyPass}
+      onBrowseKeystore={aab.browseKeystore} onFetchKeyAliases={() => aab.fetchKeyAliases(aab.keystorePath, aab.keystorePass)}
       recentKeystores={recentFiles.keystores}
-      onSelectRecentKeystore={(path) => { setKeystorePath(path); setKeyAlias(""); setKeyAliases([]); recordRecentFile(path, "keystores"); }}
+      onSelectRecentKeystore={(path) => { aab.setKeystorePath(path); aab.setKeyAlias(""); recordRecentFile(path, "keystores"); }}
       onRemoveRecentKeystore={(path) => removeRecentFile(path, "keystores")}
     />
   );

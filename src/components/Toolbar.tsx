@@ -1,4 +1,5 @@
 import { Monitor, Columns2, Sun, Moon, RefreshCw, Download, Bell, BellOff } from "lucide-react";
+import { formatBytes } from "../helpers";
 
 interface UpdateProgress {
   downloaded: number;
@@ -18,11 +19,6 @@ interface ToolbarProps {
   onToggleAutoCheck: () => void;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1048576).toFixed(1)} MB`;
-}
 
 export function Toolbar({ layout, theme, onToggleLayout, onSetTheme, onCheckForUpdates, checkingForUpdates, updateProgress, autoCheckUpdates, onToggleAutoCheck }: ToolbarProps) {
   return (
