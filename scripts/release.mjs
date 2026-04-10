@@ -111,7 +111,7 @@ try {
 
 console.log(`  Creating commit and tag ${tag}...\n`);
 
-runLoud("git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml");
+runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock");
 
 // If bump wrote the same values (e.g. files already at this version), there's nothing to commit
 const staged = run("git diff --cached --name-only");
@@ -138,5 +138,6 @@ console.log(`
   Check progress: https://github.com/havokentity/android-application-installer/actions
   Releases:       https://github.com/havokentity/android-application-installer/releases
 `);
+
 
 

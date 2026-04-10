@@ -134,13 +134,17 @@ Triggered by version tags (`v*`) or manual dispatch.
 
 ## Version Management
 
-The app version lives in **three files** that must stay in sync:
+The app version lives in **five files** that must stay in sync:
 
 | File | Field | Used by |
 |------|-------|---------|
 | `package.json` | `"version"` | npm / frontend tooling |
+| `package-lock.json` | `"version"` (×2) | npm lockfile |
 | `src-tauri/tauri.conf.json` | `"version"` | Tauri binary, app metadata, `getVersion()` API |
 | `src-tauri/Cargo.toml` | `version` (in `[package]`) | Rust crate metadata |
+| `src-tauri/Cargo.lock` | `version` (app entry) | Rust lockfile |
+
+All five are updated automatically by the bump and release scripts.
 
 ### Checking versions
 

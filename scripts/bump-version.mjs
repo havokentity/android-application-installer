@@ -9,14 +9,16 @@
  *   node scripts/bump-version.mjs              (shows current versions)
  *
  * Files updated:
- *   - package.json            → "version"
+ *   - package.json              → "version"
+ *   - package-lock.json         → "version" (top-level + packages[""])
  *   - src-tauri/tauri.conf.json → "version"
  *   - src-tauri/Cargo.toml      → version (in [package])
+ *   - src-tauri/Cargo.lock      → version (for the app package entry)
  *
  * Safety: refuses to set a version lower than the current highest.
  */
 
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -166,8 +168,43 @@ for (const f of current) {
   console.log(`    ${changed ? "✓" : "·"} ${f.label.padEnd(30)} ${f.version} → ${targetStr}`);
 }
 
+// ─── Update lockfiles ────────────────────────────────────────────────────────
+
+// package-lock.json — top-level "version" + packages[""].version
+const lockPath = resolve(root, "package-lock.json");
+if (existsSync(lockPath)) {
+  const lockJson = JSON.parse(readFileSync(lockPath, "utf-8"));
+  const oldLockVer = lockJson.version || "?";
+  lockJson.version = targetStr;
+  if (lockJson.packages && lockJson.packages[""]) {
+    lockJson.packages[""].version = targetStr;
+  }
+  writeFileSync(lockPath, JSON.stringify(lockJson, null, 2) + "\n", "utf-8");
+  const changed = oldLockVer !== targetStr;
+  console.log(`    ${changed ? "✓" : "·"} ${"package-lock.json".padEnd(30)} ${oldLockVer} → ${targetStr}`);
+}
+
+// Cargo.lock — update the version for our package entry
+const cargoLockPath = resolve(root, "src-tauri/Cargo.lock");
+if (existsSync(cargoLockPath)) {
+  let cargoLock = readFileSync(cargoLockPath, "utf-8");
+  // Match the block: name = "android-application-installer"\nversion = "X.Y.Z"
+  const oldMatch = cargoLock.match(
+    /(name\s*=\s*"android-application-installer"\s*\nversion\s*=\s*")([^"]+)(")/
+  );
+  if (oldMatch) {
+    const oldVer = oldMatch[2];
+    cargoLock = cargoLock.replace(oldMatch[0], `${oldMatch[1]}${targetStr}${oldMatch[3]}`);
+    writeFileSync(cargoLockPath, cargoLock, "utf-8");
+    const changed = oldVer !== targetStr;
+    console.log(`    ${changed ? "✓" : "·"} ${"src-tauri/Cargo.lock".padEnd(30)} ${oldVer} → ${targetStr}`);
+  }
+}
+
 console.log(`\n  Done. Don't forget to:\n`);
 console.log(`    git add -A && git commit -m "bump: v${targetStr}"`);
 console.log(`    git tag v${targetStr}`);
 console.log(`    git push --tags\n`);
+
+
 
