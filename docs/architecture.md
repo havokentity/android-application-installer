@@ -26,8 +26,9 @@ A Tauri 2 desktop app that installs `.apk` and `.aab` files onto connected Andro
 
 ```
 src/                          ← React frontend
-├── App.tsx                   Main component — all state + UI
+├── App.tsx                   Main component — orchestrates hooks + UI
 ├── App.css                   Dark/light theme styles, layouts
+├── api.ts                    Typed IPC layer (wraps all Tauri invoke calls)
 ├── types.ts                  Shared TS interfaces (mirrors Rust structs)
 ├── helpers.ts                Pure utility functions (IDs, formatting)
 ├── main.tsx                  React entry point
@@ -39,9 +40,15 @@ src/                          ← React frontend
 │   ├── ToolsSection.tsx      Tools setup & stale banner
 │   ├── LogPanel.tsx          Activity log with auto-scroll + copy
 │   ├── Toolbar.tsx           Layout & theme toggles
+│   ├── Toast.tsx             Toast notification system (useToast + ToastContainer)
 │   ├── EasterEggOverlay.tsx  Easter egg overlay
 │   └── StatusIndicators.tsx  StatusDot + LogIcon components
 ├── hooks/
+│   ├── useAabSettings.ts     AAB signing state, Java/bundletool detection
+│   ├── useDeviceState.ts     Device list, selection, polling
+│   ├── useFileState.ts       File selection, drag-drop, package name
+│   ├── useToolsState.ts      Tool download progress & status
+│   ├── useUpdater.ts         Auto-updater logic & progress
 │   ├── useLayout.ts          Layout state & persistence
 │   ├── useKeyboardShortcuts.ts  Keyboard shortcuts
 │   └── useEasterEgg.ts       Easter egg hook
@@ -115,14 +122,21 @@ Detection priority: **managed → env vars → common paths → PATH lookup**.
 
 ### 4. Frontend State Management
 
-All state lives in `App.tsx` via `useState` hooks — no external state library. State groups:
+State is distributed across custom hooks, each owning a specific domain. `App.tsx` orchestrates the hooks and wires them into the component tree. No external state library is used.
 
-- **Tools**: download status, progress, staleness
-- **ADB**: path, detection status
-- **Device**: device list, selected device
-- **File**: selected file path, type (apk/aab), package name
-- **AAB settings**: Java/bundletool paths, keystore config
-- **General**: installing flag, log entries
+| Hook | Domain |
+|------|--------|
+| `useToolsState` | Tool download status, progress, staleness |
+| `useDeviceState` | Device list, selected device, polling |
+| `useFileState` | Selected file, type (APK/AAB), drag-drop, package name |
+| `useAabSettings` | Java/bundletool paths, keystore config, AAB detection |
+| `useUpdater` | Auto-updater check, download progress, preferences |
+| `useLayout` | Portrait/landscape, theme, panel width |
+| `useToast` | Toast notifications (add/remove/auto-dismiss) |
+| `useKeyboardShortcuts` | Global keyboard shortcut bindings |
+| `useEasterEgg` | Easter egg state |
+
+All Tauri IPC calls go through `src/api.ts`, a typed wrapper that maps every `invoke()` call to a named function with full TypeScript types — no string-based command names in components.
 
 ### 5. Progress Events
 
@@ -185,8 +199,8 @@ App launch → check() → fetch updater.json → compare versions
 |-----------|----------|------|
 | Updater plugin (Rust) | `lib.rs` | `tauri_plugin_updater::Builder::new().build()` — handles download, signature verification, and installation |
 | Process plugin (Rust) | `lib.rs` | `tauri_plugin_process::init()` — provides `relaunch()` |
-| Update check (TS) | `App.tsx` | `useEffect` on mount calls `check()` from `@tauri-apps/plugin-updater` |
-| User prompt (TS) | `App.tsx` | `ask()` dialog with version info and release notes |
+| Update hook (TS) | `hooks/useUpdater.ts` | Manages update checks, download progress, auto-check preferences |
+| User prompt (TS) | `hooks/useUpdater.ts` | `ask()` dialog with version info and release notes |
 | `updater.json` | repo root | Endpoint manifest — lists per-platform download URLs and Ed25519 signatures |
 | `generate-updater-json.mjs` | `scripts/` | CI script — fetches `.sig` files from GitHub Release and writes `updater.json` |
 

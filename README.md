@@ -59,7 +59,8 @@
 ### 🎨 Interface
 
 - **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app
-- **Keyboard shortcuts** — `Cmd/Ctrl+O` open file, `Cmd/Ctrl+I` install, `Cmd/Ctrl+Shift+I` install & run, `Cmd/Ctrl+L` launch, `Cmd/Ctrl+U` uninstall
+- **Keyboard shortcuts** — `Cmd/Ctrl+O` open file, `Cmd/Ctrl+I` install, `Cmd/Ctrl+Shift+I` install & run, `Cmd/Ctrl+L` launch, `Cmd/Ctrl+K` stop, `Cmd/Ctrl+U` uninstall, `Cmd/Ctrl+E` extract APK
+- **Toast notifications** — auto-dismissing success/error/warning/info toasts for key events (install, launch, stop, uninstall, ADB detection, extraction)
 - **Landscape & Portrait modes** — toggle between a wide two-panel layout and a compact vertical layout
 - **Dark & Light themes** — switch themes with one click; preference is saved across sessions
 - **Collapsible sections** — Device, Tools, and AAB Settings collapse when not needed, expand when they need attention
@@ -203,6 +204,7 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 ├── src/                                # React frontend
 │   ├── App.tsx                         # Main application component
 │   ├── App.css                         # Styles (themes, layouts)
+│   ├── api.ts                          # Typed IPC layer (wraps all Tauri invoke calls)
 │   ├── types.ts                        # TypeScript interfaces
 │   ├── helpers.ts                      # Utility functions
 │   ├── main.tsx                        # React entry point
@@ -214,12 +216,18 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 │   │   ├── ToolsSection.tsx            # Tools setup & stale banner
 │   │   ├── LogPanel.tsx                # Activity log panel
 │   │   ├── Toolbar.tsx                 # Layout & theme toggles
+│   │   ├── Toast.tsx                   # Toast notification system
 │   │   ├── EasterEggOverlay.tsx        # Easter egg overlay
 │   │   └── StatusIndicators.tsx        # StatusDot & LogIcon
 │   ├── hooks/
-│   │   ├── useLayout.ts                # Layout state & persistence
-│   │   ├── useKeyboardShortcuts.ts     # Keyboard shortcuts
-│   │   └── useEasterEgg.ts             # Easter egg hook
+│   │   ├── useAabSettings.ts           # AAB signing state & detection
+│   │   ├── useDeviceState.ts           # Device list & selection
+│   │   ├── useFileState.ts             # File selection & drag-drop
+│   │   ├── useToolsState.ts            # Tool download & status
+│   │   ├── useUpdater.ts              # Auto-updater logic
+│   │   ├── useLayout.ts               # Layout state & persistence
+│   │   ├── useKeyboardShortcuts.ts    # Keyboard shortcuts
+│   │   └── useEasterEgg.ts            # Easter egg hook
 │   └── __tests__/                      # Unit tests (vitest)
 │
 ├── src-tauri/                          # Rust backend (Tauri)
