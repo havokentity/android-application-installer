@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.6.1] — 2026-04-10
 ### Added
 - **Auto-updater** — the app now checks for updates on launch and prompts to download, install, and relaunch automatically; uses Tauri's signed update mechanism with Ed25519 signature verification
 - CI workflow now produces signed update artifacts (`.sig` files) and auto-generates `updater.json` after each release
