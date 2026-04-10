@@ -426,6 +426,16 @@ body {
   padding: 14px 16px;
 }
 
+.drop-zone.drag-rejected {
+  border-color: var(--red);
+  background: var(--red-dim);
+  border-style: dashed;
+}
+
+.drop-zone.drag-rejected .drop-icon {
+  color: var(--red);
+}
+
 .drop-zone-content {
   display: flex;
   flex-direction: column;
