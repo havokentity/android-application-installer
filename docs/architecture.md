@@ -73,6 +73,18 @@ Detection priority: **managed → env vars → common paths → PATH lookup**.
 - Optional custom keystore (`.jks` / `.keystore`) for signed builds
 - Temp `.apks` file cleaned up after install
 
+### 3a. AAB → APK Extraction
+
+```
+.aab → bundletool build-apks --mode=universal → .apks (temp ZIP) → extract universal.apk → output .apk
+```
+
+- Produces a **universal APK** (single APK containing all ABIs, densities, and locales)
+- No device required — works offline
+- Uses the same keystore settings as AAB installation (optional)
+- Temp `.apks` ZIP cleaned up after extraction
+- User picks the output location via a save dialog
+
 ### 4. Frontend State Management
 
 All state lives in `App.tsx` via `useState` hooks — no external state library. State groups:
@@ -105,6 +117,7 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `get_devices`          | lib.rs    | List connected devices via `adb devices -l`     |
 | `install_apk`          | lib.rs    | `adb install -r <apk>`                          |
 | `install_aab`          | lib.rs    | bundletool build-apks + install-apks            |
+| `extract_apk_from_aab` | lib.rs   | Extract universal APK from AAB via bundletool   |
 | `launch_app`           | lib.rs    | `adb shell monkey -p <pkg> 1`                   |
 | `get_package_name`     | lib.rs    | Extract package name from APK (binary XML parser) |
 | `get_aab_package_name` | lib.rs    | Extract package name from AAB via bundletool     |

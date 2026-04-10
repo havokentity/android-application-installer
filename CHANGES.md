@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Extract APK from AAB** — convert `.aab` files to universal `.apk` without a connected device; uses bundletool `--mode=universal` and extracts the APK from the resulting archive
+- "Extract APK" button appears in the Package section when an AAB file is selected
+
 ---
 
 ## [1.5.3] — 2026-04-10

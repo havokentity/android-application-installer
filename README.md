@@ -45,6 +45,7 @@
 
 - **APK installation** — install `.apk` files directly via ADB
 - **AAB installation** — install `.aab` files via bundletool with optional keystore signing
+- **AAB → APK extraction** — convert `.aab` to a universal `.apk` file (no device required)
 - **Package management** — launch or uninstall apps by package name
 - **Auto package name detection** — extracts the package name from APK and AAB files automatically
 

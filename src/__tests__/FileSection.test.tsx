@@ -17,6 +17,9 @@ const defaults = {
   onFileSelected: vi.fn(),
   recentFiles: emptyRecent,
   onRemoveRecentFile: vi.fn(),
+  canExtract: false,
+  isExtracting: false,
+  onExtractApk: vi.fn(),
 };
 
 describe("FileSection", () => {
@@ -143,6 +146,55 @@ describe("FileSection", () => {
 
     rerender(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" />);
     expect(screen.getByText("AAB File")).toBeInTheDocument();
+  });
+
+  // ── Extract APK from AAB ──────────────────────────────────────────────────
+
+  it("shows Extract APK button when an AAB file is selected", () => {
+    render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={true} />);
+    expect(screen.getByText("Extract APK")).toBeInTheDocument();
+  });
+
+  it("does not show Extract APK button when an APK file is selected", () => {
+    render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" canExtract={true} />);
+    expect(screen.queryByText("Extract APK")).not.toBeInTheDocument();
+  });
+
+  it("does not show Extract APK button when no file is selected", () => {
+    render(<FileSection {...defaults} />);
+    expect(screen.queryByText("Extract APK")).not.toBeInTheDocument();
+  });
+
+  it("disables Extract APK button when canExtract is false", () => {
+    render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={false} />);
+    expect(screen.getByTitle("Extract universal APK from AAB")).toBeDisabled();
+  });
+
+  it("enables Extract APK button when canExtract is true", () => {
+    render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={true} />);
+    expect(screen.getByTitle("Extract universal APK from AAB")).not.toBeDisabled();
+  });
+
+  it("calls onExtractApk when Extract APK button is clicked", () => {
+    const onExtract = vi.fn();
+    render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={true} onExtractApk={onExtract} />);
+    fireEvent.click(screen.getByText("Extract APK"));
+    expect(onExtract).toHaveBeenCalledOnce();
+  });
+
+  it("shows Extracting... text and spinner when isExtracting is true", () => {
+    render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={false} isExtracting={true} />);
+    expect(screen.getByText("Extracting...")).toBeInTheDocument();
+    expect(screen.queryByText("Extract APK")).not.toBeInTheDocument();
+  });
+
+  it("does not propagate click to drop zone when Extract APK is clicked", () => {
+    const onBrowse = vi.fn();
+    const onExtract = vi.fn();
+    render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={true} onBrowseFile={onBrowse} onExtractApk={onExtract} />);
+    fireEvent.click(screen.getByText("Extract APK"));
+    expect(onExtract).toHaveBeenCalledOnce();
+    expect(onBrowse).not.toHaveBeenCalled();
   });
 });
 
