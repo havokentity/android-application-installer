@@ -1,11 +1,11 @@
 import {
   Smartphone, RefreshCw, Download, Play, Rocket,
-  AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2,
+  AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
 import { shortcutLabel } from "../helpers";
-import type { DeviceInfo, DetectionStatus } from "../types";
+import type { DeviceInfo, DetectionStatus, OperationProgress } from "../types";
 
 interface DeviceSectionProps {
   devices: DeviceInfo[];
@@ -28,6 +28,8 @@ interface DeviceSectionProps {
   onInstall: (andRun: boolean) => void;
   onLaunch: () => void;
   onUninstall: () => void;
+  operationProgress: OperationProgress | null;
+  onCancelOperation: () => void;
 }
 
 export function DeviceSection({
@@ -37,6 +39,7 @@ export function DeviceSection({
   installAllDevices, onInstallAllDevicesChange,
   isInstalling, canInstall, packageName,
   onInstall, onLaunch, onUninstall,
+  operationProgress, onCancelOperation,
 }: DeviceSectionProps) {
   const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
   const deviceConnected = selectedDevice && devices.length > 0;
@@ -62,6 +65,35 @@ export function DeviceSection({
           <button className="btn btn-danger btn-small" disabled={!canLaunchOrUninstall} onClick={onUninstall} title={`Uninstall (${shortcutLabel("U")})`}><Trash2 size={14} /> Uninstall</button>
         </div>
       </div>
+
+      {/* Operation progress bar — always visible when active */}
+      {operationProgress && (operationProgress.status === "running" || operationProgress.status === "done") && (
+        <div className="operation-progress">
+          <div className="operation-progress-bar">
+            <div className={`operation-progress-fill ${operationProgress.status === "done" ? "done" : "indeterminate"}`} />
+          </div>
+          <div className="operation-progress-info">
+            <span className="operation-progress-message">
+              {operationProgress.message}
+              {operationProgress.total_steps != null && operationProgress.total_steps > 1 && operationProgress.step != null && (
+                <span className="operation-progress-step">
+                  {` (step ${operationProgress.step}/${operationProgress.total_steps})`}
+                </span>
+              )}
+            </span>
+            {operationProgress.cancellable && operationProgress.status === "running" && (
+              <button
+                className="btn btn-ghost btn-small operation-cancel"
+                onClick={(e) => { e.stopPropagation(); onCancelOperation(); }}
+                title="Cancel operation"
+              >
+                <X size={12} /> Cancel
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {expanded && (
         <div className="collapsible-content">
           <div className="adb-row">

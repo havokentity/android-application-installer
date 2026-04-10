@@ -9,18 +9,29 @@
  *
  * What it does:
  *   1. Runs bump-version.mjs to update all version files
- *   2. Stages the changed files
- *   3. Commits with message "release: v<version>"
- *   4. Creates a git tag v<version>
- *   5. Pushes the commit and tag to origin
+ *   2. Extracts "What's New" from CHANGES.md for this version
+ *   3. Writes .release-notes.md (used by CI for GitHub Release body)
+ *   4. Promotes the [Unreleased] section in CHANGES.md to the new version
+ *   5. Stages all changed files (including CHANGES.md + .release-notes.md)
+ *   6. Commits with message "release: v<version>"
+ *   7. Creates a git tag v<version>
+ *   8. Pushes the commit and tag to origin
  *
  * The tag push triggers the GitHub Actions build.yml workflow which
- * builds for all platforms and creates a GitHub Release draft.
+ * builds for all platforms and creates a GitHub Release draft with
+ * the "What's New" notes from CHANGES.md.
+ *
+ * Workflow:
+ *   1. Add your changes under ## [Unreleased] in CHANGES.md
+ *   2. Run: node scripts/release.mjs patch
+ *   3. The script promotes [Unreleased] → [x.y.z], generates release notes,
+ *      commits, tags, and pushes — all automatically.
  *
  * Safety:
  *   - Refuses to release with uncommitted changes (dirty working tree)
  *   - Refuses to downgrade (inherited from bump-version.mjs)
  *   - Requires an explicit version argument
+ *   - Warns (but proceeds) if no CHANGES.md entry is found
  */
 
 import { execSync } from "child_process";
@@ -92,7 +103,7 @@ try {
 
 // ─── Read the version that was just written ──────────────────────────────────
 
-const { readFileSync } = await import("fs");
+const { readFileSync, writeFileSync } = await import("fs");
 const tauriConf = JSON.parse(readFileSync(resolve(root, "src-tauri/tauri.conf.json"), "utf-8"));
 const version = tauriConf.version;
 const tag = `v${version}`;
@@ -107,11 +118,55 @@ try {
   // Tag doesn't exist — good
 }
 
+// ─── Extract "What's New" from CHANGES.md ────────────────────────────────────
+
+const changesPath = resolve(root, "CHANGES.md");
+let releaseNotes = "";
+
+try {
+  const changesContent = readFileSync(changesPath, "utf-8");
+  releaseNotes = extractVersionNotes(changesContent, version);
+} catch {
+  // CHANGES.md doesn't exist — that's okay, we'll just skip notes
+}
+
+if (!releaseNotes) {
+  console.warn(`\n  ⚠  No entry found for version ${version} in CHANGES.md.`);
+  console.warn(`     The release will proceed without "What's New" notes.`);
+  console.warn(`     Consider adding a ## [${version}] section to CHANGES.md before releasing.\n`);
+}
+
+// ─── Write release notes file for CI ─────────────────────────────────────────
+
+const notesPath = resolve(root, ".release-notes.md");
+const fullNotes = buildReleaseBody(version, releaseNotes);
+writeFileSync(notesPath, fullNotes, "utf-8");
+console.log(`  Wrote release notes to .release-notes.md\n`);
+
+// ─── Promote [Unreleased] → version heading in CHANGES.md ───────────────────
+
+try {
+  let changesContent = readFileSync(changesPath, "utf-8");
+  const today = new Date().toISOString().slice(0, 10);
+  const unreleasedRe = /^## \[Unreleased\]\s*$/m;
+
+  if (unreleasedRe.test(changesContent) && releaseNotes) {
+    changesContent = changesContent.replace(
+      unreleasedRe,
+      `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
+    );
+    writeFileSync(changesPath, changesContent, "utf-8");
+    console.log(`  Promoted [Unreleased] → [${version}] in CHANGES.md\n`);
+  }
+} catch {
+  // non-fatal
+}
+
 // ─── Git commit + tag + push ─────────────────────────────────────────────────
 
 console.log(`  Creating commit and tag ${tag}...\n`);
 
-runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock");
+runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock CHANGES.md .release-notes.md");
 
 // If bump wrote the same values (e.g. files already at this version), there's nothing to commit
 const staged = run("git diff --cached --name-only");
@@ -134,10 +189,67 @@ console.log(`
   The GitHub Actions workflow will now:
     1. Build for macOS (ARM64 + x64), Windows, and Linux
     2. Create a GitHub Release draft with all artifacts
+    3. Include "What's New" from CHANGES.md in the release notes
 
   Check progress: https://github.com/havokentity/android-application-installer/actions
   Releases:       https://github.com/havokentity/android-application-installer/releases
 `);
+
+// ─── Helper: extract notes for a specific version from CHANGES.md ────────────
+
+/**
+ * Parses CHANGES.md and returns the content under the `## [version]` heading.
+ * Stops at the next `## [` heading or end of file.
+ */
+function extractVersionNotes(content, ver) {
+  const lines = content.split("\n");
+  let capturing = false;
+  const result = [];
+
+  for (const line of lines) {
+    // Match ## [1.2.3] or ## [Unreleased]
+    if (/^## \[/.test(line)) {
+      if (capturing) break; // hit the next version → stop
+      // Check if this is the version we want (or [Unreleased] if ver === "unreleased")
+      if (line.includes(`[${ver}]`)) {
+        capturing = true;
+        continue; // skip the heading itself
+      }
+    }
+    if (capturing) {
+      result.push(line);
+    }
+  }
+
+  // Trim leading/trailing blank lines and separator lines
+  const text = result.join("\n").replace(/^[\s-]+/, "").replace(/[\s-]+$/, "").trim();
+  return text;
+}
+
+/**
+ * Builds the full GitHub Release body with downloads table + what's new.
+ */
+function buildReleaseBody(ver, notes) {
+  let body = `## Downloads
+
+| Platform | File |
+|----------|------|
+| macOS (Apple Silicon) | \`.dmg\` |
+| macOS (Intel) | \`.dmg\` |
+| Windows (installer) | \`.msi\` or \`-setup.exe\` |
+| Windows (portable) | \`-portable.exe\` — no install needed |
+| Linux | \`.deb\` or \`.AppImage\` |
+`;
+
+  if (notes) {
+    body += `\n### What's New in v${ver}\n\n${notes}\n`;
+  } else {
+    body += `\n### What's New\nSee the [commit history](https://github.com/havokentity/android-application-installer/commits/v${ver}) for changes.\n`;
+  }
+
+  body += `\n---\n\nFull changelog: [CHANGES.md](https://github.com/havokentity/android-application-installer/blob/main/CHANGES.md)\n`;
+  return body;
+}
 
 
 

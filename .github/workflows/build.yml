@@ -61,6 +61,44 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      # ── Read release notes from file committed by release.mjs ──────────
+      - name: Read release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        id: release_notes
+        shell: bash
+        run: |
+          if [ -f .release-notes.md ]; then
+            echo "Found .release-notes.md"
+            # Use GitHub Actions delimiter for multiline output
+            {
+              echo "body<<RELEASE_NOTES_EOF"
+              cat .release-notes.md
+              echo "RELEASE_NOTES_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "No .release-notes.md found, using fallback"
+            {
+              echo "body<<RELEASE_NOTES_EOF"
+              echo "## Downloads"
+              echo ""
+              echo "| Platform | File |"
+              echo "|----------|------|"
+              echo "| macOS (Apple Silicon) | \`.dmg\` |"
+              echo "| macOS (Intel) | \`.dmg\` |"
+              echo "| Windows (installer) | \`.msi\` or \`-setup.exe\` |"
+              echo "| Windows (portable) | \`-portable.exe\` — no install needed |"
+              echo "| Linux | \`.deb\` or \`.AppImage\` |"
+              echo ""
+              echo "### What's New"
+              echo "See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes."
+              echo ""
+              echo "---"
+              echo ""
+              echo "Full changelog: [CHANGES.md](https://github.com/${{ github.repository }}/blob/main/CHANGES.md)"
+              echo "RELEASE_NOTES_EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
       # ── Tag push → build + create/update GitHub Release draft ────────────
       - name: Build & create release
         if: startsWith(github.ref, 'refs/tags/')
@@ -70,19 +108,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Android Application Installer ${{ github.ref_name }}"
-          releaseBody: |
-            ## Downloads
-
-            | Platform | File |
-            |----------|------|
-            | macOS (Apple Silicon) | `.dmg` |
-            | macOS (Intel) | `.dmg` |
-            | Windows (installer) | `.msi` or `-setup.exe` |
-            | Windows (portable) | `-portable.exe` — no install needed |
-            | Linux | `.deb` or `.AppImage` |
-
-            ### What's new
-            See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes.
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}

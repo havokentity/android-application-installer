@@ -4,6 +4,8 @@ use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::Emitter;
 
 mod tools;
 
@@ -17,6 +19,21 @@ pub struct DeviceInfo {
     pub product: String,
     pub transport_id: String,
 }
+
+/// Progress event emitted during async operations (install, launch, uninstall).
+#[derive(Debug, Clone, Serialize)]
+pub struct OperationProgress {
+    pub operation: String,
+    pub device: String,
+    pub status: String, // "running" | "done" | "cancelled" | "error"
+    pub message: String,
+    pub step: Option<u32>,
+    pub total_steps: Option<u32>,
+    pub cancellable: bool,
+}
+
+/// Global cancellation flag for long-running async operations.
+static OPERATION_CANCEL: AtomicBool = AtomicBool::new(false);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,6 +88,83 @@ fn run_cmd_lenient(program: &str, args: &[&str]) -> Result<(String, String, bool
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     Ok((stdout, stderr, output.status.success()))
+}
+
+// ─── Async Operation Helpers ──────────────────────────────────────────────────
+
+/// Emit an operation-progress event to the frontend.
+fn emit_op_progress(
+    app: &tauri::AppHandle,
+    operation: &str,
+    device: &str,
+    status: &str,
+    message: &str,
+    step: Option<u32>,
+    total_steps: Option<u32>,
+    cancellable: bool,
+) {
+    let _ = app.emit(
+        "operation-progress",
+        OperationProgress {
+            operation: operation.to_string(),
+            device: device.to_string(),
+            status: status.to_string(),
+            message: message.to_string(),
+            step,
+            total_steps,
+            cancellable,
+        },
+    );
+}
+
+/// Async loop that resolves once the cancel flag is set.
+async fn poll_cancel() {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if OPERATION_CANCEL.load(Ordering::Relaxed) {
+            break;
+        }
+    }
+}
+
+/// Run an external command asynchronously with cancellation support.
+/// Uses `tokio::process::Command` so the child process is killed on cancel
+/// (via `kill_on_drop`).
+async fn run_cmd_async(program: &str, args: &[&str]) -> Result<(String, String), String> {
+    // Early exit if already cancelled
+    if OPERATION_CANCEL.load(Ordering::Relaxed) {
+        return Err("Operation cancelled by user.".to_string());
+    }
+
+    let child = tokio::process::Command::new(program)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Failed to run '{}': {}", program, e))?;
+
+    tokio::select! {
+        output = child.wait_with_output() => {
+            let output = output.map_err(|e| format!("Process error for '{}': {}", program, e))?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            if output.status.success() {
+                Ok((stdout, stderr))
+            } else {
+                Err(format!(
+                    "Command '{}' failed (exit {}):\n{}\n{}",
+                    program,
+                    output.status.code().unwrap_or(-1),
+                    stdout.trim(),
+                    stderr.trim()
+                ))
+            }
+        }
+        _ = poll_cancel() => {
+            Err("Operation cancelled by user.".to_string())
+        }
+    }
 }
 
 // ─── Tauri Commands ───────────────────────────────────────────────────────────
@@ -203,26 +297,53 @@ fn get_devices(adb_path: String) -> Result<Vec<DeviceInfo>, String> {
     Ok(devices)
 }
 
-/// Install an APK onto the specified device.
+/// Install an APK onto the specified device (async with progress & cancellation).
 #[tauri::command]
-fn install_apk(adb_path: String, device: String, apk_path: String) -> Result<String, String> {
-    let (stdout, stderr) = run_cmd(&adb_path, &["-s", &device, "install", "-r", &apk_path])?;
+async fn install_apk(
+    app: tauri::AppHandle,
+    adb_path: String,
+    device: String,
+    apk_path: String,
+) -> Result<String, String> {
+    emit_op_progress(
+        &app, "install_apk", &device, "running",
+        "Installing APK...", Some(1), Some(1), true,
+    );
+
+    let (stdout, stderr) = match run_cmd_async(
+        &adb_path,
+        &["-s", &device, "install", "-r", &apk_path],
+    ).await {
+        Ok(v) => v,
+        Err(e) => {
+            let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+            emit_op_progress(&app, "install_apk", &device, status, &e, None, None, false);
+            return Err(e);
+        }
+    };
 
     // adb install can succeed (exit 0) but still report Failure in stdout
     if stdout.contains("Failure") || stderr.contains("Failure") {
-        return Err(format!(
+        let msg = format!(
             "APK install failed:\n{}\n{}",
             stdout.trim(),
             stderr.trim()
-        ));
+        );
+        emit_op_progress(&app, "install_apk", &device, "error", &msg, None, None, false);
+        return Err(msg);
     }
 
+    emit_op_progress(
+        &app, "install_apk", &device, "done",
+        "APK installed successfully", Some(1), Some(1), false,
+    );
     Ok(format!("APK installed successfully.\n{}", stdout.trim()))
 }
 
-/// Install an AAB file via bundletool (build-apks → install-apks).
+/// Install an AAB file via bundletool (async with multi-step progress & cancellation).
 #[tauri::command]
-fn install_aab(
+async fn install_aab(
+    app: tauri::AppHandle,
     adb_path: String,
     device: String,
     aab_path: String,
@@ -277,11 +398,30 @@ fn install_aab(
         }
     }
 
-    let args_ref: Vec<&str> = build_args.iter().map(|s| s.as_str()).collect();
-    run_cmd(&java_path, &args_ref)
-        .map_err(|e| format!("bundletool build-apks failed:\n{}", e))?;
+    // ── Step 1/2: Build APKs ──────────────────────────────────────────────
+    emit_op_progress(
+        &app, "install_aab", &device, "running",
+        "Building APKs from AAB...", Some(1), Some(2), true,
+    );
 
-    // 3. Install the .apks set onto the device
+    let args_ref: Vec<&str> = build_args.iter().map(|s| s.as_str()).collect();
+    if let Err(e) = run_cmd_async(&java_path, &args_ref).await {
+        let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+        let msg = if e.contains("cancelled") {
+            e.clone()
+        } else {
+            format!("bundletool build-apks failed:\n{}", e)
+        };
+        emit_op_progress(&app, "install_aab", &device, status, &msg, None, None, false);
+        return Err(msg);
+    }
+
+    // ── Step 2/2: Install the .apks set onto the device ───────────────────
+    emit_op_progress(
+        &app, "install_aab", &device, "running",
+        "Installing APKs to device...", Some(2), Some(2), true,
+    );
+
     let install_args: Vec<String> = vec![
         "-jar".into(),
         bundletool_path,
@@ -292,22 +432,60 @@ fn install_aab(
     ];
 
     let inst_ref: Vec<&str> = install_args.iter().map(|s| s.as_str()).collect();
-    let (inst_out, _) = run_cmd(&java_path, &inst_ref)
-        .map_err(|e| format!("bundletool install-apks failed:\n{}", e))?;
+    let (inst_out, _) = match run_cmd_async(&java_path, &inst_ref).await {
+        Ok(v) => v,
+        Err(e) => {
+            let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+            let msg = if e.contains("cancelled") {
+                e.clone()
+            } else {
+                format!("bundletool install-apks failed:\n{}", e)
+            };
+            emit_op_progress(&app, "install_aab", &device, status, &msg, None, None, false);
+            let _ = fs::remove_file(&apks_path);
+            return Err(msg);
+        }
+    };
 
     // 4. Cleanup
     let _ = fs::remove_file(&apks_path);
 
+    emit_op_progress(
+        &app, "install_aab", &device, "done",
+        "AAB installed successfully", Some(2), Some(2), false,
+    );
     Ok(format!("AAB installed successfully.\n{}", inst_out.trim()))
 }
 
-/// Launch an installed app on the device by package name.
+/// Launch an installed app on the device by package name (async with cancellation).
 #[tauri::command]
-fn launch_app(adb_path: String, device: String, package_name: String) -> Result<String, String> {
-    let (stdout, stderr) = run_cmd(
+async fn launch_app(
+    app: tauri::AppHandle,
+    adb_path: String,
+    device: String,
+    package_name: String,
+) -> Result<String, String> {
+    emit_op_progress(
+        &app, "launch", &device, "running",
+        &format!("Launching {}...", package_name), Some(1), Some(1), true,
+    );
+
+    let (stdout, stderr) = match run_cmd_async(
         &adb_path,
         &["-s", &device, "shell", "monkey", "-p", &package_name, "1"],
-    )?;
+    ).await {
+        Ok(v) => v,
+        Err(e) => {
+            let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+            emit_op_progress(&app, "launch", &device, status, &e, None, None, false);
+            return Err(e);
+        }
+    };
+
+    emit_op_progress(
+        &app, "launch", &device, "done",
+        &format!("Launched {}", package_name), Some(1), Some(1), false,
+    );
 
     Ok(format!(
         "Launched {}\n{}{}",
@@ -654,11 +832,35 @@ fn list_key_aliases(
     Ok(aliases)
 }
 
-/// Uninstall an app from the device by package name.
+/// Uninstall an app from the device by package name (async with cancellation).
 #[tauri::command]
-fn uninstall_app(adb_path: String, device: String, package_name: String) -> Result<String, String> {
-    let (stdout, stderr) =
-        run_cmd(&adb_path, &["-s", &device, "uninstall", &package_name])?;
+async fn uninstall_app(
+    app: tauri::AppHandle,
+    adb_path: String,
+    device: String,
+    package_name: String,
+) -> Result<String, String> {
+    emit_op_progress(
+        &app, "uninstall", &device, "running",
+        &format!("Uninstalling {}...", package_name), Some(1), Some(1), true,
+    );
+
+    let (stdout, stderr) = match run_cmd_async(
+        &adb_path,
+        &["-s", &device, "uninstall", &package_name],
+    ).await {
+        Ok(v) => v,
+        Err(e) => {
+            let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+            emit_op_progress(&app, "uninstall", &device, status, &e, None, None, false);
+            return Err(e);
+        }
+    };
+
+    emit_op_progress(
+        &app, "uninstall", &device, "done",
+        &format!("Uninstalled {}", package_name), Some(1), Some(1), false,
+    );
 
     Ok(format!(
         "Uninstalled {}\n{}{}",
@@ -991,6 +1193,15 @@ mod tests {
     }
 }
 
+// ─── Cancellation Control ─────────────────────────────────────────────────────
+
+/// Set or clear the global cancellation flag for async operations.
+/// Called from the frontend to cancel or reset before starting a new batch.
+#[tauri::command]
+fn set_cancel_flag(cancel: bool) {
+    OPERATION_CANCEL.store(cancel, Ordering::SeqCst);
+}
+
 // ─── App Entry Point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1011,6 +1222,7 @@ pub fn run() {
             uninstall_app,
             list_packages,
             list_key_aliases,
+            set_cancel_flag,
             tools::get_tools_status,
             tools::setup_platform_tools,
             tools::setup_bundletool,

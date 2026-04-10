@@ -7,7 +7,7 @@ import { getVersion } from "@tauri-apps/api/app";
 
 import "./App.css";
 import type {
-  DeviceInfo, LogEntry, ToolsStatus, DownloadProgress,
+  DeviceInfo, LogEntry, ToolsStatus, DownloadProgress, OperationProgress,
   StaleTool, DetectionStatus, RecentFilesConfig,
 } from "./types";
 import { nextLogId, getFileName, getFileType, now } from "./helpers";
@@ -76,11 +76,12 @@ function App() {
   const [keyAliases, setKeyAliases] = useState<string[]>([]);
   const [loadingAliases, setLoadingAliases] = useState(false);
 
-  // ── General state ─────────────────────────────────────────────────────
+  // ── General state ─────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
   const [appVersion, setAppVersion] = useState("");
+  const [operationProgress, setOperationProgress] = useState<OperationProgress | null>(null);
 
   const prevDeviceSerials = useRef("");
   const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
@@ -102,6 +103,23 @@ function App() {
       if (p.tool === "platform-tools") setAdbProgress(p);
       else if (p.tool === "bundletool") setBtProgress(p);
       else if (p.tool === "java") setJavaProgress(p);
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []);
+
+  // ─── Operation progress listener (install / launch / uninstall) ────
+
+  useEffect(() => {
+    const unlisten = listen<OperationProgress>("operation-progress", (event) => {
+      const p = event.payload;
+      setOperationProgress(p);
+      if (p.status === "done") {
+        setTimeout(() => setOperationProgress((prev) => prev?.status === "done" ? null : prev), 1500);
+      } else if (p.status === "error" || p.status === "cancelled") {
+        setTimeout(() => setOperationProgress((prev) =>
+          (prev?.status === "error" || prev?.status === "cancelled") ? null : prev
+        ), 500);
+      }
     });
     return () => { unlisten.then((fn) => fn()); };
   }, []);
@@ -479,6 +497,10 @@ function App() {
     }
 
     setIsInstalling(true);
+    setOperationProgress(null);
+    // Reset cancel flag before the batch
+    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+
     const fileName = getFileName(selectedFile);
     const multi = targetDevices.length > 1;
 
@@ -508,16 +530,23 @@ function App() {
             addLog("warning", `${prefix}Cannot launch — package name not set.`);
           }
         } catch (e) {
-          addLog("error", `${prefix}${String(e)}`);
+          const msg = String(e);
+          addLog("error", `${prefix}${msg}`);
+          if (msg.includes("cancelled")) {
+            addLog("warning", `${prefix}Operation cancelled by user.`);
+            break;
+          }
         }
       }
     } finally {
       setIsInstalling(false);
+      setOperationProgress(null);
     }
   };
 
   const launchApp = async () => {
     if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
     try {
       addLog("info", `Launching ${packageName}...`);
       addLog("success", await invoke<string>("launch_app", { adbPath, device: selectedDevice, packageName }));
@@ -526,10 +555,22 @@ function App() {
 
   const uninstallApp = async () => {
     if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
     try {
       addLog("info", `Uninstalling ${packageName}...`);
       addLog("success", await invoke<string>("uninstall_app", { adbPath, device: selectedDevice, packageName }));
     } catch (e) { addLog("error", String(e)); }
+  };
+
+  // ─── Cancel operation ───────────────────────────────────────────────
+
+  const cancelOperation = async () => {
+    try {
+      await invoke("set_cancel_flag", { cancel: true });
+      addLog("warning", "Cancelling operation...");
+    } catch (e) {
+      addLog("error", `Cancel failed: ${e}`);
+    }
   };
 
   // ─── Derived state ────────────────────────────────────────────────────
@@ -582,6 +623,7 @@ function App() {
       installAllDevices={installAllDevices} onInstallAllDevicesChange={setInstallAllDevices}
       isInstalling={isInstalling} canInstall={canInstall} packageName={packageName}
       onInstall={install} onLaunch={launchApp} onUninstall={uninstallApp}
+      operationProgress={operationProgress} onCancelOperation={cancelOperation}
     />
   );
 

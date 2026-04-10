@@ -1185,6 +1185,76 @@ body {
   border-top: 1px solid var(--border);
 }
 
+/* ─── Operation Progress Bar ───────────────────────────────────────────────── */
+
+.operation-progress {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  animation: slideDown 200ms ease;
+}
+
+.operation-progress-bar {
+  height: 4px;
+  background: var(--bg-2);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.operation-progress-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--green), var(--green-hover));
+}
+
+.operation-progress-fill.indeterminate {
+  width: 30%;
+  animation: indeterminate 1.5s ease-in-out infinite;
+}
+
+.operation-progress-fill.done {
+  width: 100%;
+  transition: width 300ms ease;
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+.operation-progress-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.operation-progress-message {
+  font-size: 12px;
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.operation-progress-step {
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+.operation-cancel {
+  color: var(--red) !important;
+  flex-shrink: 0;
+}
+
+.operation-cancel:hover:not(:disabled) {
+  color: var(--red) !important;
+  background: var(--red-dim) !important;
+}
+
 .multi-device-label {
   display: flex;
   align-items: center;

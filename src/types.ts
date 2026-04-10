@@ -33,6 +33,16 @@ export interface DownloadProgress {
   status: string; // "downloading" | "extracting" | "done" | "error"
 }
 
+export interface OperationProgress {
+  operation: string;  // "install_apk" | "install_aab" | "launch" | "uninstall"
+  device: string;
+  status: string;     // "running" | "done" | "cancelled" | "error"
+  message: string;
+  step: number | null;
+  total_steps: number | null;
+  cancellable: boolean;
+}
+
 export interface StaleTool {
   tool: string;
   label: string;

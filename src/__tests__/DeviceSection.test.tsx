@@ -49,6 +49,8 @@ const defaults = {
   onInstall: vi.fn(),
   onLaunch: vi.fn(),
   onUninstall: vi.fn(),
+  operationProgress: null,
+  onCancelOperation: vi.fn(),
 };
 
 describe("DeviceSection", () => {
