@@ -192,12 +192,34 @@ if (!releaseNotes) {
 
 if (changesContent && /^## \[Unreleased\]/m.test(changesContent)) {
   const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  const promoted = changesContent.replace(
-    /^## \[Unreleased\]\s*$/m,
-    `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
-  );
-  writeFileSync(changesPath, promoted, "utf-8");
-  console.log(`  Promoted [Unreleased] → [${version}] — ${today} in CHANGES.md\n`);
+
+  // Check if there's already a [version] section right after [Unreleased]
+  const alreadyPromoted = new RegExp(`^## \\[${version.replace(/\./g, "\\.")}\\]`, "m").test(changesContent);
+  if (alreadyPromoted) {
+    // Just clear the [Unreleased] section content (leave the heading + separator)
+    const cleared = changesContent.replace(
+      /^(## \[Unreleased\])\s*\n([\s\S]*?)(\n---\s*\n+## \[)/m,
+      "$1\n\n$3"
+    );
+    writeFileSync(changesPath, cleared, "utf-8");
+    console.log(`  [${version}] already exists in CHANGES.md — cleared [Unreleased] section\n`);
+  } else {
+    // Promote [Unreleased] → keep it empty + insert new version heading
+    // Consume the optional blank lines and --- separator after [Unreleased]
+    const promoted = changesContent.replace(
+      /^## \[Unreleased\]\s*\n+---\s*$/m,
+      `## [Unreleased]\n\n---\n\n## [${version}] — ${today}\n---`
+    );
+    // Fallback: if no --- separator exists after [Unreleased]
+    const final = promoted === changesContent
+      ? changesContent.replace(
+          /^## \[Unreleased\]\s*$/m,
+          `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
+        )
+      : promoted;
+    writeFileSync(changesPath, final, "utf-8");
+    console.log(`  Promoted [Unreleased] → [${version}] — ${today} in CHANGES.md\n`);
+  }
 }
 
 // ─── Write release notes file for CI ─────────────────────────────────────────
