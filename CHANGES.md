@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.6.6] — 2026-04-10
 ### Added
 - **Toast notifications** — auto-dismissing toasts for key events: install success/failure, app launch/stop/uninstall, ADB detection, APK extraction, and operation cancellation; includes success, error, warning, and info levels with slide-in/out animations and manual dismiss
 
