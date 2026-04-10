@@ -14,9 +14,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 - Enhance Tauri build process to open built bundle automatically after build completion
 
-### Other
-- Updated CHANGES.md
-
 ---
 
 ## [1.5.2] — 2026-04-10
