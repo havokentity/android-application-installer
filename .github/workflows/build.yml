@@ -146,6 +146,7 @@ jobs:
           releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: false
+          includeUpdaterJson: true
           args: --target ${{ matrix.target }}
 
       # ── Manual trigger → build only (no release) ────────────────────────
@@ -158,20 +159,23 @@ jobs:
           args: --target ${{ matrix.target }}
 
       # ── Upload updater signature files (.sig) to the release ────────────
-      # tauri-action doesn't upload .sig files automatically — we do it here
+      # tauri-action may not upload all .sig files — use find to catch them
       - name: Upload updater artifacts to release
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          shopt -s nullglob
-          for f in src-tauri/target/${{ matrix.target }}/release/bundle/**/*.sig \
-                   src-tauri/target/${{ matrix.target }}/release/bundle/**/*.tar.gz \
-                   src-tauri/target/${{ matrix.target }}/release/bundle/**/*.nsis.zip; do
-            echo "Uploading updater artifact: $(basename "$f")"
-            gh release upload ${{ github.ref_name }} "$f" --clobber || true
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          echo "=== All files in bundle directory ==="
+          find "$BUNDLE_DIR" -type f 2>/dev/null | sort || echo "  (no bundle directory found)"
+          echo ""
+          echo "=== Uploading .sig, .tar.gz, .nsis.zip files ==="
+          find "$BUNDLE_DIR" -type f \( -name "*.sig" -o -name "*.tar.gz" -o -name "*.nsis.zip" \) 2>/dev/null | while IFS= read -r f; do
+            echo "Uploading: $(basename "$f")"
+            gh release upload "${{ github.ref_name }}" "$f" --clobber || true
           done
+          echo "Done."
 
       # ── Portable EXE for Windows ─────────────────────────────────────────
       - name: Prepare portable EXE
