@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.6.3] — 2026-04-10
+---
+
 ## [1.6.3] — 2026-04-11
 ### Changed
 - **Update download progress bar** — replaced per-chunk log spam with a clean inline progress bar showing download percentage, downloaded/total bytes, and a smooth animated fill; appears below the toolbar during updates
