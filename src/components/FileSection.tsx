@@ -39,8 +39,16 @@ export function FileSection({
         ) : (
           <div className="drop-zone-content">
             <FolderOpen size={40} className="drop-icon" />
-            <p className="drop-text">{isDragOver ? "Drop to select file" : "Click or drop an APK or AAB file"}</p>
-            {!isDragOver && <p className="drop-hint">Supports .apk and .aab files — {shortcutLabel("O")} to browse</p>}
+            <p className="drop-text">
+              {isDragOver ? "Drop to select file" : (
+                <>Click or drop an <span className="smaller-text">apk</span> or <span className="smaller-text">aab</span> file</>
+              )}
+            </p>
+            {!isDragOver && (
+              <p className="drop-hint">
+                Supports <span className="smaller-text">.apk</span> and <span className="smaller-text">.aab</span> files — {shortcutLabel("O")} to browse
+              </p>
+            )}
           </div>
         )}
       </div>

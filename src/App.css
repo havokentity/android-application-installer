@@ -111,6 +111,13 @@ body {
   color: var(--text-2);
 }
 
+.smaller-text {
+  font-size: 0.85em;
+  opacity: 0.8;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
 /* ─── Section Cards ────────────────────────────────────────────────────────── */
 
 .section {

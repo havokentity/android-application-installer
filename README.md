@@ -1,15 +1,19 @@
 <div align="center">
+  <img src="public/icon.png" alt="Logo" width="128" height="128" />
 
 # Android Application Installer
+### <small>(apk/aab installer for Android)</small>
 
 **Install APK & AAB files onto Android devices — no SDK required.**
 
 [![Build & Release](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml/badge.svg)](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 [![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?logo=tauri&logoColor=333)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=333)](https://react.dev/)
 [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+
 [![Platform: macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](#downloads)
 [![Platform: Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)](#downloads)
 [![Platform: Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=333)](#downloads)
@@ -37,22 +41,22 @@
 
 ---
 
-## Features
+## 🛠 Features
 
-### Core
+### 📦 Core
 
 - **APK installation** — install `.apk` files directly via ADB
 - **AAB installation** — install `.aab` files via bundletool with optional keystore signing
 - **Package management** — launch or uninstall apps by package name
 - **Auto package name detection** — extracts the package name from APK and AAB files automatically
 
-### Tools & Setup
+### ⚙️ Tools & Setup
 
 - **Zero dependencies** — downloads ADB, bundletool, and Java JRE on demand (no Android SDK or system Java needed)
 - **Update reminders** — notifies when managed tools are 30+ days old (never auto-downloads without consent)
 - **Visual status indicators** — flashing red borders when tools are missing or no device is connected
 
-### Interface
+### 🎨 Interface
 
 - **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app
 - **Keyboard shortcuts** — `Cmd/Ctrl+O` open file, `Cmd/Ctrl+I` install, `Cmd/Ctrl+Shift+I` install & run, `Cmd/Ctrl+L` launch, `Cmd/Ctrl+U` uninstall
@@ -69,7 +73,7 @@
 - **Version display** — app version shown in the header so you always know what build you're running
 - **Dynamic title bar** — window title updates to show the currently selected filename
 
-### Cross-Platform
+### 🖥️ Cross-Platform
 
 - **macOS** — Apple Silicon (ARM64) and Intel (x64)
 - **Windows** — installer (`.msi` / `-setup.exe`) and portable (`.exe`)
@@ -77,17 +81,17 @@
 
 ---
 
-## Downloads
+## 📥 Downloads
 
 Grab the latest release from the [**Releases page**](https://github.com/havokentity/android-application-installer/releases).
 
 | Platform | Files |
-|----------|-------|
-| macOS (Apple Silicon) | `.dmg` |
-| macOS (Intel) | `.dmg` |
-| Windows (installer) | `.msi` or `-setup.exe` |
-| Windows (portable) | `-portable.exe` — no install needed |
-| Linux | `.deb` or `.AppImage` |
+|:---------|:------|
+| 🍎 **macOS (Apple Silicon)** | `.dmg` |
+| 🍎 **macOS (Intel)** | `.dmg` |
+| 🪟 **Windows (Installer)** | `.msi`, `-setup.exe` |
+| 🪟 **Windows (Portable)** | `-portable.exe` |
+| 🐧 **Linux** | `.deb`, `.AppImage` |
 
 ---
 
@@ -253,17 +257,18 @@ git push --tags
 
 ---
 
-## Tech Stack
+## 🛠️ Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | [Tauri 2](https://tauri.app/) |
-| Backend | Rust |
-| Frontend | React 19 + TypeScript |
-| Bundler | Vite |
-| UI Icons | [Lucide React](https://lucide.dev/) |
-| HTTP | reqwest (Rust) |
-| Dialogs | tauri-plugin-dialog |
+| Component | Technology |
+|:----------|:-----------|
+| **Framework** | [Tauri 2](https://tauri.app/) |
+| **Backend** | [Rust](https://www.rust-lang.org/) |
+| **Frontend** | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) |
+| **Styling** | [CSS3](https://developer.mozilla.org/en-US/docs/Web/CSS) (Modular & Themed) |
+| **Icons** | [Lucide React](https://lucide.dev/) |
+| **Build Tool** | [Vite 6](https://vite.dev/) |
+| **Testing** | [Vitest](https://vitest.dev/) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) |
+| **HTTP Client** | [reqwest](https://github.com/seanmonstar/reqwest) (Rust) |
 
 ---
 
