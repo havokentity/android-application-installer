@@ -10,7 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [1.6.3] — 2026-04-10
+## [1.6.4] — 2026-04-11
+### Added
+- **Auto-check on startup toggle** — bell icon in the toolbar lets you enable or disable automatic update checks on launch; preference is saved across sessions
+
+### Changed
+- **Update download progress bar** — replaced per-chunk log spam with a clean inline progress bar showing download percentage, downloaded/total bytes, and a smooth animated fill; appears below the toolbar during updates
+
 ---
 
 ## [1.6.3] — 2026-04-11
