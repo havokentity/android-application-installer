@@ -1,6 +1,7 @@
 /* ─── CSS Variables ─────────────────────────────────────────────────────────── */
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg-0: #0d1117;
   --bg-1: #161b22;
   --bg-2: #21262d;
@@ -35,6 +36,28 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme="light"] {
+  --bg-0: #f6f8fa;
+  --bg-1: #ffffff;
+  --bg-2: #f0f2f5;
+  --bg-3: #e4e7eb;
+  --border: #d0d7de;
+  --text-0: #1f2328;
+  --text-1: #31363b;
+  --text-2: #656d76;
+  --text-3: #8b949e;
+  --green: #1a7f37;
+  --green-dim: rgba(26, 127, 55, 0.10);
+  --green-hover: #116329;
+  --blue: #0969da;
+  --blue-dim: rgba(9, 105, 218, 0.10);
+  --red: #cf222e;
+  --red-dim: rgba(207, 34, 46, 0.10);
+  --yellow: #9a6700;
+  --yellow-dim: rgba(154, 103, 0, 0.10);
+  --shadow: 0 1px 3px rgba(31, 35, 40, 0.08), 0 1px 2px rgba(31, 35, 40, 0.06);
 }
 
 * {
@@ -872,4 +895,138 @@ body {
 
 .stale-banner-dismiss:hover {
   color: var(--text-1);
+}
+
+/* ─── Toolbar (Layout + Theme toggles) ────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.toolbar-btn:hover {
+  color: var(--text-0);
+  background: var(--bg-2);
+}
+
+.toolbar-btn.active {
+  color: var(--green);
+  background: var(--green-dim);
+}
+
+.toolbar-btn + .toolbar-btn {
+  border-left: 1px solid var(--border);
+}
+
+/* ─── Landscape Layout ────────────────────────────────────────────────────── */
+
+.app.landscape {
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  grid-template-rows: auto auto 1fr;
+  gap: 0 20px;
+  padding: 16px 24px 24px;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app.landscape .toolbar {
+  grid-column: 1 / -1;
+}
+
+.app.landscape .header {
+  grid-column: 1 / -1;
+  margin-bottom: 14px;
+}
+
+.app.landscape .stale-banner {
+  grid-column: 1 / -1;
+}
+
+.app.landscape .main-content {
+  grid-column: 1;
+  grid-row: 3;
+  overflow-y: auto;
+  padding-right: 8px;
+  min-height: 0;
+}
+
+.app.landscape .side-panel {
+  grid-column: 2;
+  grid-row: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app.landscape .side-panel .log-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.app.landscape .side-panel .log-panel {
+  flex: 1;
+  max-height: none;
+}
+
+/* Landscape scrollbar for main content */
+.app.landscape .main-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.app.landscape .main-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app.landscape .main-content::-webkit-scrollbar-thumb {
+  background: var(--bg-3);
+  border-radius: 3px;
+}
+
+.app.landscape .main-content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+}
+
+/* Light theme adjustments for select elements */
+[data-theme="light"] .select {
+  color-scheme: light;
+}
+
+[data-theme="light"] .btn-primary {
+  color: #ffffff;
 }

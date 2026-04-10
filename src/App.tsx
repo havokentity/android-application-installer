@@ -2,10 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
   import {
   Smartphone, RefreshCw, FolderOpen, Download, Play, Rocket,
   Check, X, AlertTriangle, Search, Settings, Loader2, Package,
   MonitorSmartphone, Coffee, ChevronDown, ChevronRight, Trash2, Key, Clock,
+  Monitor, Columns2, Sun, Moon,
 } from "lucide-react";
 
 import "./App.css";
@@ -64,6 +66,30 @@ function App() {
   const [isInstalling, setIsInstalling] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
+
+  // ── Layout & Theme ────────────────────────────────────────────────────
+  const [layout, setLayout] = useState<"portrait" | "landscape">("portrait");
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    return (localStorage.getItem("theme") as "dark" | "light") || "dark";
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("theme", theme);
+  }, [theme]);
+
+  const toggleLayout = useCallback(async (mode: "portrait" | "landscape") => {
+    const win = getCurrentWindow();
+    if (mode === "landscape") {
+      await win.setMinSize(new LogicalSize(1080, 520));
+      await win.setSize(new LogicalSize(1280, 720));
+    } else {
+      await win.setSize(new LogicalSize(920, 740));
+      await win.setMinSize(new LogicalSize(680, 520));
+    }
+    await win.center();
+    setLayout(mode);
+  }, []);
 
   // ─── Logging ──────────────────────────────────────────────────────────
 
@@ -443,222 +469,281 @@ function App() {
 
   // ─── Render ───────────────────────────────────────────────────────────
 
-  return (
-    <div className="app">
-      {/* Header */}
-      <header className="header">
-        <div className="header-title">
-          <MonitorSmartphone size={28} className="header-icon" />
-          <h1>Android Application Installer</h1>
+  // ─── Shared UI blocks ─────────────────────────────────────────────────
+
+  const toolbarEl = (
+    <div className="toolbar">
+      <div className="toolbar-group">
+        <button className={`toolbar-btn ${layout === "portrait" ? "active" : ""}`} onClick={() => toggleLayout("portrait")} title="Portrait layout">
+          <Monitor size={13} /> Portrait
+        </button>
+        <button className={`toolbar-btn ${layout === "landscape" ? "active" : ""}`} onClick={() => toggleLayout("landscape")} title="Landscape layout">
+          <Columns2 size={13} /> Landscape
+        </button>
+      </div>
+      <div className="toolbar-group">
+        <button className={`toolbar-btn ${theme === "light" ? "active" : ""}`} onClick={() => setTheme("light")} title="Light theme">
+          <Sun size={13} />
+        </button>
+        <button className={`toolbar-btn ${theme === "dark" ? "active" : ""}`} onClick={() => setTheme("dark")} title="Dark theme">
+          <Moon size={13} />
+        </button>
+      </div>
+    </div>
+  );
+
+  const headerEl = (
+    <header className="header">
+      <div className="header-title">
+        <MonitorSmartphone size={28} className="header-icon" />
+        <h1>Android Application Installer</h1>
+      </div>
+      <p className="header-subtitle">Install APK & AAB files onto connected Android devices</p>
+    </header>
+  );
+
+  const staleBannerEl = (
+    <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />
+  );
+
+  const toolsSectionEl = (
+    <ToolsSection
+      toolsStatus={toolsStatus}
+      downloadingAdb={downloadingAdb}
+      downloadingBundletool={downloadingBundletool}
+      downloadingJava={downloadingJava}
+      adbProgress={adbProgress}
+      btProgress={btProgress}
+      javaProgress={javaProgress}
+      onSetupAdb={setupAdb}
+      onSetupBundletool={setupBundletool}
+      onSetupJava={setupJava}
+    />
+  );
+
+  const deviceSectionEl = (
+    <section className="section">
+      <div className="section-header"><Settings size={16} /><span>Device</span></div>
+      <div className="adb-row">
+        <label className="field-label">ADB Path</label>
+        <div className="input-group">
+          <input type="text" className="input" value={adbPath}
+            onChange={(e) => { setAdbPath(e.target.value); setAdbStatus(e.target.value ? "found" : "not-found"); }}
+            placeholder={adbManaged ? "Managed by app — auto-detected" : "Path to adb binary..."} />
+          <StatusDot status={adbStatus} />
+          <button className="btn btn-icon" onClick={detectAdb} title="Auto-detect ADB"><Search size={16} /></button>
         </div>
-        <p className="header-subtitle">Install APK & AAB files onto connected Android devices</p>
-      </header>
-
-      {/* Stale tools banner */}
-      <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />
-
-      {/* Required tools */}
-      <ToolsSection
-        toolsStatus={toolsStatus}
-        downloadingAdb={downloadingAdb}
-        downloadingBundletool={downloadingBundletool}
-        downloadingJava={downloadingJava}
-        adbProgress={adbProgress}
-        btProgress={btProgress}
-        javaProgress={javaProgress}
-        onSetupAdb={setupAdb}
-        onSetupBundletool={setupBundletool}
-        onSetupJava={setupJava}
-      />
-
-      {/* Device section */}
-      <section className="section">
-        <div className="section-header"><Settings size={16} /><span>Device</span></div>
-
-        <div className="adb-row">
-          <label className="field-label">ADB Path</label>
-          <div className="input-group">
-            <input type="text" className="input" value={adbPath}
-              onChange={(e) => { setAdbPath(e.target.value); setAdbStatus(e.target.value ? "found" : "not-found"); }}
-              placeholder={adbManaged ? "Managed by app — auto-detected" : "Path to adb binary..."} />
-            <StatusDot status={adbStatus} />
-            <button className="btn btn-icon" onClick={detectAdb} title="Auto-detect ADB"><Search size={16} /></button>
-          </div>
+      </div>
+      <div className="device-row">
+        <label className="field-label"><Smartphone size={14} /> Connected Device</label>
+        <div className="input-group">
+          <select className="select" value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)} disabled={devices.length === 0}>
+            {devices.length === 0 && <option value="">No devices connected</option>}
+            {devices.map((d) => (
+              <option key={d.serial} value={d.serial}>
+                {d.model ? `${d.model} (${d.serial})` : d.serial}
+                {d.state !== "device" ? ` — ${d.state}` : ""}
+              </option>
+            ))}
+          </select>
+          <button className="btn btn-icon" onClick={refreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
+            <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
+          </button>
         </div>
+        {selectedDeviceInfo?.state === "unauthorized" && (
+          <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
+        )}
+      </div>
+    </section>
+  );
 
-        <div className="device-row">
-          <label className="field-label"><Smartphone size={14} /> Connected Device</label>
-          <div className="input-group">
-            <select className="select" value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)} disabled={devices.length === 0}>
-              {devices.length === 0 && <option value="">No devices connected</option>}
-              {devices.map((d) => (
-                <option key={d.serial} value={d.serial}>
-                  {d.model ? `${d.model} (${d.serial})` : d.serial}
-                  {d.state !== "device" ? ` — ${d.state}` : ""}
-                </option>
-              ))}
-            </select>
-            <button className="btn btn-icon" onClick={refreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
-              <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
+  const fileSectionEl = (
+    <section className="section">
+      <div className="section-header"><Package size={16} /><span>Package</span></div>
+      <div className={`drop-zone ${selectedFile ? "has-file" : ""}`} onClick={browseFile}>
+        {selectedFile ? (
+          <div className="file-info">
+            <div className="file-icon">{fileType === "apk" ? <Package size={32} /> : <FolderOpen size={32} />}</div>
+            <div className="file-details">
+              <span className="file-name">{getFileName(selectedFile)}</span>
+              <span className="file-type">{fileType?.toUpperCase()} File</span>
+              <span className="file-path">{selectedFile}</span>
+            </div>
+            <button className="btn btn-icon btn-ghost" onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setFileType(null); setPackageName(""); }} title="Clear selection">
+              <X size={16} />
             </button>
           </div>
-          {selectedDeviceInfo?.state === "unauthorized" && (
-            <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
-          )}
-        </div>
-      </section>
-
-      {/* File selection */}
-      <section className="section">
-        <div className="section-header"><Package size={16} /><span>Package</span></div>
-        <div className={`drop-zone ${selectedFile ? "has-file" : ""}`} onClick={browseFile}>
-          {selectedFile ? (
-            <div className="file-info">
-              <div className="file-icon">{fileType === "apk" ? <Package size={32} /> : <FolderOpen size={32} />}</div>
-              <div className="file-details">
-                <span className="file-name">{getFileName(selectedFile)}</span>
-                <span className="file-type">{fileType?.toUpperCase()} File</span>
-                <span className="file-path">{selectedFile}</span>
-              </div>
-              <button className="btn btn-icon btn-ghost" onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setFileType(null); setPackageName(""); }} title="Clear selection">
-                <X size={16} />
+        ) : (
+          <div className="drop-zone-content">
+            <FolderOpen size={40} className="drop-icon" />
+            <p className="drop-text">Click to select an APK or AAB file</p>
+            <p className="drop-hint">Supports .apk and .aab files</p>
+          </div>
+        )}
+      </div>
+      {!selectedFile && recentFiles.packages.length > 0 && (
+        <div className="recent-list">
+          <div className="recent-header"><Clock size={12} /> Recent Packages</div>
+          {recentFiles.packages.map((f) => (
+            <div key={f.path} className="recent-item" onClick={() => handleFileSelected(f.path)} title={f.path}>
+              <Package size={14} className="recent-icon" />
+              <span className="recent-name">{f.name}</span>
+              <span className="recent-path">{f.path}</span>
+              <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "packages"); }} title="Remove">
+                <X size={12} />
               </button>
             </div>
-          ) : (
-            <div className="drop-zone-content">
-              <FolderOpen size={40} className="drop-icon" />
-              <p className="drop-text">Click to select an APK or AAB file</p>
-              <p className="drop-hint">Supports .apk and .aab files</p>
-            </div>
-          )}
+          ))}
         </div>
-        {!selectedFile && recentFiles.packages.length > 0 && (
-          <div className="recent-list">
-            <div className="recent-header"><Clock size={12} /> Recent Packages</div>
-            {recentFiles.packages.map((f) => (
-              <div key={f.path} className="recent-item" onClick={() => handleFileSelected(f.path)} title={f.path}>
-                <Package size={14} className="recent-icon" />
-                <span className="recent-name">{f.name}</span>
-                <span className="recent-path">{f.path}</span>
-                <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "packages"); }} title="Remove">
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="package-row">
-          <label className="field-label">Package Name (for Launch / Uninstall)</label>
-          <input type="text" className="input" value={packageName} onChange={(e) => setPackageName(e.target.value)} placeholder="com.example.myapp" />
-        </div>
-      </section>
+      )}
+      <div className="package-row">
+        <label className="field-label">Package Name (for Launch / Uninstall)</label>
+        <input type="text" className="input" value={packageName} onChange={(e) => setPackageName(e.target.value)} placeholder="com.example.myapp" />
+      </div>
+    </section>
+  );
 
-      {/* Action buttons */}
-      <section className="actions">
-        <button className="btn btn-primary" disabled={!canInstall} onClick={() => install(false)}>
-          {isInstalling ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-          {isInstalling ? "Installing..." : "Install"}
-        </button>
-        <button className="btn btn-accent" disabled={!canInstall} onClick={() => install(true)}><Play size={16} /> Install & Run</button>
-        <button className="btn btn-secondary" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp}><Rocket size={16} /> Launch</button>
-        <button className="btn btn-danger" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp}><Trash2 size={16} /> Uninstall</button>
-      </section>
+  const actionsEl = (
+    <section className="actions">
+      <button className="btn btn-primary" disabled={!canInstall} onClick={() => install(false)}>
+        {isInstalling ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
+        {isInstalling ? "Installing..." : "Install"}
+      </button>
+      <button className="btn btn-accent" disabled={!canInstall} onClick={() => install(true)}><Play size={16} /> Install & Run</button>
+      <button className="btn btn-secondary" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp}><Rocket size={16} /> Launch</button>
+      <button className="btn btn-danger" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp}><Trash2 size={16} /> Uninstall</button>
+    </section>
+  );
 
-      {/* AAB settings (collapsible) */}
-      <section className="section collapsible">
-        <button className="section-header clickable" onClick={() => setShowAabSettings(!showAabSettings)}>
-          {showAabSettings ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <Coffee size={16} /><span>AAB Settings</span>
-          <span className="section-hint">(Java, bundletool, keystore — required for .aab files)</span>
-        </button>
-        {showAabSettings && (
-          <div className="collapsible-content">
-            <div className="setting-row">
-              <label className="field-label">Java</label>
-              <div className="input-group">
-                <input type="text" className="input" value={javaPath} onChange={(e) => setJavaPath(e.target.value)} placeholder={javaManaged ? "Managed by app — auto-detected" : "java"} />
-                <StatusDot status={javaStatus} />
-                <button className="btn btn-icon" onClick={checkJava} title="Detect Java"><Search size={16} /></button>
-                {javaStatus === "not-found" && (
-                  <button className="btn btn-small" onClick={setupJava} disabled={downloadingJava} title="Download Java JRE">
-                    {downloadingJava ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
-                  </button>
-                )}
-              </div>
-              {javaVersion && <p className="hint hint-success"><Check size={12} /> {javaVersion}</p>}
-            </div>
-            <div className="setting-row">
-              <label className="field-label">bundletool.jar</label>
-              <div className="input-group">
-                <input type="text" className="input" value={bundletoolPath} onChange={(e) => { setBundletoolPath(e.target.value); setBundletoolStatus(e.target.value ? "found" : "not-found"); }} placeholder="Path to bundletool.jar..." />
-                <StatusDot status={bundletoolStatus} />
-                <button className="btn btn-icon" onClick={detectBundletool} title="Detect bundletool"><Search size={16} /></button>
-                <button className="btn btn-small" onClick={setupBundletool} disabled={downloadingBundletool} title="Download latest from GitHub">
-                  {downloadingBundletool ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
+  const aabSettingsEl = (
+    <section className="section collapsible">
+      <button className="section-header clickable" onClick={() => setShowAabSettings(!showAabSettings)}>
+        {showAabSettings ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <Coffee size={16} /><span>AAB Settings</span>
+        <span className="section-hint">(Java, bundletool, keystore — required for .aab files)</span>
+      </button>
+      {showAabSettings && (
+        <div className="collapsible-content">
+          <div className="setting-row">
+            <label className="field-label">Java</label>
+            <div className="input-group">
+              <input type="text" className="input" value={javaPath} onChange={(e) => setJavaPath(e.target.value)} placeholder={javaManaged ? "Managed by app — auto-detected" : "java"} />
+              <StatusDot status={javaStatus} />
+              <button className="btn btn-icon" onClick={checkJava} title="Detect Java"><Search size={16} /></button>
+              {javaStatus === "not-found" && (
+                <button className="btn btn-small" onClick={setupJava} disabled={downloadingJava} title="Download Java JRE">
+                  {downloadingJava ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
                 </button>
-              </div>
-            </div>
-            <div className="setting-row">
-              <label className="field-label">Keystore (optional)</label>
-              <div className="input-group">
-                <input type="text" className="input" value={keystorePath} onChange={(e) => setKeystorePath(e.target.value)} placeholder="Path to .jks / .keystore (leave empty for debug key)" />
-                <button className="btn btn-icon" onClick={browseKeystore} title="Browse"><FolderOpen size={16} /></button>
-              </div>
-              {!keystorePath && recentFiles.keystores.length > 0 && (
-                <div className="recent-list recent-list-compact">
-                  <div className="recent-header"><Clock size={12} /> Recent Keystores</div>
-                  {recentFiles.keystores.map((f) => (
-                    <div key={f.path} className="recent-item" onClick={() => { setKeystorePath(f.path); setKeyAlias(""); setKeyAliases([]); recordRecentFile(f.path, "keystores"); }} title={f.path}>
-                      <Key size={14} className="recent-icon" />
-                      <span className="recent-name">{f.name}</span>
-                      <span className="recent-path">{f.path}</span>
-                      <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "keystores"); }} title="Remove">
-                        <X size={12} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
               )}
             </div>
-            {keystorePath && (
-              <>
-                <div className="setting-row indent">
-                  <label className="field-label">Keystore Password</label>
-                  <input type="password" className="input" value={keystorePass} onChange={(e) => setKeystorePass(e.target.value)} placeholder="Keystore password" />
-                </div>
-                <div className="setting-row indent">
-                  <label className="field-label"><Key size={14} /> Key Alias</label>
-                  <div className="input-group">
-                    {keyAliases.length > 0 ? (
-                      <select className="select" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)}>
-                        <option value="">— Select alias —</option>
-                        {keyAliases.map((a) => (
-                          <option key={a} value={a}>{a}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input type="text" className="input" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)} placeholder={loadingAliases ? "Loading aliases..." : "Key alias (enter password to list)"} />
-                    )}
-                    {loadingAliases && <Loader2 size={14} className="spin" />}
-                    {keystorePass && !loadingAliases && (
-                      <button className="btn btn-icon" onClick={() => fetchKeyAliases(keystorePath, keystorePass)} title="Refresh aliases">
-                        <RefreshCw size={14} />
-                      </button>
-                    )}
+            {javaVersion && <p className="hint hint-success"><Check size={12} /> {javaVersion}</p>}
+          </div>
+          <div className="setting-row">
+            <label className="field-label">bundletool.jar</label>
+            <div className="input-group">
+              <input type="text" className="input" value={bundletoolPath} onChange={(e) => { setBundletoolPath(e.target.value); setBundletoolStatus(e.target.value ? "found" : "not-found"); }} placeholder="Path to bundletool.jar..." />
+              <StatusDot status={bundletoolStatus} />
+              <button className="btn btn-icon" onClick={detectBundletool} title="Detect bundletool"><Search size={16} /></button>
+              <button className="btn btn-small" onClick={setupBundletool} disabled={downloadingBundletool} title="Download latest from GitHub">
+                {downloadingBundletool ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
+              </button>
+            </div>
+          </div>
+          <div className="setting-row">
+            <label className="field-label">Keystore (optional)</label>
+            <div className="input-group">
+              <input type="text" className="input" value={keystorePath} onChange={(e) => setKeystorePath(e.target.value)} placeholder="Path to .jks / .keystore (leave empty for debug key)" />
+              <button className="btn btn-icon" onClick={browseKeystore} title="Browse"><FolderOpen size={16} /></button>
+            </div>
+            {!keystorePath && recentFiles.keystores.length > 0 && (
+              <div className="recent-list recent-list-compact">
+                <div className="recent-header"><Clock size={12} /> Recent Keystores</div>
+                {recentFiles.keystores.map((f) => (
+                  <div key={f.path} className="recent-item" onClick={() => { setKeystorePath(f.path); setKeyAlias(""); setKeyAliases([]); recordRecentFile(f.path, "keystores"); }} title={f.path}>
+                    <Key size={14} className="recent-icon" />
+                    <span className="recent-name">{f.name}</span>
+                    <span className="recent-path">{f.path}</span>
+                    <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "keystores"); }} title="Remove">
+                      <X size={12} />
+                    </button>
                   </div>
-                </div>
-                <div className="setting-row indent">
-                  <label className="field-label">Key Password</label>
-                  <input type="password" className="input" value={keyPass} onChange={(e) => setKeyPass(e.target.value)} placeholder="Key password" />
-                </div>
-              </>
+                ))}
+              </div>
             )}
           </div>
-        )}
-      </section>
+          {keystorePath && (
+            <>
+              <div className="setting-row indent">
+                <label className="field-label">Keystore Password</label>
+                <input type="password" className="input" value={keystorePass} onChange={(e) => setKeystorePass(e.target.value)} placeholder="Keystore password" />
+              </div>
+              <div className="setting-row indent">
+                <label className="field-label"><Key size={14} /> Key Alias</label>
+                <div className="input-group">
+                  {keyAliases.length > 0 ? (
+                    <select className="select" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)}>
+                      <option value="">— Select alias —</option>
+                      {keyAliases.map((a) => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input type="text" className="input" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)} placeholder={loadingAliases ? "Loading aliases..." : "Key alias (enter password to list)"} />
+                  )}
+                  {loadingAliases && <Loader2 size={14} className="spin" />}
+                  {keystorePass && !loadingAliases && (
+                    <button className="btn btn-icon" onClick={() => fetchKeyAliases(keystorePath, keystorePass)} title="Refresh aliases">
+                      <RefreshCw size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="setting-row indent">
+                <label className="field-label">Key Password</label>
+                <input type="password" className="input" value={keyPass} onChange={(e) => setKeyPass(e.target.value)} placeholder="Key password" />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
 
-      {/* Log panel */}
-      <LogPanel logs={logs} onClear={() => setLogs([])} />
+  const logPanelEl = <LogPanel logs={logs} onClear={() => setLogs([])} />;
+
+  // ─── Render ───────────────────────────────────────────────────────────
+
+  if (layout === "landscape") {
+    return (
+      <div className="app landscape">
+        {toolbarEl}
+        {headerEl}
+        <div className="main-content">
+          {staleBannerEl}
+          {toolsSectionEl}
+          {deviceSectionEl}
+          {fileSectionEl}
+          {actionsEl}
+          {aabSettingsEl}
+        </div>
+        <div className="side-panel">
+          {logPanelEl}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      {toolbarEl}
+      {headerEl}
+      {staleBannerEl}
+      {toolsSectionEl}
+      {deviceSectionEl}
+      {fileSectionEl}
+      {actionsEl}
+      {aabSettingsEl}
+      {logPanelEl}
     </div>
   );
 }
