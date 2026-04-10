@@ -8,15 +8,46 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Stop Application** button — force-stop a running app on the device (`adb shell am force-stop`)
+- Keyboard shortcut `Cmd/Ctrl+K` for stopping an app
+- `.btn-warning` CSS style for the Stop button
+- **Publish Release** run configuration and `npm run release:publish` script to publish draft GitHub releases
+- Auto-generated release notes from git log when CHANGES.md has no entry for the version
+
+### Changed
+- Refactored `lib.rs` from one monolithic file into focused modules: `cmd.rs`, `adb.rs`, `package.rs`, `java.rs`
+- Refactored `tools.rs` into a `tools/` directory module: `config.rs`, `paths.rs`, `download.rs`, `status.rs`, `recent.rs`
+
 ---
 
 ## [1.5.0] — 2026-04-10
+
+### Added
+- **Stop Application** feature — force-stop running apps on connected devices
+- Keyboard shortcut `Cmd/Ctrl+K` for Stop
+- Publish Release script and run configuration
+
+### Changed
+- Refactored Rust backend from 2 monolithic files (~2400 lines) into 9 focused modules
+- Auto-generate release notes from git history when CHANGES.md entry is empty
+
 ---
 
 ## [1.4.2] — 2026-04-10
+
+### Changed
+- Added run configurations for tests (Vitest, Cargo, combined) and improved UI test assertions
+- Refined README headers and layout for consistency
+- Standardized README section headers and badge alignment
+
 ---
 
 ## [1.4.1] — 2026-04-10
+
+### Changed
+- Adjusted `tsconfig.json` and dependencies
+
 ---
 
 ## [1.4.0] — 2026-04-10
@@ -24,6 +55,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - Modular component structure — split App.tsx into dedicated components (AppHeader, FileSection, DeviceSection, AabSettingsSection, ToolsSection, LogPanel, Toolbar, StatusIndicators, EasterEggOverlay)
 - Custom React hooks — useLayout, useKeyboardShortcuts, useEasterEgg extracted from App.tsx
 - Comprehensive unit tests for all components, hooks, helper functions, and types (vitest + React Testing Library)
+- Operation progress tracking and cancellation support for install, launch, and uninstall
+- Run configurations for tests and release script test gate
+- Themed SVG illustrations for project structure in README
 
 ### Changed
 - Refactored App layout to use new modular component architecture

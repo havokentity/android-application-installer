@@ -173,13 +173,21 @@ try {
   const changesContent = readFileSync(changesPath, "utf-8");
   releaseNotes = extractVersionNotes(changesContent, version);
 } catch {
-  // CHANGES.md doesn't exist — that's okay, we'll just skip notes
+  // CHANGES.md doesn't exist — that's okay, we'll fall back to git log
 }
 
 if (!releaseNotes) {
-  console.warn(`\n  ⚠  No entry found for version ${version} in CHANGES.md.`);
-  console.warn(`     The release will proceed without "What's New" notes.`);
-  console.warn(`     Consider adding a ## [${version}] section to CHANGES.md before releasing.\n`);
+  // Auto-generate release notes from git log (commits since last tag)
+  console.log(`  No CHANGES.md entry for ${version} — generating notes from git log...\n`);
+  releaseNotes = generateNotesFromGitLog();
+
+  if (releaseNotes) {
+    console.log(`  Auto-generated release notes from commit history.\n`);
+  } else {
+    console.warn(`\n  ⚠  No commits found since last tag and no CHANGES.md entry.`);
+    console.warn(`     The release will proceed without "What's New" notes.`);
+    console.warn(`     Consider adding entries under ## [Unreleased] in CHANGES.md before releasing.\n`);
+  }
 }
 
 // ─── Write release notes file for CI ─────────────────────────────────────────
@@ -251,6 +259,75 @@ function extractVersionNotes(content, ver) {
   // Trim leading/trailing blank lines and separator lines
   const text = result.join("\n").replace(/^[\s-]+/, "").replace(/[\s-]+$/, "").trim();
   return text;
+}
+
+/**
+ * Auto-generate release notes from git log since the last tag.
+ * Groups commits by conventional-commit-style prefixes (add, fix, update, etc.)
+ */
+function generateNotesFromGitLog() {
+  let lastTag;
+  try {
+    // Get the tag before the one we're about to create
+    lastTag = run("git describe --tags --abbrev=0 HEAD");
+  } catch {
+    // No previous tags — use all history
+    lastTag = null;
+  }
+
+  const range = lastTag ? `${lastTag}..HEAD` : "HEAD";
+  let log;
+  try {
+    log = run(`git log ${range} --pretty=format:"%s" --no-merges`);
+  } catch {
+    return "";
+  }
+
+  if (!log) return "";
+
+  const lines = log.split("\n").filter(l => l.trim());
+
+  // Categorize commits
+  const added = [];
+  const changed = [];
+  const fixed = [];
+  const other = [];
+
+  for (const line of lines) {
+    const clean = line.replace(/^"|"$/g, "").trim();
+    if (!clean || clean.startsWith("release:")) continue;
+
+    const lower = clean.toLowerCase();
+    if (lower.startsWith("add:") || lower.startsWith("feat:") || lower.startsWith("feature:")) {
+      added.push(formatCommitLine(clean));
+    } else if (lower.startsWith("fix:") || lower.startsWith("bugfix:")) {
+      fixed.push(formatCommitLine(clean));
+    } else if (lower.startsWith("update:") || lower.startsWith("refactor:") || lower.startsWith("chore:")) {
+      changed.push(formatCommitLine(clean));
+    } else {
+      other.push(`- ${clean}`);
+    }
+  }
+
+  const sections = [];
+  if (added.length) sections.push(`### Added\n${added.join("\n")}`);
+  if (changed.length) sections.push(`### Changed\n${changed.join("\n")}`);
+  if (fixed.length) sections.push(`### Fixed\n${fixed.join("\n")}`);
+  if (other.length) sections.push(`### Other\n${other.join("\n")}`);
+
+  return sections.join("\n\n");
+}
+
+/** Strip the conventional-commit prefix and format as a bullet point. */
+function formatCommitLine(line) {
+  // Remove "prefix: " from the start
+  const colonIdx = line.indexOf(":");
+  if (colonIdx > 0 && colonIdx < 20) {
+    const rest = line.slice(colonIdx + 1).trim();
+    // Capitalize first letter
+    return `- ${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
+  }
+  return `- ${line}`;
 }
 
 /**
