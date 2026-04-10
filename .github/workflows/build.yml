@@ -89,6 +89,8 @@ jobs:
               echo "| Windows (portable) | \`-portable.exe\` — no install needed |"
               echo "| Linux | \`.deb\` or \`.AppImage\` |"
               echo ""
+              echo "> **🍎 macOS:** On first launch, right-click the app → **Open** → click **Open** to bypass the Gatekeeper prompt."
+              echo ""
               echo "### What's New"
               echo "See the [commit history](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}) for changes."
               echo ""
@@ -100,11 +102,21 @@ jobs:
           fi
 
       # ── Tag push → build + create/update GitHub Release draft ────────────
+      # macOS signing: if APPLE_CERTIFICATE is set → full Developer ID signing + notarization
+      #                if not → ad-hoc signing ("-") which avoids the "app is damaged" error
+      #                         (users see "unidentified developer" instead, bypassable via right-click → Open)
       - name: Build & create release
         if: startsWith(github.ref, 'refs/tags/')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ── macOS code signing & notarization ──
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Android Application Installer ${{ github.ref_name }}"
@@ -119,6 +131,13 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # ── macOS code signing & notarization ──
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target ${{ matrix.target }}
 

@@ -91,6 +91,25 @@ Grab the latest release from the [**Releases page**](https://github.com/havokent
 | 🪟 **Windows (Portable)** | `-portable.exe` |
 | 🐧 **Linux** | `.deb`, `.AppImage` |
 
+> **🍎 macOS users — first launch:**
+> Since the app is not notarized with Apple, macOS will show _"cannot be opened because the developer cannot be verified"_ on first launch. To open it:
+>
+> 1. **Right-click** (or Control-click) the app and choose **Open**
+> 2. Click **Open** in the confirmation dialog
+>
+> You only need to do this once — macOS remembers your choice.
+>
+> Alternatively, go to **System Settings → Privacy & Security** and click **Open Anyway** next to the app's name.
+>
+> <details>
+> <summary>Still seeing <em>"App is damaged"</em>?</summary>
+>
+> If you downloaded a release prior to v1.6.0, remove the quarantine flag manually:
+> ```bash
+> xattr -cr "/Applications/Android Application Installer.app"
+> ```
+> </details>
+
 ---
 
 ## 🚀 Getting Started
@@ -250,6 +269,35 @@ git push --tags
 ```
 
 **Manual build** — trigger from the [Actions tab](https://github.com/havokentity/android-application-installer/actions) (artifacts downloadable without creating a release).
+
+<details>
+<summary><strong>🍎 macOS Code Signing & Notarization</strong></summary>
+
+By default, macOS builds are **ad-hoc signed** — this is free, requires no Apple account, and prevents the _"app is damaged"_ error. Users will see an _"unidentified developer"_ dialog that they can bypass with **right-click → Open**.
+
+To eliminate **all** Gatekeeper warnings (app opens with zero prompts), configure full Developer ID signing and notarization by adding these GitHub repository secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Description |
+|:-------|:------------|
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` Developer ID certificate |
+| `APPLE_CERTIFICATE_PASSWORD` | Password for the `.p12` file |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAM_ID)` |
+| `APPLE_ID` | Your Apple ID email |
+| `APPLE_PASSWORD` | [App-specific password](https://support.apple.com/en-us/102654) (not your Apple ID password) |
+| `APPLE_TEAM_ID` | Your 10-character Apple Developer Team ID |
+
+**Steps to set up:**
+
+1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/) ($99/year)
+2. In Keychain Access, create a **Developer ID Application** certificate
+3. Export it as a `.p12` file with a password
+4. Base64-encode it: `base64 -i certificate.p12 | pbcopy`
+5. Generate an [app-specific password](https://support.apple.com/en-us/102654) for your Apple ID
+6. Add all six secrets to your GitHub repository
+
+Once configured, the CI workflow will automatically sign and notarize macOS builds. Without these secrets, ad-hoc signing is used as the fallback (right-click → Open still required).
+
+</details>
 
 > **Version management:** The app version is stored in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. Use `npm run version` to check sync status. See [docs/architecture.md](docs/architecture.md) for full details.
 

@@ -308,6 +308,8 @@ function buildReleaseBody(ver, notes) {
 | Windows (installer) | \`.msi\` or \`-setup.exe\` |
 | Windows (portable) | \`-portable.exe\` — no install needed |
 | Linux | \`.deb\` or \`.AppImage\` |
+
+> **🍎 macOS:** On first launch, right-click the app → **Open** → click **Open** to bypass the Gatekeeper prompt.
 `;
 
   if (notes) {
