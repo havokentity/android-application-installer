@@ -9,28 +9,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
-- **Stop Application** button — force-stop a running app on the device (`adb shell am force-stop`)
-- Keyboard shortcut `Cmd/Ctrl+K` for stopping an app
-- `.btn-warning` CSS style for the Stop button
-- **Publish Release** run configuration and `npm run release:publish` script to publish draft GitHub releases
+- **Update Changelog** script (`npm run changelog`) — auto-generate CHANGES.md entries from git history with commit categorization
+- **Publish Release** script (`npm run release:publish`) to publish draft GitHub releases
 - Auto-generated release notes from git log when CHANGES.md has no entry for the version
+- Shared commit categorization library (`scripts/lib/categorize-commits.mjs`) used by both release and changelog scripts
+- IntelliJ run configurations for Update Changelog and Publish Release
 
 ### Changed
-- Refactored `lib.rs` from one monolithic file into focused modules: `cmd.rs`, `adb.rs`, `package.rs`, `java.rs`
-- Refactored `tools.rs` into a `tools/` directory module: `config.rs`, `paths.rs`, `download.rs`, `status.rs`, `recent.rs`
+- Refactored release script to use shared commit categorization library
 
 ---
 
 ## [1.5.0] — 2026-04-10
 
 ### Added
-- **Stop Application** feature — force-stop running apps on connected devices
-- Keyboard shortcut `Cmd/Ctrl+K` for Stop
-- Publish Release script and run configuration
+- **Stop Application** button — force-stop a running app on the device (`adb shell am force-stop`)
+- Keyboard shortcut `Cmd/Ctrl+K` for stopping an app
+- `.btn-warning` yellow CSS style for the Stop button
 
 ### Changed
-- Refactored Rust backend from 2 monolithic files (~2400 lines) into 9 focused modules
-- Auto-generate release notes from git history when CHANGES.md entry is empty
+- Refactored Rust backend from 2 monolithic files (~2400 lines) into 9 focused modules (`cmd.rs`, `adb.rs`, `package.rs`, `java.rs`, `tools/{config, download, paths, status, recent}.rs`)
+- `lib.rs` reduced to a thin 35-line entry point
 
 ---
 
@@ -38,6 +37,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - Added run configurations for tests (Vitest, Cargo, combined) and improved UI test assertions
+- Enhanced README and UI for consistency and clarity
 - Refined README headers and layout for consistency
 - Standardized README section headers and badge alignment
 
