@@ -304,6 +304,11 @@ jobs:
           echo "=== Final release assets ==="
           gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' | sort
 
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --draft=false
+
       - name: Generate updater.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
