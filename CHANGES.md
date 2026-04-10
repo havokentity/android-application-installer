@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.5.1] — 2026-04-10
+
 ### Added
 - **Update Changelog** script (`npm run changelog`) — auto-generate CHANGES.md entries from git history with commit categorization
 - **Publish Release** script (`npm run release:publish`) to publish draft GitHub releases
@@ -17,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - Refactored release script to use shared commit categorization library
+- Release script now reads from `[Unreleased]` section and auto-promotes it to the versioned heading
 
 ---
 

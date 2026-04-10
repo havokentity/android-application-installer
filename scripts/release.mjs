@@ -11,9 +11,10 @@
  * What it does:
  *   1. Runs all tests (vitest + cargo test via `npm run test:all`)
  *   2. Runs bump-version.mjs to update all version files
- *   3. Extracts "What's New" from CHANGES.md for this version
- *   4. Writes .release-notes.md (used by CI for GitHub Release body)
- *   5. Promotes the [Unreleased] section in CHANGES.md to the new version
+ *   3. Extracts "What's New" from the [Unreleased] section of CHANGES.md
+ *      (falls back to [x.y.z] section, then auto-generates from git log)
+ *   4. Promotes [Unreleased] → [x.y.z] — <date> in CHANGES.md
+ *   5. Writes .release-notes.md (used by CI for GitHub Release body)
  *   6. Stages all changed files (including CHANGES.md + .release-notes.md)
  *   7. Commits with message "release: v<version>"
  *   8. Creates a git tag v<version>
@@ -147,21 +148,35 @@ try {
 }
 
 // ─── Extract "What's New" from CHANGES.md ────────────────────────────────────
-// Reads CHANGES.md but never writes to it — changelog updates are manual.
+// 1. Try the [Unreleased] section first (the intended workflow)
+// 2. Fall back to a [x.y.z] section if someone already promoted it manually
+// 3. Last resort: auto-generate from git log
 
 const changesPath = resolve(root, "CHANGES.md");
+let changesContent = "";
 let releaseNotes = "";
 
 try {
-  const changesContent = readFileSync(changesPath, "utf-8");
-  releaseNotes = extractVersionNotes(changesContent, version);
+  changesContent = readFileSync(changesPath, "utf-8");
+
+  // First, try the [Unreleased] section
+  releaseNotes = extractVersionNotes(changesContent, "Unreleased");
+  if (releaseNotes) {
+    console.log(`  Found [Unreleased] section in CHANGES.md — using it for release notes.\n`);
+  } else {
+    // Maybe the user already renamed it to [x.y.z]
+    releaseNotes = extractVersionNotes(changesContent, version);
+    if (releaseNotes) {
+      console.log(`  Found [${version}] section in CHANGES.md.\n`);
+    }
+  }
 } catch {
   // CHANGES.md doesn't exist — that's okay, we'll fall back to git log
 }
 
 if (!releaseNotes) {
   // Auto-generate release notes from git log (commits since last tag)
-  console.log(`  No CHANGES.md entry for ${version} — generating notes from git log...\n`);
+  console.log(`  No CHANGES.md entry found — generating notes from git log...\n`);
   releaseNotes = generateNotesFromGitLog();
 
   if (releaseNotes) {
@@ -171,6 +186,18 @@ if (!releaseNotes) {
     console.warn(`     The release will proceed without "What's New" notes.`);
     console.warn(`     Consider adding entries under ## [Unreleased] in CHANGES.md before releasing.\n`);
   }
+}
+
+// ─── Promote [Unreleased] → [x.y.z] in CHANGES.md ──────────────────────────
+
+if (changesContent && /^## \[Unreleased\]/m.test(changesContent)) {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const promoted = changesContent.replace(
+    /^## \[Unreleased\]\s*$/m,
+    `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
+  );
+  writeFileSync(changesPath, promoted, "utf-8");
+  console.log(`  Promoted [Unreleased] → [${version}] — ${today} in CHANGES.md\n`);
 }
 
 // ─── Write release notes file for CI ─────────────────────────────────────────
@@ -184,7 +211,7 @@ console.log(`  Wrote release notes to .release-notes.md\n`);
 
 console.log(`  Creating commit and tag ${tag}...\n`);
 
-runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock .release-notes.md");
+runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock .release-notes.md CHANGES.md");
 
 // If bump wrote the same values (e.g. files already at this version), there's nothing to commit
 const staged = run("git diff --cached --name-only");
