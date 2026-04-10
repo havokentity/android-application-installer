@@ -15,7 +15,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 - CI workflow defaults `APPLE_SIGNING_IDENTITY` to `-` (ad-hoc) when no signing secrets are configured
-- `tauri.conf.json` now includes `macOS.signing` configuration block
 - Release script includes macOS Gatekeeper bypass note in generated GitHub Release body
 
 ---
