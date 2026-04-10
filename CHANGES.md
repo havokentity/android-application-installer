@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.6.7] — 2026-04-10
 ### Added
 - **Device empty state styling** — visual guide (USB icon, numbered setup steps, refresh button) when no device is connected now properly styled
 - **Drag rejection styling** — drop zone turns red with red icon when unsupported file types are dragged over
