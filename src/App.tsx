@@ -580,8 +580,9 @@ function App() {
       onSetupAdb={setupAdb}
       onSetupBundletool={setupBundletool}
       onSetupJava={setupJava}
-      needsAttention={layout === "landscape" && toolsMissing}
+      needsAttention={toolsMissing}
       compact={layout === "landscape"}
+      collapsible={layout === "portrait"}
     />
   );
 
@@ -809,11 +810,11 @@ function App() {
       {toolbarEl}
       {headerEl}
       {staleBannerEl}
-      {toolsSectionEl}
-      {deviceSectionEl}
       {fileSectionEl}
+      {deviceSectionEl}
       {actionsEl}
       {aabSettingsEl}
+      {toolsSectionEl}
       {logPanelEl}
     </div>
   );

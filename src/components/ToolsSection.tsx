@@ -1,4 +1,5 @@
-import { Download, HardDriveDownload, Loader2, Wrench, Clock, X } from "lucide-react";
+import { useState } from "react";
+import { Download, HardDriveDownload, Loader2, Wrench, Clock, X, ChevronDown, ChevronRight } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
 import { formatBytes } from "../helpers";
 import type { DownloadProgress, StaleTool, ToolsStatus } from "../types";
@@ -132,6 +133,7 @@ interface ToolsSectionProps {
   onSetupJava: () => void;
   needsAttention?: boolean;
   compact?: boolean;
+  collapsible?: boolean;
 }
 
 export function ToolsSection({
@@ -147,25 +149,28 @@ export function ToolsSection({
   onSetupJava,
   needsAttention,
   compact,
+  collapsible,
 }: ToolsSectionProps) {
   const adbManaged = toolsStatus?.adb_installed ?? false;
   const btManaged = toolsStatus?.bundletool_installed ?? false;
   const javaManaged = toolsStatus?.java_installed ?? false;
+  const allInstalled = adbManaged && btManaged && javaManaged;
+
+  const [expanded, setExpanded] = useState(!allInstalled);
+
+  // Auto-expand when tools go missing (e.g. after a status recheck)
+  // Auto-collapse handled only by initial state — user can toggle freely after
+  const isExpanded = collapsible ? expanded : true;
 
   const cls = [
     "section tools-section",
     needsAttention ? "tools-attention" : "",
     compact ? "tools-compact" : "",
+    collapsible ? "collapsible" : "",
   ].filter(Boolean).join(" ");
 
-  return (
-    <section className={cls}>
-      <div className="section-header">
-        <Wrench size={16} />
-        <span>Required Tools</span>
-        {!compact && <span className="section-hint">(auto-downloaded — no SDK needed)</span>}
-      </div>
-
+  const toolContent = (
+    <>
       <ToolRow
         installed={adbManaged}
         downloading={downloadingAdb}
@@ -194,6 +199,36 @@ export function ToolsSection({
         showExtract
         onSetup={onSetupJava}
       />
+    </>
+  );
+
+  if (collapsible) {
+    return (
+      <section className={cls}>
+        <button className="section-header clickable" onClick={() => setExpanded(!expanded)}>
+          {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <Wrench size={16} />
+          <span>Required Tools</span>
+          {allInstalled && <span className="tool-badge badge-green" style={{ marginLeft: 4 }}>All installed</span>}
+          {!allInstalled && <span className="tool-badge badge-yellow" style={{ marginLeft: 4 }}>Setup needed</span>}
+        </button>
+        {isExpanded && (
+          <div className="collapsible-content">
+            {toolContent}
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  return (
+    <section className={cls}>
+      <div className="section-header">
+        <Wrench size={16} />
+        <span>Required Tools</span>
+        {!compact && <span className="section-hint">(auto-downloaded — no SDK needed)</span>}
+      </div>
+      {toolContent}
     </section>
   );
 }
