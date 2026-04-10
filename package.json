@@ -15,7 +15,12 @@
     "release": "node scripts/release.mjs",
     "release:patch": "node scripts/release.mjs patch",
     "release:minor": "node scripts/release.mjs minor",
-    "release:major": "node scripts/release.mjs major"
+    "release:major": "node scripts/release.mjs major",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:rust": "cd src-tauri && cargo test",
+    "test:all": "vitest run && cd src-tauri && cargo test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

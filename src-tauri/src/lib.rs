@@ -689,6 +689,308 @@ fn list_packages(adb_path: String, device: String) -> Result<Vec<String>, String
     Ok(packages)
 }
 
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── adb_binary / java_binary ──────────────────────────────────────────
+
+    #[test]
+    fn adb_binary_returns_correct_name() {
+        let name = adb_binary();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "adb.exe");
+        } else {
+            assert_eq!(name, "adb");
+        }
+    }
+
+    #[test]
+    fn java_binary_returns_correct_name() {
+        let name = java_binary();
+        if cfg!(target_os = "windows") {
+            assert_eq!(name, "java.exe");
+        } else {
+            assert_eq!(name, "java");
+        }
+    }
+
+    // ── parse_package_from_xml ────────────────────────────────────────────
+
+    #[test]
+    fn parse_package_from_xml_double_quotes() {
+        let xml = r#"<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            package="com.example.myapp"
+            android:versionCode="1">"#;
+        assert_eq!(
+            parse_package_from_xml(xml),
+            Some("com.example.myapp".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_package_from_xml_single_quotes() {
+        let xml = "<manifest package='org.test.app'>";
+        assert_eq!(
+            parse_package_from_xml(xml),
+            Some("org.test.app".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_package_from_xml_multiline() {
+        let xml = r#"<?xml version="1.0"?>
+<manifest
+    package="com.multi.line"
+    android:versionCode="10">
+</manifest>"#;
+        assert_eq!(
+            parse_package_from_xml(xml),
+            Some("com.multi.line".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_package_from_xml_no_package() {
+        let xml = r#"<manifest android:versionCode="1"></manifest>"#;
+        assert_eq!(parse_package_from_xml(xml), None);
+    }
+
+    #[test]
+    fn parse_package_from_xml_empty_string() {
+        assert_eq!(parse_package_from_xml(""), None);
+    }
+
+    #[test]
+    fn parse_package_from_xml_empty_package_value() {
+        let xml = r#"<manifest package=""></manifest>"#;
+        assert_eq!(parse_package_from_xml(xml), None);
+    }
+
+    #[test]
+    fn parse_package_from_xml_with_spaces() {
+        // package attribute with leading/trailing spaces in value
+        let xml = r#"<manifest package=" com.spaced.app "></manifest>"#;
+        let result = parse_package_from_xml(xml);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), "com.spaced.app");
+    }
+
+    // ── parse_package_from_aapt ──────────────────────────────────────────
+
+    #[test]
+    fn parse_package_from_aapt_standard_output() {
+        let output = "package: name='com.example.aapt' versionCode='1' versionName='1.0'\n\
+                       application-label:'My App'\n\
+                       sdkVersion:'21'";
+        assert_eq!(
+            parse_package_from_aapt(output),
+            Some("com.example.aapt".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_package_from_aapt_no_package_line() {
+        let output = "application-label:'My App'\nsdkVersion:'21'";
+        assert_eq!(parse_package_from_aapt(output), None);
+    }
+
+    #[test]
+    fn parse_package_from_aapt_empty() {
+        assert_eq!(parse_package_from_aapt(""), None);
+    }
+
+    #[test]
+    fn parse_package_from_aapt_malformed_line() {
+        let output = "package: versionCode='1'"; // missing name=
+        assert_eq!(parse_package_from_aapt(output), None);
+    }
+
+    #[test]
+    fn parse_package_from_aapt_multiple_lines() {
+        let output = "some random line\n\
+                       another line\n\
+                       package: name='com.found.it' versionCode='5'\n\
+                       more lines";
+        assert_eq!(
+            parse_package_from_aapt(output),
+            Some("com.found.it".to_string())
+        );
+    }
+
+    // ── DeviceInfo serialization ─────────────────────────────────────────
+
+    #[test]
+    fn device_info_serializes_correctly() {
+        let device = DeviceInfo {
+            serial: "ABC123".to_string(),
+            state: "device".to_string(),
+            model: "Pixel 7".to_string(),
+            product: "panther".to_string(),
+            transport_id: "1".to_string(),
+        };
+        let json = serde_json::to_string(&device).unwrap();
+        assert!(json.contains("\"serial\":\"ABC123\""));
+        assert!(json.contains("\"state\":\"device\""));
+        assert!(json.contains("\"model\":\"Pixel 7\""));
+    }
+
+    #[test]
+    fn device_info_deserializes_correctly() {
+        let json = r#"{"serial":"XYZ","state":"offline","model":"Test","product":"test","transport_id":"2"}"#;
+        let device: DeviceInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(device.serial, "XYZ");
+        assert_eq!(device.state, "offline");
+        assert_eq!(device.model, "Test");
+    }
+
+    #[test]
+    fn device_info_clone() {
+        let device = DeviceInfo {
+            serial: "S1".to_string(),
+            state: "device".to_string(),
+            model: "M".to_string(),
+            product: "P".to_string(),
+            transport_id: "T".to_string(),
+        };
+        let cloned = device.clone();
+        assert_eq!(device.serial, cloned.serial);
+    }
+
+    // ── run_cmd tests (use simple system commands) ───────────────────────
+
+    #[test]
+    fn run_cmd_echo_succeeds() {
+        let result = run_cmd("echo", &["hello"]);
+        assert!(result.is_ok());
+        let (stdout, _) = result.unwrap();
+        assert!(stdout.trim().contains("hello"));
+    }
+
+    #[test]
+    fn run_cmd_nonexistent_program_fails() {
+        let result = run_cmd("nonexistent_program_12345", &[]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn run_cmd_lenient_false_exit_returns_ok() {
+        // `false` exits with code 1 on Unix
+        if !cfg!(target_os = "windows") {
+            let result = run_cmd_lenient("false", &[]);
+            assert!(result.is_ok());
+            let (_, _, success) = result.unwrap();
+            assert!(!success);
+        }
+    }
+
+    #[test]
+    fn run_cmd_lenient_true_exit_returns_ok() {
+        let result = run_cmd_lenient("true", &[]);
+        assert!(result.is_ok());
+        let (_, _, success) = result.unwrap();
+        assert!(success);
+    }
+
+    // ── get_devices parsing logic (by mocking adb output) ────────────────
+
+    #[test]
+    fn parse_devices_output_format() {
+        // Simulate what get_devices does internally with the adb output
+        let adb_output = "List of devices attached\n\
+                          ABC123\tdevice usb:1234 product:panther model:Pixel_7 transport_id:1\n\
+                          DEF456\tunauthorized usb:5678 transport_id:2\n\
+                          \n";
+
+        let mut devices = Vec::new();
+        for line in adb_output.lines().skip(1) {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+
+            let parts: Vec<&str> = line.splitn(2, char::is_whitespace).collect();
+            if parts.len() < 2 { continue; }
+
+            let serial = parts[0].to_string();
+            let rest = parts[1].trim();
+            let state_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+            let state = rest[..state_end].to_string();
+
+            let mut model = String::new();
+            let mut product = String::new();
+            let mut transport_id = String::new();
+
+            if state_end < rest.len() {
+                for part in rest[state_end..].split_whitespace() {
+                    if let Some((key, value)) = part.split_once(':') {
+                        match key {
+                            "model" => model = value.replace('_', " "),
+                            "product" => product = value.to_string(),
+                            "transport_id" => transport_id = value.to_string(),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            devices.push(DeviceInfo { serial, state, model, product, transport_id });
+        }
+
+        assert_eq!(devices.len(), 2);
+        assert_eq!(devices[0].serial, "ABC123");
+        assert_eq!(devices[0].state, "device");
+        assert_eq!(devices[0].model, "Pixel 7"); // underscore replaced with space
+        assert_eq!(devices[0].product, "panther");
+        assert_eq!(devices[0].transport_id, "1");
+
+        assert_eq!(devices[1].serial, "DEF456");
+        assert_eq!(devices[1].state, "unauthorized");
+        assert_eq!(devices[1].transport_id, "2");
+        assert!(devices[1].model.is_empty());
+    }
+
+    #[test]
+    fn parse_empty_devices_output() {
+        let output = "List of devices attached\n\n";
+        let count = output.lines().skip(1).filter(|l| !l.trim().is_empty()).count();
+        assert_eq!(count, 0);
+    }
+
+    // ── install_apk stdout failure detection ─────────────────────────────
+
+    #[test]
+    fn detect_failure_in_stdout() {
+        let stdout = "Performing Streamed Install\nFailure [INSTALL_FAILED_ALREADY_EXISTS: ...]";
+        assert!(stdout.contains("Failure"));
+    }
+
+    #[test]
+    fn detect_success_in_stdout() {
+        let stdout = "Performing Streamed Install\nSuccess";
+        assert!(!stdout.contains("Failure"));
+        assert!(stdout.contains("Success"));
+    }
+
+    // ── extract_package_from_apk error cases ─────────────────────────────
+
+    #[test]
+    fn extract_package_from_nonexistent_apk() {
+        let result = extract_package_from_apk("/nonexistent/path/test.apk");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn extract_package_from_invalid_file() {
+        // Create a temp file that isn't a ZIP
+        let tmp = std::env::temp_dir().join("test_not_an_apk.txt");
+        std::fs::write(&tmp, "not a zip file").unwrap();
+        let result = extract_package_from_apk(tmp.to_str().unwrap());
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
 // ─── App Entry Point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
