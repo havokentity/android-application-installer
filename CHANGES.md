@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.5.2] — 2026-04-10
 ### Added
 - **macOS ad-hoc code signing** — builds are now ad-hoc signed by default, eliminating the "app is damaged" Gatekeeper error without needing an Apple Developer account
 - **macOS notarization support** — CI workflow accepts optional Apple Developer ID secrets for full code signing and notarization (zero Gatekeeper warnings)

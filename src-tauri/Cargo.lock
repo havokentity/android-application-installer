@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "android-application-installer"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "axmldecoder",
  "futures-util",
