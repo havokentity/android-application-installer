@@ -10,6 +10,7 @@ const defaults = {
   selectedFile: null as string | null,
   fileType: null as "apk" | "aab" | null,
   isDragOver: false,
+  isDragRejected: false,
   packageName: "",
   onPackageNameChange: vi.fn(),
   onBrowseFile: vi.fn(),
@@ -167,12 +168,12 @@ describe("FileSection", () => {
 
   it("disables Extract APK button when canExtract is false", () => {
     render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={false} />);
-    expect(screen.getByTitle("Extract universal APK from AAB")).toBeDisabled();
+    expect(screen.getByTitle(/Extract universal APK from AAB/)).toBeDisabled();
   });
 
   it("enables Extract APK button when canExtract is true", () => {
     render(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" canExtract={true} />);
-    expect(screen.getByTitle("Extract universal APK from AAB")).not.toBeDisabled();
+    expect(screen.getByTitle(/Extract universal APK from AAB/)).not.toBeDisabled();
   });
 
   it("calls onExtractApk when Extract APK button is clicked", () => {

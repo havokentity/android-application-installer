@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Toast notifications** — auto-dismissing toasts for key events: install success/failure, app launch/stop/uninstall, ADB detection, APK extraction, and operation cancellation; includes success, error, warning, and info levels with slide-in/out animations and manual dismiss
+
+### Changed
+- Fixed `FileSection` tests for updated Extract APK button title with shortcut label and `isDragRejected` prop
+- Added comprehensive unit tests for `useToast` hook and `ToastContainer` component (15 new tests)
+- Updated `docs/feature-analysis.md` to mark toast/snackbar feature as completed
+
 ---
 
 
