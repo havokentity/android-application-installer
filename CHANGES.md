@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.6.2] — 2026-04-10
+---
+
 ## [1.6.2] — 2026-04-11
 ### Added
 - **Check for Updates button** — manually trigger an update check from the toolbar; shows a spinner while checking and reports "You're on the latest version" when no update is found
