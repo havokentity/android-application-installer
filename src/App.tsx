@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -68,10 +68,30 @@ function App() {
   const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
 
   // ── Layout & Theme ────────────────────────────────────────────────────
-  const [layout, setLayout] = useState<"portrait" | "landscape">("portrait");
+  const DEFAULT_SIDE_WIDTH = 340;
+
+  const [layout, setLayout] = useState<"portrait" | "landscape">(() => {
+    return (localStorage.getItem("layout") as "portrait" | "landscape") || "portrait";
+  });
+  const [sidePanelWidth, setSidePanelWidth] = useState<number>(() => {
+    const saved = localStorage.getItem("landscapeWidth");
+    return saved ? Number(saved) : DEFAULT_SIDE_WIDTH;
+  });
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     return (localStorage.getItem("theme") as "dark" | "light") || "dark";
   });
+
+  // Apply saved landscape size on first mount if layout was saved as landscape
+  useEffect(() => {
+    if (layout === "landscape") {
+      const win = getCurrentWindow();
+      (async () => {
+        await win.setMinSize(new LogicalSize(1080, 520));
+        await win.setSize(new LogicalSize(1280, 720));
+        await win.center();
+      })();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
@@ -83,12 +103,53 @@ function App() {
     if (mode === "landscape") {
       await win.setMinSize(new LogicalSize(1080, 520));
       await win.setSize(new LogicalSize(1280, 720));
+      // Switching to landscape always resets to defaults
+      setSidePanelWidth(DEFAULT_SIDE_WIDTH);
+      localStorage.setItem("landscapeWidth", String(DEFAULT_SIDE_WIDTH));
     } else {
       await win.setSize(new LogicalSize(920, 740));
       await win.setMinSize(new LogicalSize(680, 520));
+      // Switching to portrait clears saved landscape width
+      localStorage.removeItem("landscapeWidth");
     }
     await win.center();
     setLayout(mode);
+    localStorage.setItem("layout", mode);
+  }, []);
+
+  // ── Draggable divider ─────────────────────────────────────────────────
+  const dragging = useRef(false);
+  const appRef = useRef<HTMLDivElement>(null);
+
+  const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current || !appRef.current) return;
+      const appRect = appRef.current.getBoundingClientRect();
+      const newSideWidth = appRect.right - ev.clientX - 12; // 12 = half gap + divider
+      const clamped = Math.max(240, Math.min(newSideWidth, appRect.width - 400));
+      setSidePanelWidth(clamped);
+    };
+
+    const onMouseUp = () => {
+      dragging.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      // Save final width
+      setSidePanelWidth((w) => {
+        localStorage.setItem("landscapeWidth", String(w));
+        return w;
+      });
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
   }, []);
 
   // ─── Logging ──────────────────────────────────────────────────────────
@@ -715,7 +776,11 @@ function App() {
 
   if (layout === "landscape") {
     return (
-      <div className="app landscape">
+      <div
+        className="app landscape"
+        ref={appRef}
+        style={{ gridTemplateColumns: `1fr auto ${sidePanelWidth}px` }}
+      >
         {toolbarEl}
         {headerEl}
         <div className="main-content">
@@ -725,6 +790,9 @@ function App() {
           {fileSectionEl}
           {actionsEl}
           {aabSettingsEl}
+        </div>
+        <div className="landscape-divider" onMouseDown={onDividerMouseDown}>
+          <div className="divider-handle" />
         </div>
         <div className="side-panel">
           {logPanelEl}

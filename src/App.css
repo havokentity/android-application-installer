@@ -952,9 +952,9 @@ body {
 .app.landscape {
   max-width: 100%;
   display: grid;
-  grid-template-columns: 1fr 340px;
+  /* grid-template-columns set inline via style prop: 1fr auto <side>px */
   grid-template-rows: auto auto 1fr;
-  gap: 0 20px;
+  gap: 0;
   padding: 16px 24px 24px;
   height: 100vh;
   overflow: hidden;
@@ -981,8 +981,35 @@ body {
   min-height: 0;
 }
 
-.app.landscape .side-panel {
+.app.landscape .landscape-divider {
   grid-column: 2;
+  grid-row: 3;
+  width: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  user-select: none;
+  position: relative;
+}
+
+.app.landscape .landscape-divider:hover .divider-handle,
+.app.landscape .landscape-divider:active .divider-handle {
+  background: var(--green);
+  opacity: 1;
+}
+
+.divider-handle {
+  width: 3px;
+  height: 48px;
+  border-radius: 2px;
+  background: var(--text-3);
+  opacity: 0.4;
+  transition: all var(--transition);
+}
+
+.app.landscape .side-panel {
+  grid-column: 3;
   grid-row: 3;
   display: flex;
   flex-direction: column;
