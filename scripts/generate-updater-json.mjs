@@ -114,6 +114,7 @@ async function main() {
   const notes = release.body || `See https://github.com/${REPO}/releases/tag/${tag} for details.`;
 
   console.log(`  Found ${assets.length} release assets.\n`);
+  console.log(`  Assets: ${assets.map((a) => a.name).join(", ")}\n`);
 
   const platforms = {};
 
