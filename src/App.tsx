@@ -62,6 +62,9 @@ function App() {
   const [keyAliases, setKeyAliases] = useState<string[]>([]);
   const [loadingAliases, setLoadingAliases] = useState(false);
 
+  // ── UI collapse state ──────────────────────────────────────────────────
+  const [deviceExpanded, setDeviceExpanded] = useState(true);
+
   // ── General state ─────────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -324,6 +327,12 @@ function App() {
     if (adbStatus === "found") refreshDevices();
   }, [adbStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-collapse device section when a device is selected, expand when none
+  useEffect(() => {
+    if (selectedDevice && devices.length > 0) setDeviceExpanded(false);
+    else setDeviceExpanded(true);
+  }, [selectedDevice, devices.length]);
+
   // ─── File selection ───────────────────────────────────────────────────
 
   const browseFile = async () => {
@@ -585,43 +594,57 @@ function App() {
       onSetupJava={setupJava}
       needsAttention={toolsMissing}
       compact={layout === "landscape"}
-      collapsible={layout === "portrait"}
+      collapsible
     />
   );
 
+  const deviceConnected = selectedDevice && devices.length > 0;
+  const deviceLabel = deviceConnected
+    ? (selectedDeviceInfo?.model || selectedDevice)
+    : null;
+
   const deviceSectionEl = (
-    <section className="section">
-      <div className="section-header"><Settings size={16} /><span>Device</span></div>
-      <div className="adb-row">
-        <label className="field-label">ADB Path</label>
-        <div className="input-group">
-          <input type="text" className="input" value={adbPath}
-            onChange={(e) => { setAdbPath(e.target.value); setAdbStatus(e.target.value ? "found" : "not-found"); }}
-            placeholder={adbManaged ? "Managed by app — auto-detected" : "Path to adb binary..."} />
-          <StatusDot status={adbStatus} />
-          <button className="btn btn-icon" onClick={detectAdb} title="Auto-detect ADB"><Search size={16} /></button>
+    <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
+      <button className="section-header clickable" onClick={() => setDeviceExpanded(!deviceExpanded)}>
+        {deviceExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        <Settings size={16} /><span>Device</span>
+        {deviceConnected && <span className="tool-badge badge-green" style={{ marginLeft: 4 }}>{deviceLabel}</span>}
+        {!deviceConnected && <span className="tool-badge badge-yellow" style={{ marginLeft: 4 }}>No device</span>}
+      </button>
+      {deviceExpanded && (
+        <div className="collapsible-content">
+          <div className="adb-row">
+            <label className="field-label">ADB Path</label>
+            <div className="input-group">
+              <input type="text" className="input" value={adbPath}
+                onChange={(e) => { setAdbPath(e.target.value); setAdbStatus(e.target.value ? "found" : "not-found"); }}
+                placeholder={adbManaged ? "Managed by app — auto-detected" : "Path to adb binary..."} />
+              <StatusDot status={adbStatus} />
+              <button className="btn btn-icon" onClick={detectAdb} title="Auto-detect ADB"><Search size={16} /></button>
+            </div>
+          </div>
+          <div className="device-row">
+            <label className="field-label"><Smartphone size={14} /> Connected Device</label>
+            <div className="input-group">
+              <select className="select" value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)} disabled={devices.length === 0}>
+                {devices.length === 0 && <option value="">No devices connected</option>}
+                {devices.map((d) => (
+                  <option key={d.serial} value={d.serial}>
+                    {d.model ? `${d.model} (${d.serial})` : d.serial}
+                    {d.state !== "device" ? ` — ${d.state}` : ""}
+                  </option>
+                ))}
+              </select>
+              <button className="btn btn-icon" onClick={refreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
+                <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
+              </button>
+            </div>
+            {selectedDeviceInfo?.state === "unauthorized" && (
+              <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="device-row">
-        <label className="field-label"><Smartphone size={14} /> Connected Device</label>
-        <div className="input-group">
-          <select className="select" value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)} disabled={devices.length === 0}>
-            {devices.length === 0 && <option value="">No devices connected</option>}
-            {devices.map((d) => (
-              <option key={d.serial} value={d.serial}>
-                {d.model ? `${d.model} (${d.serial})` : d.serial}
-                {d.state !== "device" ? ` — ${d.state}` : ""}
-              </option>
-            ))}
-          </select>
-          <button className="btn btn-icon" onClick={refreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
-            <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
-          </button>
-        </div>
-        {selectedDeviceInfo?.state === "unauthorized" && (
-          <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
-        )}
-      </div>
+      )}
     </section>
   );
 

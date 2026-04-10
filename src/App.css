@@ -785,8 +785,9 @@ body {
   font-size: 11px;
 }
 
-/* Flashing red border when tools need attention */
-.tools-attention {
+/* Flashing red border when section needs attention */
+.tools-attention,
+.device-attention {
   border-color: var(--red);
   animation: attentionPulse 2s ease-in-out infinite;
 }
@@ -802,7 +803,8 @@ body {
   }
 }
 
-[data-theme="light"] .tools-attention {
+[data-theme="light"] .tools-attention,
+[data-theme="light"] .device-attention {
   animation: attentionPulseLight 2s ease-in-out infinite;
 }
 
