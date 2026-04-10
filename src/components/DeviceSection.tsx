@@ -1,6 +1,7 @@
 import {
   Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
+  Usb,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
@@ -57,11 +58,13 @@ export function DeviceSection({
           {!deviceConnected && <span className="tool-badge badge-yellow">No device</span>}
         </div>
         <div className="device-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="btn btn-primary btn-small" disabled={!canInstall} onClick={() => onInstall(false)} title={`Install (${shortcutLabel("I")})`}>
-            {isInstalling ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
-            {isInstalling ? "Installing..." : "Install"}
+          <button className="btn btn-primary btn-small" disabled={!canInstall} onClick={() => onInstall(true)} title={`Install & Run (${shortcutLabel("I", true)})`}>
+            {isInstalling ? <Loader2 size={14} className="spin" /> : <Play size={14} />}
+            {isInstalling ? "Installing..." : "Install & Run"}
           </button>
-          <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => onInstall(true)} title={`Install & Run (${shortcutLabel("I", true)})`}><Play size={14} /> Install & Run</button>
+          <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => onInstall(false)} title={`Install (${shortcutLabel("I")})`}>
+            <Download size={14} /> Install
+          </button>
           <button className="btn btn-secondary btn-small" disabled={!canLaunchOrUninstall} onClick={onLaunch} title={`Launch (${shortcutLabel("L")})`}><Rocket size={14} /> Launch</button>
           <button className="btn btn-warning btn-small" disabled={!canLaunchOrUninstall} onClick={onStopApp} title={`Stop (${shortcutLabel("K")})`}><Square size={14} /> Stop</button>
           <button className="btn btn-danger btn-small" disabled={!canLaunchOrUninstall} onClick={onUninstall} title={`Uninstall (${shortcutLabel("U")})`}><Trash2 size={14} /> Uninstall</button>
@@ -126,6 +129,20 @@ export function DeviceSection({
             </div>
             {selectedDeviceInfo?.state === "unauthorized" && (
               <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
+            )}
+            {devices.length === 0 && (
+              <div className="device-empty-state">
+                <Usb size={32} className="device-empty-icon" />
+                <p className="device-empty-title">No device connected</p>
+                <ol className="device-empty-steps">
+                  <li>Enable <strong>USB debugging</strong> in Developer Options</li>
+                  <li>Connect your device via USB cable</li>
+                  <li>Accept the debugging prompt on your device</li>
+                </ol>
+                <button className="btn btn-small btn-accent" onClick={onRefreshDevices} disabled={loadingDevices || !adbPath}>
+                  <RefreshCw size={14} className={loadingDevices ? "spin" : ""} /> Refresh
+                </button>
+              </div>
             )}
             {devices.length > 1 && (
               <div className="multi-device-row">

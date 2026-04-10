@@ -6,6 +6,7 @@ interface FileSectionProps {
   selectedFile: string | null;
   fileType: "apk" | "aab" | null;
   isDragOver: boolean;
+  isDragRejected: boolean;
   packageName: string;
   onPackageNameChange: (name: string) => void;
   onBrowseFile: () => void;
@@ -19,7 +20,7 @@ interface FileSectionProps {
 }
 
 export function FileSection({
-  selectedFile, fileType, isDragOver, packageName,
+  selectedFile, fileType, isDragOver, isDragRejected, packageName,
   onPackageNameChange, onBrowseFile, onClearFile, onFileSelected,
   recentFiles, onRemoveRecentFile,
   canExtract, isExtracting, onExtractApk,
@@ -27,7 +28,7 @@ export function FileSection({
   return (
     <section className="section">
       <div className="section-header"><Package size={16} /><span>Package</span></div>
-      <div className={`drop-zone ${selectedFile ? "has-file" : ""} ${isDragOver ? "drag-over" : ""}`} onClick={onBrowseFile}>
+      <div className={`drop-zone ${selectedFile ? "has-file" : ""} ${isDragOver ? (isDragRejected ? "drag-rejected" : "drag-over") : ""}`} onClick={onBrowseFile}>
         {selectedFile ? (
           <div className="file-info">
             <div className="file-icon">{fileType === "apk" ? <Package size={32} /> : <FolderOpen size={32} />}</div>
@@ -37,7 +38,7 @@ export function FileSection({
               <span className="file-path">{selectedFile}</span>
             </div>
             {fileType === "aab" && (
-              <button className="btn btn-secondary btn-small" disabled={!canExtract} onClick={(e) => { e.stopPropagation(); onExtractApk(); }} title="Extract universal APK from AAB">
+              <button className="btn btn-secondary btn-small" disabled={!canExtract} onClick={(e) => { e.stopPropagation(); onExtractApk(); }} title={`Extract universal APK from AAB (${shortcutLabel("E")})`}>
                 {isExtracting ? <Loader2 size={14} className="spin" /> : <FileOutput size={14} />}
                 {isExtracting ? "Extracting..." : "Extract APK"}
               </button>
@@ -50,13 +51,18 @@ export function FileSection({
           <div className="drop-zone-content">
             <FolderOpen size={40} className="drop-icon" />
             <p className="drop-text">
-              {isDragOver ? "Drop to select file" : (
+              {isDragRejected ? "Unsupported file type" : isDragOver ? "Drop to select file" : (
                 <>Click or drop an <span className="smaller-text">apk</span> or <span className="smaller-text">aab</span> file</>
               )}
             </p>
             {!isDragOver && (
               <p className="drop-hint">
                 Supports <span className="smaller-text">.apk</span> and <span className="smaller-text">.aab</span> files — {shortcutLabel("O")} to browse
+              </p>
+            )}
+            {isDragRejected && (
+              <p className="drop-hint" style={{ color: "var(--red)" }}>
+                Only <span className="smaller-text">.apk</span> and <span className="smaller-text">.aab</span> files are supported
               </p>
             )}
           </div>

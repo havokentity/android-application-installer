@@ -6,10 +6,12 @@ export interface ShortcutActions {
   launchApp: () => void;
   stopApp: () => void;
   uninstallApp: () => void;
+  extractApk: () => void;
   canInstall: boolean | string | null;
   canLaunch: boolean;
   canStop: boolean;
   canUninstall: boolean;
+  canExtract: boolean;
 }
 
 export function useKeyboardShortcuts(actions: ShortcutActions) {
@@ -39,6 +41,9 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
       } else if (key === "u") {
         e.preventDefault();
         if (ref.current.canUninstall) ref.current.uninstallApp();
+      } else if (key === "e") {
+        e.preventDefault();
+        if (ref.current.canExtract) ref.current.extractApk();
       }
     };
     window.addEventListener("keydown", handler);

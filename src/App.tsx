@@ -28,6 +28,7 @@ import { AabSettingsSection } from "./components/AabSettingsSection";
 import { EasterEggOverlay } from "./components/EasterEggOverlay";
 import { StaleBanner, ToolsSection } from "./components/ToolsSection";
 import { LogPanel } from "./components/LogPanel";
+import { useToast, ToastContainer } from "./components/Toast";
 
 // ─── App Component ────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ function App() {
   // ── Layout, theme & easter egg ────────────────────────────────────────
   const { layout, theme, setTheme, sidePanelWidth, toggleLayout, onDividerMouseDown, appRef } = useLayout();
   const { easterEggVisible, easterEggIndex, easterEggVerses, handleTitleClick } = useEasterEgg();
+  const { toasts, addToast, removeToast } = useToast();
 
   // ── Logging ──────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -96,13 +98,35 @@ function App() {
       setAdbPath(path);
       setAdbStatus("found");
       addLog("success", `ADB found: ${path}`);
+      addToast("ADB detected successfully", "success");
+      localStorage.removeItem("adbPath"); // clear manual override on auto-detect success
     } catch (e) {
-      setAdbStatus("not-found");
-      addLog("warning", String(e));
+      // Fall back to persisted manual ADB path
+      const saved = localStorage.getItem("adbPath");
+      if (saved) {
+        setAdbPath(saved);
+        setAdbStatus("found");
+        addLog("info", `Using saved ADB path: ${saved}`);
+      } else {
+        setAdbStatus("not-found");
+        addLog("warning", String(e));
+        addToast("ADB not found — please install or set path manually", "warning");
+      }
     }
   }, [addLog]);
 
   useEffect(() => { detectAdb(); }, [detectAdb]);
+
+  // Persist manual ADB path changes
+  const handleAdbPathChange = useCallback((path: string, status: "found" | "not-found" | "unknown") => {
+    setAdbPath(path);
+    setAdbStatus(status);
+    if (path) {
+      localStorage.setItem("adbPath", path);
+    } else {
+      localStorage.removeItem("adbPath");
+    }
+  }, []);
 
   // ── AAB settings ──────────────────────────────────────────────────────
   const aab = useAabSettings({ addLog, recordRecentFile });
@@ -150,13 +174,13 @@ function App() {
   // ─── Installation ─────────────────────────────────────────────────────
 
   const install = async (andRun = false) => {
-    if (!file.selectedFile) { addLog("error", "Please select a file first."); return; }
+    if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
 
     const targetDevices = dev.installAllDevices && dev.devices.length > 1
       ? dev.devices.filter((d) => d.state === "device").map((d) => d.serial)
       : dev.selectedDevice ? [dev.selectedDevice] : [];
 
-    if (targetDevices.length === 0) { addLog("error", "Please select a device first."); return; }
+    if (targetDevices.length === 0) { addLog("error", "Please select a device first."); addToast("No device selected", "error"); return; }
 
     if (file.fileType === "aab") {
       if (!aab.javaPath || aab.javaStatus !== "found") { addLog("error", "Java is required for AAB installation. Please install a JDK."); return; }
@@ -180,6 +204,7 @@ function App() {
           if (file.fileType === "apk") {
             addLog("info", `${prefix}Installing ${fileName}...`);
             addLog("success", prefix + await api.installApk(adbPath, device, file.selectedFile));
+            addToast(`${fileName} installed on ${deviceLabel}`, "success");
           } else if (file.fileType === "aab") {
             addLog("info", `${prefix}Installing ${fileName} via bundletool...`);
             addLog("success", prefix + await api.installAab({
@@ -188,6 +213,7 @@ function App() {
               keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
               keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
             }));
+            addToast(`${fileName} installed on ${deviceLabel}`, "success");
           }
 
           if (andRun && file.packageName) {
@@ -201,8 +227,10 @@ function App() {
           addLog("error", `${prefix}${msg}`);
           if (msg.includes("cancelled")) {
             addLog("warning", `${prefix}Operation cancelled by user.`);
+            addToast("Installation cancelled", "warning");
             break;
           }
+          addToast(`Install failed on ${deviceLabel}`, "error");
         }
       }
     } finally {
@@ -212,21 +240,23 @@ function App() {
   };
 
   const launchApp = async () => {
-    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Launching ${file.packageName}...`);
       addLog("success", await api.launchApp(adbPath, dev.selectedDevice, file.packageName));
-    } catch (e) { addLog("error", String(e)); }
+      addToast(`${file.packageName} launched`, "success");
+    } catch (e) { addLog("error", String(e)); addToast("Failed to launch app", "error"); }
   };
 
   const stopApp = async () => {
-    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Stopping ${file.packageName}...`);
       addLog("success", await api.stopApp(adbPath, dev.selectedDevice, file.packageName));
-    } catch (e) { addLog("error", String(e)); }
+      addToast(`${file.packageName} stopped`, "info");
+    } catch (e) { addLog("error", String(e)); addToast("Failed to stop app", "error"); }
   };
 
   const uninstallApp = async () => {
@@ -239,15 +269,18 @@ function App() {
     try {
       addLog("info", `Uninstalling ${file.packageName}...`);
       addLog("success", await api.uninstallApp(adbPath, dev.selectedDevice, file.packageName));
-    } catch (e) { addLog("error", String(e)); }
+      addToast(`${file.packageName} uninstalled`, "success");
+    } catch (e) { addLog("error", String(e)); addToast("Uninstall failed", "error"); }
   };
 
   const cancelOperation = async () => {
     try {
       await api.setCancelFlag(true);
       addLog("warning", "Cancelling operation...");
+      addToast("Cancelling operation…", "warning");
     } catch (e) {
       addLog("error", `Cancel failed: ${e}`);
+      addToast("Failed to cancel operation", "error");
     }
   };
 
@@ -278,8 +311,10 @@ function App() {
         keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
       });
       addLog("success", result);
+      addToast("APK extracted successfully", "success");
     } catch (e) {
       addLog("error", String(e));
+      addToast("APK extraction failed", "error");
     } finally {
       setIsExtracting(false);
       setOperationProgress(null);
@@ -300,8 +335,8 @@ function App() {
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
   useKeyboardShortcuts({
-    browseFile: file.browseFile, install, launchApp, stopApp, uninstallApp,
-    canInstall, canLaunch: canLaunchOrUninstall, canStop: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall,
+    browseFile: file.browseFile, install, launchApp, stopApp, uninstallApp, extractApk,
+    canInstall, canLaunch: canLaunchOrUninstall, canStop: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall, canExtract: !!canExtract,
   });
 
   // ─── Shared UI elements ───────────────────────────────────────────────
@@ -325,7 +360,7 @@ function App() {
       devices={dev.devices} selectedDevice={dev.selectedDevice} onSelectDevice={dev.setSelectedDevice}
       loadingDevices={dev.loadingDevices} onRefreshDevices={dev.refreshDevices}
       adbPath={adbPath} adbStatus={adbStatus} adbManaged={adbManaged}
-      onAdbPathChange={(path, status) => { setAdbPath(path); setAdbStatus(status); }}
+      onAdbPathChange={handleAdbPathChange}
       onDetectAdb={detectAdb}
       expanded={dev.deviceExpanded} onToggleExpanded={() => dev.setDeviceExpanded(!dev.deviceExpanded)}
       installAllDevices={dev.installAllDevices} onInstallAllDevicesChange={dev.setInstallAllDevices}
@@ -337,7 +372,7 @@ function App() {
 
   const fileSectionEl = (
     <FileSection
-      selectedFile={file.selectedFile} fileType={file.fileType} isDragOver={file.isDragOver}
+      selectedFile={file.selectedFile} fileType={file.fileType} isDragOver={file.isDragOver} isDragRejected={file.isDragRejected}
       packageName={file.packageName} onPackageNameChange={file.setPackageName}
       onBrowseFile={file.browseFile} onClearFile={file.clearFile}
       onFileSelected={file.handleFileSelected}
@@ -389,6 +424,7 @@ function App() {
           {logPanelEl}
         </div>
         {easterEggEl}
+        <ToastContainer toasts={toasts} onDismiss={removeToast} />
       </div>
     );
   }
@@ -404,6 +440,7 @@ function App() {
       {toolsSectionEl}
       {logPanelEl}
       {easterEggEl}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
   );
 }

@@ -17,6 +17,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
   const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
   const [packageName, setPackageName] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isDragRejected, setIsDragRejected] = useState(false);
   const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
 
   // ── File selection ──────────────────────────────────────────────────
@@ -74,10 +75,19 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
     const unlisten = win.onDragDropEvent((event) => {
       if (event.payload.type === "enter") {
         setIsDragOver(true);
+        // Check if the dragged file is supported
+        const paths = (event.payload as any).paths;
+        if (paths && paths.length > 0 && !getFileType(paths[0])) {
+          setIsDragRejected(true);
+        } else {
+          setIsDragRejected(false);
+        }
       } else if (event.payload.type === "leave") {
         setIsDragOver(false);
+        setIsDragRejected(false);
       } else if (event.payload.type === "drop") {
         setIsDragOver(false);
+        setIsDragRejected(false);
         const paths = event.payload.paths;
         if (paths && paths.length > 0) {
           const file = paths[0];
@@ -101,7 +111,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
 
   return {
     selectedFile, fileType, packageName, setPackageName,
-    isDragOver, browseFile, handleFileSelected, clearFile,
+    isDragOver, isDragRejected, browseFile, handleFileSelected, clearFile,
   };
 }
 
