@@ -6,16 +6,18 @@
  * Usage:
  *   node scripts/release.mjs <version>         e.g. 1.2.0
  *   node scripts/release.mjs patch|minor|major
+ *   node scripts/release.mjs patch --skip-tests
  *
  * What it does:
- *   1. Runs bump-version.mjs to update all version files
- *   2. Extracts "What's New" from CHANGES.md for this version
- *   3. Writes .release-notes.md (used by CI for GitHub Release body)
- *   4. Promotes the [Unreleased] section in CHANGES.md to the new version
- *   5. Stages all changed files (including CHANGES.md + .release-notes.md)
- *   6. Commits with message "release: v<version>"
- *   7. Creates a git tag v<version>
- *   8. Pushes the commit and tag to origin
+ *   1. Runs frontend (vitest) and Rust (cargo test) tests
+ *   2. Runs bump-version.mjs to update all version files
+ *   3. Extracts "What's New" from CHANGES.md for this version
+ *   4. Writes .release-notes.md (used by CI for GitHub Release body)
+ *   5. Promotes the [Unreleased] section in CHANGES.md to the new version
+ *   6. Stages all changed files (including CHANGES.md + .release-notes.md)
+ *   7. Commits with message "release: v<version>"
+ *   8. Creates a git tag v<version>
+ *   9. Pushes the commit and tag to origin
  *
  * The tag push triggers the GitHub Actions build.yml workflow which
  * builds for all platforms and creates a GitHub Release draft with
@@ -28,10 +30,12 @@
  *      commits, tags, and pushes — all automatically.
  *
  * Safety:
+ *   - Runs all tests first (frontend + Rust); aborts on failure
  *   - Refuses to release with uncommitted changes (dirty working tree)
  *   - Refuses to downgrade (inherited from bump-version.mjs)
  *   - Requires an explicit version argument
  *   - Warns (but proceeds) if no CHANGES.md entry is found
+ *   - Use --skip-tests to bypass the test gate (not recommended)
  */
 
 import { execSync } from "child_process";
@@ -61,7 +65,10 @@ if (!arg) {
     node scripts/release.mjs minor           bump minor (x.Y.0)
     node scripts/release.mjs major           bump major (X.0.0)
 
-  This will bump versions, commit, tag, and push to trigger a CI release.
+  Options:
+    --skip-tests    Skip running tests before release (not recommended)
+
+  This will run tests, bump versions, commit, tag, and push to trigger a CI release.
 `);
   process.exit(1);
 }
@@ -90,6 +97,36 @@ try {
 }
 
 console.log(`\n  Branch: ${branch}`);
+
+// ─── Run tests ───────────────────────────────────────────────────────────────
+
+const skipTests = process.argv.includes("--skip-tests");
+
+if (skipTests) {
+  console.log("\n  ⚠  Skipping tests (--skip-tests flag)\n");
+} else {
+  console.log("\n  Running tests before release...\n");
+
+  try {
+    runLoud("npx vitest run");
+    console.log("\n  ✓  Frontend tests passed\n");
+  } catch {
+    console.error("\n  ✗  Frontend tests failed. Fix them before releasing.");
+    console.error("     Run `npm test` to see failures.");
+    console.error("     To release anyway: node scripts/release.mjs <version> --skip-tests\n");
+    process.exit(1);
+  }
+
+  try {
+    runLoud("cd src-tauri && cargo test");
+    console.log("\n  ✓  Rust tests passed\n");
+  } catch {
+    console.error("\n  ✗  Rust tests failed. Fix them before releasing.");
+    console.error("     Run `npm run test:rust` to see failures.");
+    console.error("     To release anyway: node scripts/release.mjs <version> --skip-tests\n");
+    process.exit(1);
+  }
+}
 
 // ─── Bump version ────────────────────────────────────────────────────────────
 
