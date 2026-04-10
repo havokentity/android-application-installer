@@ -553,6 +553,15 @@ function App() {
     } catch (e) { addLog("error", String(e)); }
   };
 
+  const stopApp = async () => {
+    if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+    try {
+      addLog("info", `Stopping ${packageName}...`);
+      addLog("success", await invoke<string>("stop_app", { adbPath, device: selectedDevice, packageName }));
+    } catch (e) { addLog("error", String(e)); }
+  };
+
   const uninstallApp = async () => {
     if (!packageName || !selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
     try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
@@ -592,8 +601,8 @@ function App() {
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
   useKeyboardShortcuts({
-    browseFile, install, launchApp, uninstallApp,
-    canInstall, canLaunch: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall,
+    browseFile, install, launchApp, stopApp, uninstallApp,
+    canInstall, canLaunch: canLaunchOrUninstall, canStop: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall,
   });
 
   // ─── Shared UI elements ───────────────────────────────────────────────
@@ -622,7 +631,7 @@ function App() {
       expanded={deviceExpanded} onToggleExpanded={() => setDeviceExpanded(!deviceExpanded)}
       installAllDevices={installAllDevices} onInstallAllDevicesChange={setInstallAllDevices}
       isInstalling={isInstalling} canInstall={canInstall} packageName={packageName}
-      onInstall={install} onLaunch={launchApp} onUninstall={uninstallApp}
+      onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}
     />
   );

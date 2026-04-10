@@ -17,9 +17,11 @@ describe("useKeyboardShortcuts", () => {
     browseFile: vi.fn(),
     install: vi.fn(),
     launchApp: vi.fn(),
+    stopApp: vi.fn(),
     uninstallApp: vi.fn(),
     canInstall: true as boolean | string | null,
     canLaunch: true,
+    canStop: true,
     canUninstall: true,
     ...overrides,
   });
@@ -84,6 +86,20 @@ describe("useKeyboardShortcuts", () => {
     expect(actions.launchApp).not.toHaveBeenCalled();
   });
 
+  it("calls stopApp on Cmd/Ctrl+K", () => {
+    const actions = makeActions();
+    renderHook(() => useKeyboardShortcuts(actions));
+    fireKeydown("k", { metaKey: true });
+    expect(actions.stopApp).toHaveBeenCalledOnce();
+  });
+
+  it("does not call stopApp when canStop is false", () => {
+    const actions = makeActions({ canStop: false });
+    renderHook(() => useKeyboardShortcuts(actions));
+    fireKeydown("k", { metaKey: true });
+    expect(actions.stopApp).not.toHaveBeenCalled();
+  });
+
   it("calls uninstallApp on Cmd/Ctrl+U", () => {
     const actions = makeActions();
     renderHook(() => useKeyboardShortcuts(actions));
@@ -104,10 +120,12 @@ describe("useKeyboardShortcuts", () => {
     fireKeydown("o");
     fireKeydown("i");
     fireKeydown("l");
+    fireKeydown("k");
     fireKeydown("u");
     expect(actions.browseFile).not.toHaveBeenCalled();
     expect(actions.install).not.toHaveBeenCalled();
     expect(actions.launchApp).not.toHaveBeenCalled();
+    expect(actions.stopApp).not.toHaveBeenCalled();
     expect(actions.uninstallApp).not.toHaveBeenCalled();
   });
 

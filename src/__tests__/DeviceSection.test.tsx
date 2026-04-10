@@ -48,6 +48,7 @@ const defaults = {
   packageName: "",
   onInstall: vi.fn(),
   onLaunch: vi.fn(),
+  onStopApp: vi.fn(),
   onUninstall: vi.fn(),
   operationProgress: null,
   onCancelOperation: vi.fn(),
@@ -157,15 +158,17 @@ describe("DeviceSection", () => {
     expect(screen.getByText("Installing...")).toBeInTheDocument();
   });
 
-  it("disables Launch/Uninstall when no package name and no device", () => {
+  it("disables Launch/Stop/Uninstall when no package name and no device", () => {
     render(<DeviceSection {...defaults} packageName="" selectedDevice="" />);
     expect(screen.getByText("Launch").closest("button")).toBeDisabled();
+    expect(screen.getByText("Stop").closest("button")).toBeDisabled();
     expect(screen.getByText("Uninstall").closest("button")).toBeDisabled();
   });
 
-  it("enables Launch/Uninstall when package name and device are set", () => {
+  it("enables Launch/Stop/Uninstall when package name and device are set", () => {
     render(<DeviceSection {...defaults} packageName="com.example" selectedDevice="ABC123" devices={[device1]} />);
     expect(screen.getByText("Launch").closest("button")).not.toBeDisabled();
+    expect(screen.getByText("Stop").closest("button")).not.toBeDisabled();
     expect(screen.getByText("Uninstall").closest("button")).not.toBeDisabled();
   });
 
@@ -174,6 +177,13 @@ describe("DeviceSection", () => {
     render(<DeviceSection {...defaults} packageName="com.example" selectedDevice="ABC123" devices={[device1]} onLaunch={onLaunch} />);
     fireEvent.click(screen.getByText("Launch"));
     expect(onLaunch).toHaveBeenCalledOnce();
+  });
+
+  it("calls onStopApp when Stop is clicked", () => {
+    const onStopApp = vi.fn();
+    render(<DeviceSection {...defaults} packageName="com.example" selectedDevice="ABC123" devices={[device1]} onStopApp={onStopApp} />);
+    fireEvent.click(screen.getByText("Stop"));
+    expect(onStopApp).toHaveBeenCalledOnce();
   });
 
   it("calls onUninstall when Uninstall is clicked", () => {

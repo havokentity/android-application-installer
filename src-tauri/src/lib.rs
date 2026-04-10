@@ -16,6 +16,7 @@ pub fn run() {
             adb::install_aab,
             adb::launch_app,
             adb::uninstall_app,
+            adb::stop_app,
             adb::list_packages,
             package::get_package_name,
             package::get_aab_package_name,

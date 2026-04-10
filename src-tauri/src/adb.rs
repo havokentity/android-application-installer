@@ -393,6 +393,36 @@ pub(crate) async fn uninstall_app(
     ))
 }
 
+/// Force-stop a running app on the device by package name (async with cancellation).
+#[tauri::command]
+pub(crate) async fn stop_app(
+    app: tauri::AppHandle,
+    adb_path: String,
+    device: String,
+    package_name: String,
+) -> Result<String, String> {
+    emit_op_progress(
+        &app, "stop", &device, "running",
+        &format!("Stopping {}...", package_name), Some(1), Some(1), true,
+    );
+
+    if let Err(e) = run_cmd_async(
+        &adb_path,
+        &["-s", &device, "shell", "am", "force-stop", &package_name],
+    ).await {
+        let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+        emit_op_progress(&app, "stop", &device, status, &e, None, None, false);
+        return Err(e);
+    }
+
+    emit_op_progress(
+        &app, "stop", &device, "done",
+        &format!("Stopped {}", package_name), Some(1), Some(1), false,
+    );
+
+    Ok(format!("Stopped {}", package_name))
+}
+
 /// List third-party installed packages on the device.
 #[tauri::command]
 pub(crate) fn list_packages(adb_path: String, device: String) -> Result<Vec<String>, String> {

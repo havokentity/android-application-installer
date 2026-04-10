@@ -4,9 +4,11 @@ export interface ShortcutActions {
   browseFile: () => void;
   install: (andRun: boolean) => void;
   launchApp: () => void;
+  stopApp: () => void;
   uninstallApp: () => void;
   canInstall: boolean | string | null;
   canLaunch: boolean;
+  canStop: boolean;
   canUninstall: boolean;
 }
 
@@ -31,6 +33,9 @@ export function useKeyboardShortcuts(actions: ShortcutActions) {
       } else if (key === "l") {
         e.preventDefault();
         if (ref.current.canLaunch) ref.current.launchApp();
+      } else if (key === "k") {
+        e.preventDefault();
+        if (ref.current.canStop) ref.current.stopApp();
       } else if (key === "u") {
         e.preventDefault();
         if (ref.current.canUninstall) ref.current.uninstallApp();

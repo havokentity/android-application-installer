@@ -1,5 +1,5 @@
 import {
-  Smartphone, RefreshCw, Download, Play, Rocket,
+  Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
 } from "lucide-react";
 import { Settings } from "lucide-react";
@@ -27,6 +27,7 @@ interface DeviceSectionProps {
   packageName: string;
   onInstall: (andRun: boolean) => void;
   onLaunch: () => void;
+  onStopApp: () => void;
   onUninstall: () => void;
   operationProgress: OperationProgress | null;
   onCancelOperation: () => void;
@@ -38,7 +39,7 @@ export function DeviceSection({
   expanded, onToggleExpanded,
   installAllDevices, onInstallAllDevicesChange,
   isInstalling, canInstall, packageName,
-  onInstall, onLaunch, onUninstall,
+  onInstall, onLaunch, onStopApp, onUninstall,
   operationProgress, onCancelOperation,
 }: DeviceSectionProps) {
   const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
@@ -62,6 +63,7 @@ export function DeviceSection({
           </button>
           <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => onInstall(true)} title={`Install & Run (${shortcutLabel("I", true)})`}><Play size={14} /> Install & Run</button>
           <button className="btn btn-secondary btn-small" disabled={!canLaunchOrUninstall} onClick={onLaunch} title={`Launch (${shortcutLabel("L")})`}><Rocket size={14} /> Launch</button>
+          <button className="btn btn-warning btn-small" disabled={!canLaunchOrUninstall} onClick={onStopApp} title={`Stop (${shortcutLabel("K")})`}><Square size={14} /> Stop</button>
           <button className="btn btn-danger btn-small" disabled={!canLaunchOrUninstall} onClick={onUninstall} title={`Uninstall (${shortcutLabel("U")})`}><Trash2 size={14} /> Uninstall</button>
         </div>
       </div>
