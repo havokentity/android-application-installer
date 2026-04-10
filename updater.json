@@ -1,0 +1,24 @@
+{
+  "version": "1.6.0",
+  "notes": "See https://github.com/havokentity/android-application-installer/releases for details.",
+  "pub_date": "2026-04-10T00:00:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.0/Android.Application.Installer_1.6.0_aarch64.app.tar.gz"
+    },
+    "darwin-x86_64": {
+      "signature": "",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.0/Android.Application.Installer_1.6.0_x64.app.tar.gz"
+    },
+    "linux-x86_64": {
+      "signature": "",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.0/android-application-installer_1.6.0_amd64.AppImage"
+    },
+    "windows-x86_64": {
+      "signature": "",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.0/Android.Application.Installer_1.6.0_x64-setup.nsis.zip"
+    }
+  }
+}
+

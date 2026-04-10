@@ -24,6 +24,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://raw.githubusercontent.com/havokentity/android-application-installer/main/updater.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCOTNBNjRGMzcwRDZCQkUKUldTK2F3MDNUNmFUdThIYWMzeGVDTlBRVmxNaVNTTHVuM29LeVRKTVEvRE5qMUVlYnNmMTRacUMK"
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
