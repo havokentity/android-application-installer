@@ -26,6 +26,7 @@ vi.mock("@tauri-apps/api/window", () => ({
     setSize: vi.fn(() => Promise.resolve()),
     setMinSize: vi.fn(() => Promise.resolve()),
     center: vi.fn(() => Promise.resolve()),
+    setTheme: vi.fn(() => Promise.resolve()),
     onDragDropEvent: vi.fn(() => Promise.resolve(() => {})),
   })),
   LogicalSize: class LogicalSize {

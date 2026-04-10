@@ -36,6 +36,8 @@ export function useLayout() {
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
+    // Sync native window theme so macOS title bar matches
+    getCurrentWindow().setTheme(theme);
   }, [theme]);
 
   const toggleLayout = useCallback(async (mode: "portrait" | "landscape") => {
