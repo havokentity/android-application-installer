@@ -165,43 +165,61 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 
 ## Project Structure
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/project-structure-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/project-structure-light.svg">
+    <img alt="Project Structure" src="docs/diagrams/project-structure-dark.svg" width="680">
+  </picture>
+</p>
+
+<details>
+<summary>Text version</summary>
+
 ```
-├── src/                          # React frontend
-│   ├── App.tsx                   # Main application component
-│   ├── App.css                   # Styles (dark/light themes, layouts)
-│   ├── types.ts                  # Shared TypeScript interfaces
-│   ├── helpers.ts                # Utility functions
-│   ├── main.tsx                  # React entry point
-│   └── components/
-│       ├── LogPanel.tsx          # Activity log panel
-│       ├── StatusIndicators.tsx  # StatusDot & LogIcon components
-│       └── ToolsSection.tsx      # Tools setup + stale banner
+├── src/                                # React frontend
+│   ├── App.tsx                         # Main application component
+│   ├── App.css                         # Styles (themes, layouts)
+│   ├── types.ts                        # TypeScript interfaces
+│   ├── helpers.ts                      # Utility functions
+│   ├── main.tsx                        # React entry point
+│   ├── components/
+│   │   ├── AppHeader.tsx               # Header with title & version
+│   │   ├── FileSection.tsx             # File drop zone & selection
+│   │   ├── DeviceSection.tsx           # Device selection & actions
+│   │   ├── AabSettingsSection.tsx      # AAB signing settings
+│   │   ├── ToolsSection.tsx            # Tools setup & stale banner
+│   │   ├── LogPanel.tsx                # Activity log panel
+│   │   ├── Toolbar.tsx                 # Layout & theme toggles
+│   │   └── StatusIndicators.tsx        # StatusDot & LogIcon
+│   ├── hooks/
+│   │   ├── useLayout.ts                # Layout state & persistence
+│   │   └── useKeyboardShortcuts.ts     # Keyboard shortcuts
+│   └── __tests__/                      # Unit tests (vitest)
 │
-├── src-tauri/                    # Rust backend (Tauri)
+├── src-tauri/                          # Rust backend (Tauri)
 │   ├── src/
-│   │   ├── main.rs              # App entry point
-│   │   ├── lib.rs               # Tauri commands (ADB, install, launch, etc.)
-│   │   └── tools.rs             # Managed tool downloads
-│   ├── Cargo.toml               # Rust dependencies
-│   ├── tauri.conf.json          # Tauri app configuration
-│   └── capabilities/
-│       └── default.json         # Tauri permissions
+│   │   ├── main.rs                     # App entry point
+│   │   ├── lib.rs                      # Tauri commands
+│   │   └── tools.rs                    # Managed tool downloads
+│   ├── Cargo.toml                      # Rust dependencies
+│   ├── tauri.conf.json                 # Tauri app config
+│   └── capabilities/                   # Tauri permissions
 │
-├── scripts/                      # Developer tooling
-│   ├── bump-version.mjs          # Sync version across all config files
-│   └── release.mjs               # Bump + commit + tag + push to trigger CI
-│
-├── docs/
-│   └── architecture.md          # Technical architecture docs
+├── scripts/                            # Developer tooling
+│   ├── bump-version.mjs                # Version sync script
+│   └── release.mjs                     # Release automation
 │
 ├── .github/workflows/
-│   └── build.yml                # CI: build & release for all platforms
-│
-├── index.html                   # HTML entry point
-├── vite.config.ts               # Vite configuration
-├── tsconfig.json                # TypeScript configuration
-└── package.json                 # npm scripts & dependencies
+│   └── build.yml                       # CI: build & release
+├── CHANGES.md                          # Version changelog
+├── index.html                          # HTML entry point
+├── vite.config.ts                      # Vite configuration
+├── tsconfig.json                       # TypeScript config
+└── package.json                        # npm scripts & deps
 ```
+
+</details>
 
 ---
 

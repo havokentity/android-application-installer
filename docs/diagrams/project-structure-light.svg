@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 700" width="680" height="700">
+  <defs>
+    <clipPath id="w"><rect width="680" height="700" rx="12"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#w)">
+    <rect width="680" height="700" fill="#f6f8fa"/>
+    <rect width="680" height="36" fill="#ffffff"/>
+
+    <!-- Window dots -->
+    <circle cx="20" cy="18" r="5" fill="#cf222e" fill-opacity="0.8"/>
+    <circle cx="36" cy="18" r="5" fill="#9a6700" fill-opacity="0.8"/>
+    <circle cx="52" cy="18" r="5" fill="#1a7f37" fill-opacity="0.8"/>
+
+    <!-- Title -->
+    <text x="340" y="23" text-anchor="middle" fill="#656d76" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" font-weight="500">Project Structure</text>
+
+    <!-- Tree -->
+    <g font-family="'SF Mono','Fira Code','JetBrains Mono','Cascadia Code',Consolas,monospace" font-size="12">
+    <text y="56" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1a7f37" font-weight="600">src/</tspan><tspan fill="#8b949e">                                 </tspan><tspan fill="#8b949e" font-style="italic"># React frontend</tspan></text>
+    <text y="72" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">App.tsx</tspan><tspan fill="#8b949e">                          </tspan><tspan fill="#8b949e" font-style="italic"># Main application component</tspan></text>
+    <text y="88" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">App.css</tspan><tspan fill="#8b949e">                          </tspan><tspan fill="#8b949e" font-style="italic"># Styles (themes, layouts)</tspan></text>
+    <text y="104" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">types.ts</tspan><tspan fill="#8b949e">                         </tspan><tspan fill="#8b949e" font-style="italic"># TypeScript interfaces</tspan></text>
+    <text y="120" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">helpers.ts</tspan><tspan fill="#8b949e">                       </tspan><tspan fill="#8b949e" font-style="italic"># Utility functions</tspan></text>
+    <text y="136" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">main.tsx</tspan><tspan fill="#8b949e">                         </tspan><tspan fill="#8b949e" font-style="italic"># React entry point</tspan></text>
+    <text y="152" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1a7f37" font-weight="600">components/</tspan></text>
+    <text y="168" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">AppHeader.tsx</tspan><tspan fill="#8b949e">                </tspan><tspan fill="#8b949e" font-style="italic"># Header with title &amp; version</tspan></text>
+    <text y="184" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">FileSection.tsx</tspan><tspan fill="#8b949e">              </tspan><tspan fill="#8b949e" font-style="italic"># File drop zone &amp; selection</tspan></text>
+    <text y="200" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">DeviceSection.tsx</tspan><tspan fill="#8b949e">            </tspan><tspan fill="#8b949e" font-style="italic"># Device selection &amp; actions</tspan></text>
+    <text y="216" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">AabSettingsSection.tsx</tspan><tspan fill="#8b949e">       </tspan><tspan fill="#8b949e" font-style="italic"># AAB signing settings</tspan></text>
+    <text y="232" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">ToolsSection.tsx</tspan><tspan fill="#8b949e">             </tspan><tspan fill="#8b949e" font-style="italic"># Tools setup &amp; stale banner</tspan></text>
+    <text y="248" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">LogPanel.tsx</tspan><tspan fill="#8b949e">                 </tspan><tspan fill="#8b949e" font-style="italic"># Activity log panel</tspan></text>
+    <text y="264" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">Toolbar.tsx</tspan><tspan fill="#8b949e">                  </tspan><tspan fill="#8b949e" font-style="italic"># Layout &amp; theme toggles</tspan></text>
+    <text y="280" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   └── </tspan><tspan fill="#1f2328">StatusIndicators.tsx</tspan><tspan fill="#8b949e">         </tspan><tspan fill="#8b949e" font-style="italic"># StatusDot &amp; LogIcon</tspan></text>
+    <text y="296" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1a7f37" font-weight="600">hooks/</tspan></text>
+    <text y="312" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">useLayout.ts</tspan><tspan fill="#8b949e">                 </tspan><tspan fill="#8b949e" font-style="italic"># Layout state &amp; persistence</tspan></text>
+    <text y="328" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   └── </tspan><tspan fill="#1f2328">useKeyboardShortcuts.ts</tspan><tspan fill="#8b949e">      </tspan><tspan fill="#8b949e" font-style="italic"># Keyboard shortcuts</tspan></text>
+    <text y="344" xml:space="preserve"><tspan x="24" fill="#8b949e">│   └── </tspan><tspan fill="#1a7f37" font-weight="600">__tests__/</tspan><tspan fill="#8b949e">                       </tspan><tspan fill="#8b949e" font-style="italic"># Unit tests (vitest)</tspan></text>
+    <text y="360"><tspan x="24" fill="#8b949e">│</tspan></text>
+    <text y="376" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1a7f37" font-weight="600">src-tauri/</tspan><tspan fill="#8b949e">                           </tspan><tspan fill="#8b949e" font-style="italic"># Rust backend (Tauri)</tspan></text>
+    <text y="392" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1a7f37" font-weight="600">src/</tspan></text>
+    <text y="408" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">main.rs</tspan><tspan fill="#8b949e">                      </tspan><tspan fill="#8b949e" font-style="italic"># App entry point</tspan></text>
+    <text y="424" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   ├── </tspan><tspan fill="#1f2328">lib.rs</tspan><tspan fill="#8b949e">                       </tspan><tspan fill="#8b949e" font-style="italic"># Tauri commands</tspan></text>
+    <text y="440" xml:space="preserve"><tspan x="24" fill="#8b949e">│   │   └── </tspan><tspan fill="#1f2328">tools.rs</tspan><tspan fill="#8b949e">                     </tspan><tspan fill="#8b949e" font-style="italic"># Managed tool downloads</tspan></text>
+    <text y="456" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">Cargo.toml</tspan><tspan fill="#8b949e">                       </tspan><tspan fill="#8b949e" font-style="italic"># Rust dependencies</tspan></text>
+    <text y="472" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">tauri.conf.json</tspan><tspan fill="#8b949e">                  </tspan><tspan fill="#8b949e" font-style="italic"># Tauri app config</tspan></text>
+    <text y="488" xml:space="preserve"><tspan x="24" fill="#8b949e">│   └── </tspan><tspan fill="#1a7f37" font-weight="600">capabilities/</tspan><tspan fill="#8b949e">                    </tspan><tspan fill="#8b949e" font-style="italic"># Tauri permissions</tspan></text>
+    <text y="504"><tspan x="24" fill="#8b949e">│</tspan></text>
+    <text y="520" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1a7f37" font-weight="600">scripts/</tspan><tspan fill="#8b949e">                             </tspan><tspan fill="#8b949e" font-style="italic"># Developer tooling</tspan></text>
+    <text y="536" xml:space="preserve"><tspan x="24" fill="#8b949e">│   ├── </tspan><tspan fill="#1f2328">bump-version.mjs</tspan><tspan fill="#8b949e">                 </tspan><tspan fill="#8b949e" font-style="italic"># Version sync script</tspan></text>
+    <text y="552" xml:space="preserve"><tspan x="24" fill="#8b949e">│   └── </tspan><tspan fill="#1f2328">release.mjs</tspan><tspan fill="#8b949e">                      </tspan><tspan fill="#8b949e" font-style="italic"># Release automation</tspan></text>
+    <text y="568"><tspan x="24" fill="#8b949e">│</tspan></text>
+    <text y="584" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1a7f37" font-weight="600">.github/workflows/</tspan></text>
+    <text y="600" xml:space="preserve"><tspan x="24" fill="#8b949e">│   └── </tspan><tspan fill="#1f2328">build.yml</tspan><tspan fill="#8b949e">                        </tspan><tspan fill="#8b949e" font-style="italic"># CI: build &amp; release</tspan></text>
+    <text y="616" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1f2328">CHANGES.md</tspan><tspan fill="#8b949e">                           </tspan><tspan fill="#8b949e" font-style="italic"># Version changelog</tspan></text>
+    <text y="632" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1f2328">index.html</tspan><tspan fill="#8b949e">                           </tspan><tspan fill="#8b949e" font-style="italic"># HTML entry point</tspan></text>
+    <text y="648" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1f2328">vite.config.ts</tspan><tspan fill="#8b949e">                       </tspan><tspan fill="#8b949e" font-style="italic"># Vite configuration</tspan></text>
+    <text y="664" xml:space="preserve"><tspan x="24" fill="#8b949e">├── </tspan><tspan fill="#1f2328">tsconfig.json</tspan><tspan fill="#8b949e">                        </tspan><tspan fill="#8b949e" font-style="italic"># TypeScript config</tspan></text>
+    <text y="680" xml:space="preserve"><tspan x="24" fill="#8b949e">└── </tspan><tspan fill="#1f2328">package.json</tspan><tspan fill="#8b949e">                         </tspan><tspan fill="#8b949e" font-style="italic"># npm scripts &amp; deps</tspan></text>
+    </g>
+  </g>
+
+  <!-- Border -->
+  <rect width="680" height="700" rx="12" fill="none" stroke="#d0d7de" stroke-width="1"/>
+</svg>
