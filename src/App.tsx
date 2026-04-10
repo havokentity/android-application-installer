@@ -605,12 +605,23 @@ function App() {
 
   const deviceSectionEl = (
     <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
-      <button className="section-header clickable" onClick={() => setDeviceExpanded(!deviceExpanded)}>
-        {deviceExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <Settings size={16} /><span>Device</span>
-        {deviceConnected && <span className="tool-badge badge-green" style={{ marginLeft: 4 }}>{deviceLabel}</span>}
-        {!deviceConnected && <span className="tool-badge badge-yellow" style={{ marginLeft: 4 }}>No device</span>}
-      </button>
+      <div className="section-header clickable device-header" onClick={() => setDeviceExpanded(!deviceExpanded)}>
+        <div className="device-header-left">
+          {deviceExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <Settings size={16} /><span>Device</span>
+          {deviceConnected && <span className="tool-badge badge-green">{deviceLabel}</span>}
+          {!deviceConnected && <span className="tool-badge badge-yellow">No device</span>}
+        </div>
+        <div className="device-actions" onClick={(e) => e.stopPropagation()}>
+          <button className="btn btn-primary btn-small" disabled={!canInstall} onClick={() => install(false)}>
+            {isInstalling ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
+            {isInstalling ? "Installing..." : "Install"}
+          </button>
+          <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => install(true)}><Play size={14} /> Install & Run</button>
+          <button className="btn btn-secondary btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp}><Rocket size={14} /> Launch</button>
+          <button className="btn btn-danger btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp}><Trash2 size={14} /> Uninstall</button>
+        </div>
+      </div>
       {deviceExpanded && (
         <div className="collapsible-content">
           <div className="adb-row">
@@ -691,18 +702,6 @@ function App() {
         <label className="field-label">Package Name (for Launch / Uninstall)</label>
         <input type="text" className="input" value={packageName} onChange={(e) => setPackageName(e.target.value)} placeholder="com.example.myapp" />
       </div>
-    </section>
-  );
-
-  const actionsEl = (
-    <section className="actions">
-      <button className="btn btn-primary" disabled={!canInstall} onClick={() => install(false)}>
-        {isInstalling ? <Loader2 size={16} className="spin" /> : <Download size={16} />}
-        {isInstalling ? "Installing..." : "Install"}
-      </button>
-      <button className="btn btn-accent" disabled={!canInstall} onClick={() => install(true)}><Play size={16} /> Install & Run</button>
-      <button className="btn btn-secondary" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp}><Rocket size={16} /> Launch</button>
-      <button className="btn btn-danger" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp}><Trash2 size={16} /> Uninstall</button>
     </section>
   );
 
@@ -816,7 +815,6 @@ function App() {
         <div className="main-content">
           {fileSectionEl}
           {deviceSectionEl}
-          {actionsEl}
           {aabSettingsEl}
         </div>
         <div className="landscape-divider" onMouseDown={onDividerMouseDown}>
@@ -838,7 +836,6 @@ function App() {
       {staleBannerEl}
       {fileSectionEl}
       {deviceSectionEl}
-      {actionsEl}
       {aabSettingsEl}
       {toolsSectionEl}
       {logPanelEl}
