@@ -10,7 +10,7 @@
     <option name="INTERPRETER_OPTIONS" value="-c" />
     <option name="EXECUTE_IN_TERMINAL" value="true" />
     <option name="EXECUTE_SCRIPT_FILE" value="false" />
-    <option name="SCRIPT_TEXT" value="npm run tauri build" />
+    <option name="SCRIPT_TEXT" value="npm run tauri build &amp;&amp; open src-tauri/target/release/bundle" />
     <method v="2" />
   </configuration>
 </component>
