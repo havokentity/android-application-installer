@@ -1,5 +1,4 @@
-<div align="center">
-  <img src="src-tauri/icons/icon.png" alt="Logo" width="128" height="128" />
+<img src="src-tauri/icons/icon.png" align="left" width="120" height="120" style="margin-right: 20px" />
 
 # Android Application Installer
 ### <small>(apk/aab installer for Android)</small>
@@ -8,17 +7,15 @@
 
 [![Build & Release](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml/badge.svg)](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
 [![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?logo=tauri&logoColor=333)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=333)](https://react.dev/)
 [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-
 [![Platform: macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](#downloads)
 [![Platform: Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)](#downloads)
 [![Platform: Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=333)](#downloads)
 
-</div>
+<br clear="left" />
 
 ---
 
