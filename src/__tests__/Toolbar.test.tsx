@@ -12,6 +12,8 @@ describe("Toolbar", () => {
     onCheckForUpdates: vi.fn(),
     checkingForUpdates: false,
     updateProgress: null,
+    autoCheckUpdates: true,
+    onToggleAutoCheck: vi.fn(),
   };
 
   it("renders Portrait and Landscape buttons", () => {
@@ -101,6 +103,25 @@ describe("Toolbar", () => {
   it("hides update progress bar when updateProgress is null", () => {
     render(<Toolbar {...defaults} updateProgress={null} />);
     expect(screen.queryByText(/MB/)).not.toBeInTheDocument();
+  });
+
+  it("shows active bell icon when autoCheckUpdates is true", () => {
+    render(<Toolbar {...defaults} autoCheckUpdates={true} />);
+    const btn = screen.getByTitle("Auto-check on startup: on");
+    expect(btn.className).toContain("active");
+  });
+
+  it("shows inactive bell icon when autoCheckUpdates is false", () => {
+    render(<Toolbar {...defaults} autoCheckUpdates={false} />);
+    const btn = screen.getByTitle("Auto-check on startup: off");
+    expect(btn.className).not.toContain("active");
+  });
+
+  it("calls onToggleAutoCheck when bell button is clicked", () => {
+    const fn = vi.fn();
+    render(<Toolbar {...defaults} onToggleAutoCheck={fn} />);
+    fireEvent.click(screen.getByTitle("Auto-check on startup: on"));
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 

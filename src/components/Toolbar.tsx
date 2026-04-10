@@ -1,4 +1,4 @@
-import { Monitor, Columns2, Sun, Moon, RefreshCw, Download } from "lucide-react";
+import { Monitor, Columns2, Sun, Moon, RefreshCw, Download, Bell, BellOff } from "lucide-react";
 
 interface UpdateProgress {
   downloaded: number;
@@ -14,6 +14,8 @@ interface ToolbarProps {
   onCheckForUpdates: () => void;
   checkingForUpdates: boolean;
   updateProgress: UpdateProgress | null;
+  autoCheckUpdates: boolean;
+  onToggleAutoCheck: () => void;
 }
 
 function formatBytes(bytes: number): string {
@@ -22,13 +24,20 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`;
 }
 
-export function Toolbar({ layout, theme, onToggleLayout, onSetTheme, onCheckForUpdates, checkingForUpdates, updateProgress }: ToolbarProps) {
+export function Toolbar({ layout, theme, onToggleLayout, onSetTheme, onCheckForUpdates, checkingForUpdates, updateProgress, autoCheckUpdates, onToggleAutoCheck }: ToolbarProps) {
   return (
     <div className="toolbar-wrapper">
       <div className="toolbar">
         <div className="toolbar-group">
           <button className="toolbar-btn" onClick={onCheckForUpdates} disabled={checkingForUpdates || !!updateProgress} title="Check for updates">
             <RefreshCw size={13} className={checkingForUpdates ? "spin" : ""} /> {checkingForUpdates ? "Checking…" : "Updates"}
+          </button>
+          <button
+            className={`toolbar-btn ${autoCheckUpdates ? "active" : ""}`}
+            onClick={onToggleAutoCheck}
+            title={autoCheckUpdates ? "Auto-check on startup: on" : "Auto-check on startup: off"}
+          >
+            {autoCheckUpdates ? <Bell size={13} /> : <BellOff size={13} />}
           </button>
         </div>
         <div className="toolbar-group">

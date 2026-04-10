@@ -99,6 +99,18 @@ function App() {
   // ── Auto updater ──────────────────────────────────────────────────────
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
   const [updateProgress, setUpdateProgress] = useState<{ downloaded: number; total: number; percent: number } | null>(null);
+  const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean>(() => {
+    const saved = localStorage.getItem("autoCheckUpdates");
+    return saved === null ? true : saved === "true";
+  });
+
+  const toggleAutoCheckUpdates = useCallback(() => {
+    setAutoCheckUpdates((prev) => {
+      const next = !prev;
+      localStorage.setItem("autoCheckUpdates", String(next));
+      return next;
+    });
+  }, []);
 
   const checkForUpdates = useCallback(async (manual = false) => {
     setCheckingForUpdates(true);
@@ -145,8 +157,8 @@ function App() {
   }, [addLog]);
 
   useEffect(() => {
-    checkForUpdates(false);
-  }, [checkForUpdates]);
+    if (autoCheckUpdates) checkForUpdates(false);
+  }, [checkForUpdates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Fetch app version ─────────────────────────────────────────────────
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
@@ -705,7 +717,7 @@ function App() {
 
   // ─── Shared UI elements ───────────────────────────────────────────────
 
-  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => checkForUpdates(true)} checkingForUpdates={checkingForUpdates} updateProgress={updateProgress} />;
+  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => checkForUpdates(true)} checkingForUpdates={checkingForUpdates} updateProgress={updateProgress} autoCheckUpdates={autoCheckUpdates} onToggleAutoCheck={toggleAutoCheckUpdates} />;
   const headerEl = <AppHeader appVersion={appVersion} onTitleClick={handleTitleClick} />;
   const staleBannerEl = <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />;
 
