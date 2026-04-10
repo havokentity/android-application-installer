@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getVersion } from "@tauri-apps/api/app";
   import {
   Smartphone, RefreshCw, FolderOpen, Download, Play, Rocket,
   Check, X, AlertTriangle, Search, Settings, Loader2, Package,
@@ -84,6 +85,18 @@ function App() {
     return (localStorage.getItem("theme") as "dark" | "light") || "dark";
   });
 
+  // ── New feature state ─────────────────────────────────────────────────
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
+  const [installAllDevices, setInstallAllDevices] = useState(false);
+  const [easterEggVisible, setEasterEggVisible] = useState(false);
+  const [easterEggIndex, setEasterEggIndex] = useState(0);
+  const easterEggClicks = useRef(0);
+  const easterEggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevDeviceSerials = useRef("");
+  const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
+  const shortcutRefs = useRef({ browseFile: () => {}, install: (_andRun: boolean) => {}, canInstall: false as boolean | string | null });
+
   // Apply correct window size on first mount based on saved layout
   useEffect(() => {
     const win = getCurrentWindow();
@@ -103,6 +116,11 @@ function App() {
     document.documentElement.setAttribute("data-theme", theme);
     localStorage.setItem("theme", theme);
   }, [theme]);
+
+  // ── Fetch app version ──────────────────────────────────────────────────
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   const toggleLayout = useCallback(async (mode: "portrait" | "landscape") => {
     const win = getCurrentWindow();
@@ -327,6 +345,45 @@ function App() {
     if (adbStatus === "found") refreshDevices();
   }, [adbStatus]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ─── Auto device refresh (silent — only logs on change) ────────────────
+
+  const refreshDevicesQuiet = useCallback(async () => {
+    if (!adbPath) return;
+    try {
+      const devs = await invoke<DeviceInfo[]>("get_devices", { adbPath });
+      const newSerials = devs.map(d => d.serial).sort().join(",");
+      if (newSerials === prevDeviceSerials.current) return;
+      prevDeviceSerials.current = newSerials;
+      setDevices(devs);
+      if (devs.length > 0) {
+        setSelectedDevice(prev => {
+          if (!prev || !devs.find(d => d.serial === prev)) return devs[0].serial;
+          return prev;
+        });
+        addLog("info", `Device update: ${devs.length} device(s) connected`);
+      } else {
+        setSelectedDevice("");
+        addLog("info", "All devices disconnected.");
+      }
+    } catch { /* silent */ }
+  }, [adbPath, addLog]);
+
+  // Keep prevDeviceSerials in sync with manual refreshes too
+  useEffect(() => {
+    prevDeviceSerials.current = devices.map(d => d.serial).sort().join(",");
+  }, [devices]);
+
+  useEffect(() => {
+    if (adbStatus !== "found" || !adbPath) return;
+    const interval = setInterval(refreshDevicesQuiet, 8000);
+    const onFocus = () => refreshDevicesQuiet();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [adbStatus, adbPath, refreshDevicesQuiet]);
+
   // Auto-collapse device section when a device is selected, expand when none
   useEffect(() => {
     if (selectedDevice && devices.length > 0) setDeviceExpanded(false);
@@ -391,6 +448,34 @@ function App() {
       }
     }
   };
+
+  // Keep ref to latest handleFileSelected for drag-drop effect
+  handleFileSelectedRef.current = handleFileSelected;
+
+  // ─── Drag & drop ───────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const unlisten = win.onDragDropEvent((event) => {
+      if (event.payload.type === "enter") {
+        setIsDragOver(true);
+      } else if (event.payload.type === "leave") {
+        setIsDragOver(false);
+      } else if (event.payload.type === "drop") {
+        setIsDragOver(false);
+        const paths = event.payload.paths;
+        if (paths && paths.length > 0) {
+          const file = paths[0];
+          if (getFileType(file)) {
+            handleFileSelectedRef.current?.(file);
+          } else {
+            addLog("error", "Unsupported file type. Please drop an APK or AAB file.");
+          }
+        }
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Java & bundletool detection ──────────────────────────────────────
 
@@ -474,44 +559,67 @@ function App() {
   // ─── Installation ─────────────────────────────────────────────────────
 
   const install = async (andRun = false) => {
-    if (!selectedFile || !selectedDevice) {
-      addLog("error", "Please select a file and a device first.");
+    if (!selectedFile) {
+      addLog("error", "Please select a file first.");
       return;
     }
+
+    const targetDevices = installAllDevices && devices.length > 1
+      ? devices.filter(d => d.state === "device").map(d => d.serial)
+      : selectedDevice ? [selectedDevice] : [];
+
+    if (targetDevices.length === 0) {
+      addLog("error", "Please select a device first.");
+      return;
+    }
+
+    // Check AAB prerequisites before starting
+    if (fileType === "aab") {
+      if (!javaPath || javaStatus !== "found") {
+        addLog("error", "Java is required for AAB installation. Please install a JDK.");
+        return;
+      }
+      if (!bundletoolPath || bundletoolStatus !== "found") {
+        addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section.");
+        return;
+      }
+    }
+
     setIsInstalling(true);
     const fileName = getFileName(selectedFile);
+    const multi = targetDevices.length > 1;
 
     try {
-      if (fileType === "apk") {
-        addLog("info", `Installing ${fileName} on ${selectedDevice}...`);
-        addLog("success", await invoke<string>("install_apk", {
-          adbPath, device: selectedDevice, apkPath: selectedFile,
-        }));
-      } else if (fileType === "aab") {
-        if (!javaPath || javaStatus !== "found") {
-          addLog("error", "Java is required for AAB installation. Please install a JDK.");
-          return;
-        }
-        if (!bundletoolPath || bundletoolStatus !== "found") {
-          addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section.");
-          return;
-        }
-        addLog("info", `Installing ${fileName} via bundletool on ${selectedDevice}...`);
-        addLog("success", await invoke<string>("install_aab", {
-          adbPath, device: selectedDevice, aabPath: selectedFile, javaPath, bundletoolPath,
-          keystorePath: keystorePath || null, keystorePass: keystorePass || null,
-          keyAlias: keyAlias || null, keyPass: keyPass || null,
-        }));
-      }
+      for (const device of targetDevices) {
+        const devInfo = devices.find(d => d.serial === device);
+        const deviceLabel = devInfo?.model || device;
+        const prefix = multi ? `[${deviceLabel}] ` : "";
 
-      if (andRun && packageName) {
-        addLog("info", `Launching ${packageName}...`);
-        addLog("success", await invoke<string>("launch_app", { adbPath, device: selectedDevice, packageName }));
-      } else if (andRun && !packageName) {
-        addLog("warning", "Cannot launch — package name not set. Enter it manually and use the Launch button.");
+        try {
+          if (fileType === "apk") {
+            addLog("info", `${prefix}Installing ${fileName}...`);
+            addLog("success", prefix + await invoke<string>("install_apk", {
+              adbPath, device, apkPath: selectedFile,
+            }));
+          } else if (fileType === "aab") {
+            addLog("info", `${prefix}Installing ${fileName} via bundletool...`);
+            addLog("success", prefix + await invoke<string>("install_aab", {
+              adbPath, device, aabPath: selectedFile, javaPath, bundletoolPath,
+              keystorePath: keystorePath || null, keystorePass: keystorePass || null,
+              keyAlias: keyAlias || null, keyPass: keyPass || null,
+            }));
+          }
+
+          if (andRun && packageName) {
+            addLog("info", `${prefix}Launching ${packageName}...`);
+            addLog("success", prefix + await invoke<string>("launch_app", { adbPath, device, packageName }));
+          } else if (andRun && !packageName) {
+            addLog("warning", `${prefix}Cannot launch — package name not set.`);
+          }
+        } catch (e) {
+          addLog("error", `${prefix}${String(e)}`);
+        }
       }
-    } catch (e) {
-      addLog("error", String(e));
     } finally {
       setIsInstalling(false);
     }
@@ -536,10 +644,62 @@ function App() {
   // ─── Derived state ────────────────────────────────────────────────────
 
   const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
-  const canInstall = selectedFile && selectedDevice && !isInstalling && adbStatus === "found";
+  const canInstall = selectedFile &&
+    (selectedDevice || (installAllDevices && devices.length > 0)) &&
+    !isInstalling && adbStatus === "found";
   const adbManaged = toolsStatus?.adb_installed ?? false;
   const javaManaged = toolsStatus?.java_installed ?? false;
   const toolsMissing = toolsStatus !== null && (!toolsStatus.adb_installed || !toolsStatus.bundletool_installed || !toolsStatus.java_installed);
+
+  // ── Window title with current file ─────────────────────────────────────
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const base = "Android Application Installer";
+    win.setTitle(selectedFile ? `${base} — ${getFileName(selectedFile)}` : base);
+  }, [selectedFile]);
+
+  // ── Keyboard shortcuts (Cmd/Ctrl+O, Cmd/Ctrl+I) ───────────────────────
+  shortcutRefs.current = { browseFile, install, canInstall };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "o") {
+        e.preventDefault();
+        shortcutRefs.current.browseFile();
+      } else if (mod && e.key.toLowerCase() === "i") {
+        e.preventDefault();
+        if (shortcutRefs.current.canInstall) shortcutRefs.current.install(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  // ── Easter egg ─────────────────────────────────────────────────────────
+  const easterEggVerses = [
+    { text: "Kiss the Son, lest he be angry, and ye perish from the way, when his wrath is kindled but a little. Blessed are all they that put their trust in him.", ref: "Psalm 2:12" },
+    { text: "Who hath ascended up into heaven, or descended? who hath gathered the wind in his fists? who hath bound the waters in a garment? who hath established all the ends of the earth? what is his name, and what is his son\u2019s name, if thou canst tell?", ref: "Proverbs 30:4" },
+  ];
+
+  const handleTitleClick = useCallback(() => {
+    easterEggClicks.current += 1;
+    if (easterEggTimer.current) clearTimeout(easterEggTimer.current);
+
+    if (easterEggClicks.current >= 7) {
+      easterEggClicks.current = 0;
+      setEasterEggIndex(prev => prev);  // capture current
+      setEasterEggVisible(true);
+      setTimeout(() => {
+        setEasterEggVisible(false);
+        setEasterEggIndex(prev => (prev + 1) % 2);
+      }, 6500);
+    } else {
+      easterEggTimer.current = setTimeout(() => {
+        easterEggClicks.current = 0;
+      }, 2000);
+    }
+  }, []);
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -570,9 +730,12 @@ function App() {
     <header className="header">
       <div className="header-title">
         <MonitorSmartphone size={28} className="header-icon" />
-        <h1>Android Application Installer</h1>
+        <h1 onClick={handleTitleClick}>Android Application Installer</h1>
       </div>
-      <p className="header-subtitle">Install APK & AAB files onto connected Android devices</p>
+      <p className="header-subtitle">
+        Install APK & AAB files onto connected Android devices
+        {appVersion && <span className="version-badge">v{appVersion}</span>}
+      </p>
     </header>
   );
 
@@ -653,6 +816,18 @@ function App() {
             {selectedDeviceInfo?.state === "unauthorized" && (
               <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
             )}
+            {devices.length > 1 && (
+              <div className="multi-device-row">
+                <label className="multi-device-label">
+                  <input
+                    type="checkbox"
+                    checked={installAllDevices}
+                    onChange={(e) => setInstallAllDevices(e.target.checked)}
+                  />
+                  Install to all {devices.filter(d => d.state === "device").length} connected devices
+                </label>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -662,7 +837,7 @@ function App() {
   const fileSectionEl = (
     <section className="section">
       <div className="section-header"><Package size={16} /><span>Package</span></div>
-      <div className={`drop-zone ${selectedFile ? "has-file" : ""}`} onClick={browseFile}>
+      <div className={`drop-zone ${selectedFile ? "has-file" : ""} ${isDragOver ? "drag-over" : ""}`} onClick={browseFile}>
         {selectedFile ? (
           <div className="file-info">
             <div className="file-icon">{fileType === "apk" ? <Package size={32} /> : <FolderOpen size={32} />}</div>
@@ -678,8 +853,8 @@ function App() {
         ) : (
           <div className="drop-zone-content">
             <FolderOpen size={40} className="drop-icon" />
-            <p className="drop-text">Click to select an APK or AAB file</p>
-            <p className="drop-hint">Supports .apk and .aab files</p>
+            <p className="drop-text">{isDragOver ? "Drop to select file" : "Click or drop an APK or AAB file"}</p>
+            {!isDragOver && <p className="drop-hint">Supports .apk and .aab files</p>}
           </div>
         )}
       </div>
@@ -825,6 +1000,14 @@ function App() {
           {toolsSectionEl}
           {logPanelEl}
         </div>
+        {easterEggVisible && (
+          <div className="easter-egg-overlay">
+            <p className="easter-egg-text">
+              &ldquo;{easterEggVerses[easterEggIndex].text}&rdquo;
+            </p>
+            <p className="easter-egg-ref">— {easterEggVerses[easterEggIndex].ref}</p>
+          </div>
+        )}
       </div>
     );
   }
@@ -839,6 +1022,14 @@ function App() {
       {aabSettingsEl}
       {toolsSectionEl}
       {logPanelEl}
+      {easterEggVisible && (
+        <div className="easter-egg-overlay">
+          <p className="easter-egg-text">
+            &ldquo;{easterEggVerses[easterEggIndex].text}&rdquo;
+          </p>
+          <p className="easter-egg-ref">— {easterEggVerses[easterEggIndex].ref}</p>
+        </div>
+      )}
     </div>
   );
 }

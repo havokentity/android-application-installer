@@ -1,5 +1,5 @@
-import { useRef, useEffect } from "react";
-import { Info } from "lucide-react";
+import { useRef, useEffect, useState } from "react";
+import { Info, Copy, Check } from "lucide-react";
 import { LogIcon } from "./StatusIndicators";
 import type { LogEntry } from "../types";
 
@@ -10,10 +10,20 @@ interface LogPanelProps {
 
 export function LogPanel({ logs, onClear }: LogPanelProps) {
   const logEndRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
+
+  const copyLogs = async () => {
+    const text = logs.map(e => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* clipboard not available */ }
+  };
 
   return (
     <section className="section log-section">
@@ -21,9 +31,14 @@ export function LogPanel({ logs, onClear }: LogPanelProps) {
         <Info size={16} />
         <span>Log</span>
         {logs.length > 0 && (
-          <button className="btn btn-ghost btn-small" onClick={onClear}>
-            Clear
-          </button>
+          <>
+            <button className="btn btn-ghost btn-small" onClick={copyLogs} title="Copy log to clipboard">
+              {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
+            </button>
+            <button className="btn btn-ghost btn-small" onClick={onClear}>
+              Clear
+            </button>
+          </>
         )}
       </div>
       <div className="log-panel">
