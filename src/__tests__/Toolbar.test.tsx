@@ -9,6 +9,8 @@ describe("Toolbar", () => {
     theme: "dark" as const,
     onToggleLayout: vi.fn(),
     onSetTheme: vi.fn(),
+    onCheckForUpdates: vi.fn(),
+    checkingForUpdates: false,
   };
 
   it("renders Portrait and Landscape buttons", () => {
@@ -67,6 +69,26 @@ describe("Toolbar", () => {
     render(<Toolbar {...defaults} onSetTheme={fn} />);
     fireEvent.click(screen.getByTitle("Dark theme"));
     expect(fn).toHaveBeenCalledWith("dark");
+  });
+
+  it("renders the Updates button", () => {
+    render(<Toolbar {...defaults} />);
+    expect(screen.getByTitle("Check for updates")).toBeInTheDocument();
+    expect(screen.getByText("Updates")).toBeInTheDocument();
+  });
+
+  it("calls onCheckForUpdates when Updates button is clicked", () => {
+    const fn = vi.fn();
+    render(<Toolbar {...defaults} onCheckForUpdates={fn} />);
+    fireEvent.click(screen.getByTitle("Check for updates"));
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables Updates button and shows 'Checking…' when checkingForUpdates is true", () => {
+    render(<Toolbar {...defaults} checkingForUpdates={true} />);
+    const btn = screen.getByTitle("Check for updates");
+    expect(btn).toBeDisabled();
+    expect(screen.getByText("Checking…")).toBeInTheDocument();
   });
 });
 

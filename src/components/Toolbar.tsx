@@ -1,15 +1,22 @@
-import { Monitor, Columns2, Sun, Moon } from "lucide-react";
+import { Monitor, Columns2, Sun, Moon, RefreshCw } from "lucide-react";
 
 interface ToolbarProps {
   layout: "portrait" | "landscape";
   theme: "dark" | "light";
   onToggleLayout: (mode: "portrait" | "landscape") => void;
   onSetTheme: (theme: "dark" | "light") => void;
+  onCheckForUpdates: () => void;
+  checkingForUpdates: boolean;
 }
 
-export function Toolbar({ layout, theme, onToggleLayout, onSetTheme }: ToolbarProps) {
+export function Toolbar({ layout, theme, onToggleLayout, onSetTheme, onCheckForUpdates, checkingForUpdates }: ToolbarProps) {
   return (
     <div className="toolbar">
+      <div className="toolbar-group">
+        <button className="toolbar-btn" onClick={onCheckForUpdates} disabled={checkingForUpdates} title="Check for updates">
+          <RefreshCw size={13} className={checkingForUpdates ? "spin" : ""} /> {checkingForUpdates ? "Checking…" : "Updates"}
+        </button>
+      </div>
       <div className="toolbar-group">
         <button className={`toolbar-btn ${layout === "portrait" ? "active" : ""}`} onClick={() => onToggleLayout("portrait")} title="Portrait layout">
           <Monitor size={13} /> Portrait

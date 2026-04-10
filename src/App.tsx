@@ -97,34 +97,42 @@ function App() {
   }, []);
 
   // ── Auto updater ──────────────────────────────────────────────────────
-  useEffect(() => {
-    const checkForUpdates = async () => {
-      try {
-        const update = await check();
-        if (update) {
-          const yes = await ask(`Update to ${update.version} is available! \n\nRelease notes: ${update.body}`, {
-            title: 'Update Available',
-            kind: 'info',
-            okLabel: 'Update',
-            cancelLabel: 'Cancel'
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+
+  const checkForUpdates = useCallback(async (manual = false) => {
+    setCheckingForUpdates(true);
+    try {
+      const update = await check();
+      if (update) {
+        const yes = await ask(`Update to ${update.version} is available! \n\nRelease notes: ${update.body}`, {
+          title: 'Update Available',
+          kind: 'info',
+          okLabel: 'Update',
+          cancelLabel: 'Cancel'
+        });
+        if (yes) {
+          addLog("info", `Downloading update ${update.version}...`);
+          await update.downloadAndInstall((event) => {
+            if (event.event === "Progress") {
+              addLog("info", `Downloading update: ${event.data.chunkLength} bytes`);
+            }
           });
-          if (yes) {
-            addLog("info", `Downloading update ${update.version}...`);
-            await update.downloadAndInstall((event) => {
-              if (event.event === "Progress") {
-                addLog("info", `Downloading update: ${event.data.chunkLength} bytes`);
-              }
-            });
-            addLog("success", "Update installed. Relaunching...");
-            await relaunch();
-          }
+          addLog("success", "Update installed. Relaunching...");
+          await relaunch();
         }
-      } catch (e) {
-        addLog("warning", `Failed to check for updates: ${e}`);
+      } else if (manual) {
+        addLog("info", "You're on the latest version.");
       }
-    };
-    checkForUpdates();
+    } catch (e) {
+      addLog("warning", `Failed to check for updates: ${e}`);
+    } finally {
+      setCheckingForUpdates(false);
+    }
   }, [addLog]);
+
+  useEffect(() => {
+    checkForUpdates(false);
+  }, [checkForUpdates]);
 
   // ── Fetch app version ─────────────────────────────────────────────────
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
@@ -683,7 +691,7 @@ function App() {
 
   // ─── Shared UI elements ───────────────────────────────────────────────
 
-  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} />;
+  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => checkForUpdates(true)} checkingForUpdates={checkingForUpdates} />;
   const headerEl = <AppHeader appVersion={appVersion} onTitleClick={handleTitleClick} />;
   const staleBannerEl = <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />;
 

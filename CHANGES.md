@@ -10,6 +10,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.6.2] — 2026-04-11
+### Added
+- **Check for Updates button** — manually trigger an update check from the toolbar; shows a spinner while checking and reports "You're on the latest version" when no update is found
+
+---
+
 ## [1.6.1] — 2026-04-10
 ### Added
 - **Auto-updater** — the app now checks for updates on launch and prompts to download, install, and relaunch automatically; uses Tauri's signed update mechanism with Ed25519 signature verification
