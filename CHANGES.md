@@ -20,6 +20,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - CI workflow defaults `APPLE_SIGNING_IDENTITY` to `-` (ad-hoc) when no signing secrets are configured
 - Release script includes macOS Gatekeeper bypass note in generated GitHub Release body
 
+### Fixed
+- macOS CI build failure caused by Tauri attempting to import an empty `APPLE_CERTIFICATE` env var into the keychain
+
 ---
 
 ## [1.5.1] — 2026-04-10
