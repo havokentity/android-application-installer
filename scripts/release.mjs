@@ -118,9 +118,28 @@ try {
   // Tag doesn't exist — good
 }
 
-// ─── Extract "What's New" from CHANGES.md ────────────────────────────────────
+// ─── Promote [Unreleased] → version heading in CHANGES.md ───────────────────
 
 const changesPath = resolve(root, "CHANGES.md");
+try {
+  let changesContent = readFileSync(changesPath, "utf-8");
+  const today = new Date().toISOString().slice(0, 10);
+  const unreleasedRe = /^## \[Unreleased\]\s*$/m;
+
+  if (unreleasedRe.test(changesContent)) {
+    changesContent = changesContent.replace(
+      unreleasedRe,
+      `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
+    );
+    writeFileSync(changesPath, changesContent, "utf-8");
+    console.log(`  Promoted [Unreleased] → [${version}] in CHANGES.md\n`);
+  }
+} catch {
+  // non-fatal
+}
+
+// ─── Extract "What's New" from CHANGES.md ────────────────────────────────────
+
 let releaseNotes = "";
 
 try {
@@ -142,25 +161,6 @@ const notesPath = resolve(root, ".release-notes.md");
 const fullNotes = buildReleaseBody(version, releaseNotes);
 writeFileSync(notesPath, fullNotes, "utf-8");
 console.log(`  Wrote release notes to .release-notes.md\n`);
-
-// ─── Promote [Unreleased] → version heading in CHANGES.md ───────────────────
-
-try {
-  let changesContent = readFileSync(changesPath, "utf-8");
-  const today = new Date().toISOString().slice(0, 10);
-  const unreleasedRe = /^## \[Unreleased\]\s*$/m;
-
-  if (unreleasedRe.test(changesContent) && releaseNotes) {
-    changesContent = changesContent.replace(
-      unreleasedRe,
-      `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
-    );
-    writeFileSync(changesPath, changesContent, "utf-8");
-    console.log(`  Promoted [Unreleased] → [${version}] in CHANGES.md\n`);
-  }
-} catch {
-  // non-fatal
-}
 
 // ─── Git commit + tag + push ─────────────────────────────────────────────────
 

@@ -141,39 +141,25 @@ The app downloads and manages its own tools — nothing is installed system-wide
 
 ### AAB Installation Flow
 
-```
-.aab file
-   │
-   ├─ bundletool build-apks ──→ device-specific .apks
-   │                               │
-   └─ bundletool install-apks ─────┘──→ installed on device
-                                         │
-                                    temp files cleaned up
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/aab-flow-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/aab-flow-light.svg">
+    <img alt="AAB Installation Flow" src="docs/diagrams/aab-flow-dark.svg" width="840">
+  </picture>
+</p>
 
 Custom keystores are supported for signed builds — the app auto-detects key aliases from your keystore file.
 
 ### UI Layout
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  [Portrait | Landscape]                      [☀ | ☾]       │
-│                                                             │
-│            Android Application Installer                    │
-├──────────────────────────────────┬──────────────────────────┤
-│                                  │  ▸ Required Tools        │
-│  ┌ Package ────────────────────┐ │    ADB ● bundletool ●   │
-│  │  Click to select APK / AAB  │ │    Java ●               │
-│  └──────────────────────────────┘ │                          │
-│                                  │  ┌ Log ────────────────┐ │
-│  ▸ Device  [Pixel 8]            │  │ 12:00:01 ✓ ADB found│ │
-│    [Install] [Install & Run]    │  │ 12:00:02 ℹ 1 device │ │
-│    [Launch]  [Uninstall]        │  │ 12:00:05 ✓ Installed│ │
-│                                  │  │                      │ │
-│  ▸ AAB Settings                 │  └──────────────────────┘ │
-│                                  │         ◂ drag ▸         │
-└──────────────────────────────────┴──────────────────────────┘
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/ui-layout-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/diagrams/ui-layout-light.svg">
+    <img alt="UI Layout — Landscape Mode" src="docs/diagrams/ui-layout-dark.svg" width="840">
+  </picture>
+</p>
 
 ---
 

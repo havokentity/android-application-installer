@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 200" width="840" height="200">
+  <defs>
+    <style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}</style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="840" height="200" rx="12" fill="#f6f8fa"/>
+
+  <!-- ── Step 1: .aab file ── -->
+  <rect x="20" y="40" width="100" height="60" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="70" y="66" text-anchor="middle" fill="#1a7f37" font-size="16" font-weight="700">.aab</text>
+  <text x="70" y="86" text-anchor="middle" fill="#656d76" font-size="10">input file</text>
+
+  <!-- Arrow 1→2 -->
+  <line x1="120" y1="70" x2="150" y2="70" stroke="#1a7f37" stroke-width="2"/>
+  <polygon points="150,65 158,70 150,75" fill="#1a7f37"/>
+
+  <!-- ── Step 2: bundletool build-apks ── -->
+  <rect x="158" y="40" width="160" height="60" rx="10" fill="#ffffff" stroke="#1a7f37" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="238" y="65" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">bundletool</text>
+  <text x="238" y="84" text-anchor="middle" fill="#0969da" font-size="12" font-weight="500">build-apks</text>
+
+  <!-- Arrow 2→3 -->
+  <line x1="318" y1="70" x2="348" y2="70" stroke="#1a7f37" stroke-width="2"/>
+  <polygon points="348,65 356,70 348,75" fill="#1a7f37"/>
+
+  <!-- ── Step 3: .apks ── -->
+  <rect x="356" y="40" width="128" height="60" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+  <text x="420" y="66" text-anchor="middle" fill="#1a7f37" font-size="15" font-weight="700">.apks</text>
+  <text x="420" y="86" text-anchor="middle" fill="#656d76" font-size="10">device-specific</text>
+
+  <!-- Arrow 3→4 -->
+  <line x1="484" y1="70" x2="514" y2="70" stroke="#1a7f37" stroke-width="2"/>
+  <polygon points="514,65 522,70 514,75" fill="#1a7f37"/>
+
+  <!-- ── Step 4: bundletool install-apks ── -->
+  <rect x="522" y="40" width="160" height="60" rx="10" fill="#ffffff" stroke="#1a7f37" stroke-width="1" stroke-opacity="0.35"/>
+  <text x="602" y="65" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="600">bundletool</text>
+  <text x="602" y="84" text-anchor="middle" fill="#0969da" font-size="12" font-weight="500">install-apks</text>
+
+  <!-- Arrow 4→5 -->
+  <line x1="682" y1="70" x2="712" y2="70" stroke="#1a7f37" stroke-width="2"/>
+  <polygon points="712,65 720,70 712,75" fill="#1a7f37"/>
+
+  <!-- ── Step 5: Installed ── -->
+  <rect x="720" y="40" width="100" height="60" rx="10" fill="rgba(26,127,55,0.10)" stroke="#1a7f37" stroke-width="1.5"/>
+  <text x="770" y="64" text-anchor="middle" fill="#1a7f37" font-size="18" font-weight="700">✓</text>
+  <text x="770" y="84" text-anchor="middle" fill="#1a7f37" font-size="11" font-weight="600">Installed</text>
+
+  <!-- ── Keystore (optional) ── -->
+  <rect x="178" y="130" width="120" height="44" rx="8" fill="#ffffff" stroke="#9a6700" stroke-width="1" stroke-opacity="0.4" stroke-dasharray="5,3"/>
+  <text x="238" y="150" text-anchor="middle" fill="#9a6700" font-size="12" font-weight="500">Keystore</text>
+  <text x="238" y="166" text-anchor="middle" fill="#8b949e" font-size="10">optional signing</text>
+
+  <!-- Arrow: keystore → step 2 -->
+  <line x1="238" y1="130" x2="238" y2="108" stroke="#9a6700" stroke-width="1.5" stroke-opacity="0.5" stroke-dasharray="4,3"/>
+  <polygon points="234,108 238,100 242,108" fill="#9a6700" fill-opacity="0.5"/>
+
+  <!-- Cleanup note -->
+  <text x="560" y="126" text-anchor="middle" fill="#8b949e" font-size="10" font-style="italic">temp files cleaned up after install</text>
+</svg>
+
