@@ -11,7 +11,9 @@ describe("AppHeader", () => {
 
   it("renders the subtitle", () => {
     render(<AppHeader appVersion="" onTitleClick={vi.fn()} />);
-    expect(screen.getByText(/Install APK & AAB files/)).toBeInTheDocument();
+    expect(screen.getByText((_content, element) =>
+      element?.tagName === "P" && /Install apk & aab files/i.test(element.textContent ?? "")
+    )).toBeInTheDocument();
   });
 
   it("shows version badge when appVersion is provided", () => {

@@ -22,12 +22,16 @@ const defaults = {
 describe("FileSection", () => {
   it("shows drop zone hint when no file is selected", () => {
     render(<FileSection {...defaults} />);
-    expect(screen.getByText(/Click or drop an APK or AAB file/)).toBeInTheDocument();
+    expect(screen.getByText((_content, element) =>
+      element?.tagName === "P" && /Click or drop an apk or aab file/i.test(element.textContent ?? "")
+    )).toBeInTheDocument();
   });
 
   it("shows file format support hint", () => {
     render(<FileSection {...defaults} />);
-    expect(screen.getByText(/Supports .apk and .aab files/)).toBeInTheDocument();
+    expect(screen.getByText((_content, element) =>
+      element?.tagName === "P" && /Supports \.apk and \.aab files/.test(element.textContent ?? "")
+    )).toBeInTheDocument();
   });
 
   it("shows drag-over text when isDragOver is true", () => {
