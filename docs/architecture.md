@@ -19,6 +19,8 @@ A Tauri 2 desktop app that installs `.apk` and `.aab` files onto connected Andro
 | HTTP      | reqwest (Rust, async streaming) |
 | Archive   | `zip` crate (Windows), `tar` CLI (macOS/Linux) |
 | Dialogs   | tauri-plugin-dialog            |
+| Updater   | tauri-plugin-updater           |
+| Process   | tauri-plugin-process           |
 
 ## Source Layout
 
@@ -66,6 +68,7 @@ scripts/                      ← Developer tooling
 ├── release.mjs               Bump + commit + tag + push (triggers CI release)
 ├── publish-release.mjs       Publish draft GitHub releases
 ├── update-changelog.mjs      Auto-generate CHANGES.md entries from git log
+├── generate-updater-json.mjs Build updater.json manifest from GitHub Release assets
 └── lib/
     └── categorize-commits.mjs  Shared commit categorization logic
 ```
@@ -162,6 +165,53 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `add_recent_file`      | tools/recent.rs  | Add a file to recent list                   |
 | `remove_recent_file`   | tools/recent.rs  | Remove a file from recent list              |
 
+## Auto-Updater
+
+The app checks for updates on launch using the Tauri updater plugin with Ed25519 signature verification.
+
+### Update Flow
+
+```
+App launch → check() → fetch updater.json → compare versions
+  ├── No update → silent, no action
+  └── Update available → ask() dialog → user accepts?
+      ├── No → dismissed, app continues
+      └── Yes → downloadAndInstall() → relaunch()
+```
+
+### Components
+
+| Component | Location | Role |
+|-----------|----------|------|
+| Updater plugin (Rust) | `lib.rs` | `tauri_plugin_updater::Builder::new().build()` — handles download, signature verification, and installation |
+| Process plugin (Rust) | `lib.rs` | `tauri_plugin_process::init()` — provides `relaunch()` |
+| Update check (TS) | `App.tsx` | `useEffect` on mount calls `check()` from `@tauri-apps/plugin-updater` |
+| User prompt (TS) | `App.tsx` | `ask()` dialog with version info and release notes |
+| `updater.json` | repo root | Endpoint manifest — lists per-platform download URLs and Ed25519 signatures |
+| `generate-updater-json.mjs` | `scripts/` | CI script — fetches `.sig` files from GitHub Release and writes `updater.json` |
+
+### Signing
+
+- **Key pair**: Ed25519, generated via `npx tauri signer generate`
+- **Private key**: stored as GitHub Actions secret `TAURI_SIGNING_PRIVATE_KEY` (never committed)
+- **Public key**: embedded in `tauri.conf.json` → `plugins.updater.pubkey`
+- **Build artifacts**: when `TAURI_SIGNING_PRIVATE_KEY` is set, `tauri build` produces `.sig` files alongside each bundle (`.app.tar.gz.sig`, `.nsis.zip.sig`, etc.)
+
+### Endpoint
+
+The updater checks `https://raw.githubusercontent.com/<repo>/main/updater.json`. After each CI release build, the `update-updater-json` job:
+1. Fetches the GitHub Release assets
+2. Downloads each `.sig` file
+3. Writes `updater.json` with per-platform URLs and signatures
+4. Commits to `main` so the raw URL always points to the latest release
+
+### Capabilities
+
+The updater requires these permissions in `capabilities/default.json`:
+- `updater:default` — allows the frontend to call `check()` and `downloadAndInstall()`
+- `process:allow-restart` — allows `relaunch()` after install
+- `process:allow-exit` — allows graceful exit before restart
+
 ## CI / CD
 
 GitHub Actions workflow (`.github/workflows/build.yml`) builds for:
@@ -174,6 +224,8 @@ Triggered by version tags (`v*`) or manual dispatch.
 
 **Tag push** → builds all platforms + creates a GitHub Release draft with artifacts.
 **Manual dispatch** → builds all platforms, artifacts downloadable from the Actions tab (no release created).
+
+After all build jobs complete (tag push only), the `update-updater-json` job runs `generate-updater-json.mjs` to fetch `.sig` files from the release, write `updater.json`, and commit it to `main`.
 
 ## Version Management
 
@@ -266,6 +318,9 @@ All scripts live in `scripts/` and are exposed via npm:
 | `npm run release:patch` | `release.mjs patch` | Patch release (bump + push) |
 | `npm run release:minor` | `release.mjs minor` | Minor release (bump + push) |
 | `npm run release:major` | `release.mjs major` | Major release (bump + push) |
+| `npm run release:publish` | `publish-release.mjs` | Publish draft GitHub releases |
+| `npm run changelog` | `update-changelog.mjs` | Auto-generate changelog from git log |
+| _(CI only)_ | `generate-updater-json.mjs` | Build updater.json from release assets |
 
 ## Data Directory
 
