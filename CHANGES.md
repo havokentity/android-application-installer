@@ -12,12 +12,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.6.6] — 2026-04-10
 ### Added
-- **Toast notifications** — auto-dismissing toasts for key events: install success/failure, app launch/stop/uninstall, ADB detection, APK extraction, and operation cancellation; includes success, error, warning, and info levels with slide-in/out animations and manual dismiss
+- **Toast notification system** — auto-dismissing toasts for key events (install, launch, stop, uninstall, ADB detection, APK extraction, cancellation) with four levels (success, error, warning, info), slide-in/out animations, and manual dismiss
+- **`Toast.tsx` component** — `useToast` hook and `ToastContainer` component with configurable duration, max 5 visible toasts, and exit animations
+- **Drag rejection styling** — drop zone turns red with red icon when an unsupported file type is dragged over
+- Unit tests for `useToast` hook and `ToastContainer` component (15 new tests)
 
 ### Changed
-- Fixed `FileSection` tests for updated Extract APK button title with shortcut label and `isDragRejected` prop
-- Added comprehensive unit tests for `useToast` hook and `ToastContainer` component (15 new tests)
-- Updated `docs/feature-analysis.md` to mark toast/snackbar feature as completed
+- Updated README with toast notifications feature, full keyboard shortcuts (`Cmd+K` stop, `Cmd+E` extract), and complete project structure (all 8 hooks, `api.ts`, `Toast.tsx`)
+- Updated `docs/architecture.md` — source layout, frontend state management section rewritten for hook-based architecture, auto-updater components table references `useUpdater.ts`
+- Updated `docs/feature-analysis.md` — marked 4 UX features as completed (persist ADB path, drag rejection, extract shortcut, toasts)
+
+### Fixed
+- `FileSection` tests — added missing `isDragRejected` prop default, switched to regex matching for Extract APK button title (now includes shortcut label)
+- Release script — prevent duplicate version sections in CHANGES.md when `[Unreleased]` is promoted
 
 ---
 
