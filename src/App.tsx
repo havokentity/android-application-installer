@@ -71,7 +71,7 @@ function App() {
   const DEFAULT_SIDE_WIDTH = 340;
 
   const [layout, setLayout] = useState<"portrait" | "landscape">(() => {
-    return (localStorage.getItem("layout") as "portrait" | "landscape") || "portrait";
+    return (localStorage.getItem("layout") as "portrait" | "landscape") || "landscape";
   });
   const [sidePanelWidth, setSidePanelWidth] = useState<number>(() => {
     const saved = localStorage.getItem("landscapeWidth");
@@ -81,16 +81,19 @@ function App() {
     return (localStorage.getItem("theme") as "dark" | "light") || "dark";
   });
 
-  // Apply saved landscape size on first mount if layout was saved as landscape
+  // Apply correct window size on first mount based on saved layout
   useEffect(() => {
-    if (layout === "landscape") {
-      const win = getCurrentWindow();
-      (async () => {
+    const win = getCurrentWindow();
+    (async () => {
+      if (layout === "landscape") {
         await win.setMinSize(new LogicalSize(1080, 520));
         await win.setSize(new LogicalSize(1280, 720));
-        await win.center();
-      })();
-    }
+      } else {
+        await win.setMinSize(new LogicalSize(680, 520));
+        await win.setSize(new LogicalSize(920, 740));
+      }
+      await win.center();
+    })();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -788,8 +791,8 @@ function App() {
         {toolbarEl}
         {headerEl}
         <div className="main-content">
-          {deviceSectionEl}
           {fileSectionEl}
+          {deviceSectionEl}
           {actionsEl}
           {aabSettingsEl}
         </div>
