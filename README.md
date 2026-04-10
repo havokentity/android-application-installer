@@ -54,13 +54,20 @@
 
 ### Interface
 
+- **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app
+- **Keyboard shortcuts** — `Cmd/Ctrl+O` to open file, `Cmd/Ctrl+I` to install
 - **Landscape & Portrait modes** — toggle between a wide two-panel layout and a compact vertical layout
 - **Dark & Light themes** — switch themes with one click; preference is saved across sessions
 - **Collapsible sections** — Device, Tools, and AAB Settings collapse when not needed, expand when they need attention
 - **Draggable panel divider** — resize the log panel width in landscape mode; width is remembered
 - **Smart auto-collapse** — Device section collapses once a device is connected, Tools section collapses once everything is installed
 - **Inline action buttons** — Install, Launch, and Uninstall buttons live on the Device header, always accessible
+- **Auto device refresh** — devices poll every 8 seconds and on window focus; new connections are detected automatically
+- **Multi-device install** — install to all connected devices at once with a single checkbox
+- **Log copy** — copy the full activity log to your clipboard for troubleshooting
 - **Recent files** — quickly re-select recently used APK/AAB files and keystores
+- **Version display** — app version shown in the header so you always know what build you're running
+- **Dynamic title bar** — window title updates to show the currently selected filename
 
 ### Cross-Platform
 
@@ -194,6 +201,10 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 │   └── capabilities/
 │       └── default.json         # Tauri permissions
 │
+├── scripts/                      # Developer tooling
+│   ├── bump-version.mjs          # Sync version across all config files
+│   └── release.mjs               # Bump + commit + tag + push to trigger CI
+│
 ├── docs/
 │   └── architecture.md          # Technical architecture docs
 │
@@ -212,14 +223,29 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 
 The GitHub Actions workflow builds for macOS (ARM64 + x64), Windows (x64), and Linux (x64).
 
-**Automatic release** — push a version tag:
+**Automatic release** — use the release script:
 
 ```bash
-git tag v1.0.2
+npm run release:patch             # 1.1.2 → 1.1.3 + commit + tag + push
+npm run release:minor             # 1.1.2 → 1.2.0
+npm run release:major             # 1.1.2 → 2.0.0
+npm run release -- 2.0.0          # set exact version
+```
+
+This bumps the version in all config files, commits, tags, and pushes — the tag triggers the CI build automatically.
+
+**Manual tag** (without the script):
+
+```bash
+npm run version -- 1.2.0          # bump version files
+git add -A && git commit -m "release: v1.2.0"
+git tag v1.2.0
 git push --tags
 ```
 
 **Manual build** — trigger from the [Actions tab](https://github.com/havokentity/android-application-installer/actions) (artifacts downloadable without creating a release).
+
+> **Version management:** The app version is stored in `package.json`, `src-tauri/tauri.conf.json`, and `src-tauri/Cargo.toml`. Use `npm run version` to check sync status. See [docs/architecture.md](docs/architecture.md) for full details.
 
 ---
 

@@ -25,11 +25,11 @@ A Tauri 2 desktop app that installs `.apk` and `.aab` files onto connected Andro
 ```
 src/                          ← React frontend
 ├── App.tsx                   Main component — all state + UI
-├── App.css                   Dark-theme styles
+├── App.css                   Dark/light theme styles, layouts
 ├── types.ts                  Shared TS interfaces (mirrors Rust structs)
 ├── helpers.ts                Pure utility functions (IDs, formatting)
 └── components/
-    ├── LogPanel.tsx           Activity log with auto-scroll
+    ├── LogPanel.tsx           Activity log with auto-scroll + copy
     ├── StatusIndicators.tsx   StatusDot + LogIcon components
     └── ToolsSection.tsx       Tools download section + stale-tools banner
 
@@ -39,6 +39,10 @@ src-tauri/src/                ← Rust backend
 │                             APK/AAB install, launch, uninstall, package name
 └── tools.rs                  Managed tool downloads (platform-tools, bundletool,
                               Java JRE) + staleness tracking via tools_config.json
+
+scripts/                      ← Developer tooling
+├── bump-version.mjs          Sync version across package.json, tauri.conf.json, Cargo.toml
+└── release.mjs               Bump + commit + tag + push (triggers CI release)
 ```
 
 ## Key Design Decisions
@@ -102,11 +106,13 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `install_apk`          | lib.rs    | `adb install -r <apk>`                          |
 | `install_aab`          | lib.rs    | bundletool build-apks + install-apks            |
 | `launch_app`           | lib.rs    | `adb shell monkey -p <pkg> 1`                   |
-| `get_package_name`     | lib.rs    | Extract package name via aapt2/aapt             |
+| `get_package_name`     | lib.rs    | Extract package name from APK (binary XML parser) |
+| `get_aab_package_name` | lib.rs    | Extract package name from AAB via bundletool     |
 | `check_java`           | lib.rs    | Detect Java path + version                      |
 | `find_bundletool`      | lib.rs    | Locate bundletool.jar                           |
 | `uninstall_app`        | lib.rs    | `adb uninstall <pkg>`                           |
 | `list_packages`        | lib.rs    | `adb shell pm list packages -3`                 |
+| `list_key_aliases`     | lib.rs    | List key aliases from a keystore via keytool    |
 | `get_tools_status`     | tools.rs  | Check which managed tools are installed          |
 | `setup_platform_tools` | tools.rs  | Download + extract ADB platform-tools           |
 | `setup_bundletool`     | tools.rs  | Download latest bundletool from GitHub           |
@@ -119,8 +125,100 @@ GitHub Actions workflow (`.github/workflows/build.yml`) builds for:
 - macOS ARM64 (Apple Silicon)
 - macOS x64 (Intel)
 - Windows x64
+- Linux x64
 
 Triggered by version tags (`v*`) or manual dispatch.
+
+**Tag push** → builds all platforms + creates a GitHub Release draft with artifacts.
+**Manual dispatch** → builds all platforms, artifacts downloadable from the Actions tab (no release created).
+
+## Version Management
+
+The app version lives in **three files** that must stay in sync:
+
+| File | Field | Used by |
+|------|-------|---------|
+| `package.json` | `"version"` | npm / frontend tooling |
+| `src-tauri/tauri.conf.json` | `"version"` | Tauri binary, app metadata, `getVersion()` API |
+| `src-tauri/Cargo.toml` | `version` (in `[package]`) | Rust crate metadata |
+
+### Checking versions
+
+```bash
+npm run version
+# Shows all three files, flags any drift
+```
+
+### Bumping versions
+
+```bash
+npm run version -- 1.2.0         # set explicit version
+npm run version:patch             # 1.1.2 → 1.1.3
+npm run version:minor             # 1.1.2 → 1.2.0
+npm run version:major             # 1.1.2 → 2.0.0
+```
+
+The bump script (`scripts/bump-version.mjs`):
+- Updates all three files atomically
+- Finds the **highest** current version across all files and bumps from there
+- **Refuses downgrades** — you can't set a version lower than the current highest
+- Does NOT commit or tag — use the release script for that
+
+### Releasing
+
+The release script (`scripts/release.mjs`) automates the full release flow:
+
+```bash
+npm run release -- 1.2.0         # set explicit version + release
+npm run release:patch             # bump patch + release
+npm run release:minor             # bump minor + release
+npm run release:major             # bump major + release
+```
+
+What it does:
+1. Checks for a clean working tree (refuses to release with uncommitted changes)
+2. Runs `bump-version.mjs` to update all version files
+3. Commits: `release: v1.2.0`
+4. Creates tag: `v1.2.0`
+5. Pushes the commit + tag to `origin`
+6. The tag push triggers the GitHub Actions workflow automatically
+
+After running, the CI will:
+- Build for macOS (ARM64 + x64), Windows (x64), and Linux (x64)
+- Create a GitHub Release **draft** with all platform artifacts attached
+- You just need to review and publish the draft on GitHub
+
+### Manual release (without the script)
+
+```bash
+# 1. Bump version
+npm run version -- 1.2.0
+
+# 2. Commit + tag
+git add -A
+git commit -m "release: v1.2.0"
+git tag v1.2.0
+
+# 3. Push
+git push origin main
+git push origin v1.2.0
+```
+
+## Developer Scripts
+
+All scripts live in `scripts/` and are exposed via npm:
+
+| npm command | Script | Purpose |
+|---|---|---|
+| `npm run version` | `bump-version.mjs` | Show current versions, check sync |
+| `npm run version -- X.Y.Z` | `bump-version.mjs` | Set explicit version across all files |
+| `npm run version:patch` | `bump-version.mjs patch` | Bump patch version |
+| `npm run version:minor` | `bump-version.mjs minor` | Bump minor version |
+| `npm run version:major` | `bump-version.mjs major` | Bump major version |
+| `npm run release -- X.Y.Z` | `release.mjs` | Bump + commit + tag + push (triggers CI) |
+| `npm run release:patch` | `release.mjs patch` | Patch release (bump + push) |
+| `npm run release:minor` | `release.mjs minor` | Minor release (bump + push) |
+| `npm run release:major` | `release.mjs major` | Major release (bump + push) |
 
 ## Data Directory
 
