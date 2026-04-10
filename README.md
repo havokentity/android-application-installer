@@ -2,7 +2,7 @@
 
 <div align="right">
 
-## **Android Application Installer**
+### **Android Application Installer**
 <small>(apk/aab installer for Android)</small>
 
 **Install APK & AAB files onto Android devices — no SDK required.**
@@ -25,7 +25,7 @@
 
 <br clear="left" />
 
-## Screenshots
+### Screenshots
 
 <p align="center">
   <img src="screenshots/landscape-dark.png" alt="Landscape mode (dark theme)" width="800" />
@@ -44,22 +44,22 @@
 
 ---
 
-## 🛠 Features
+### 🛠 Features
 
-### 📦 Core
+#### 📦 Core
 
 - **APK installation** — install `.apk` files directly via ADB
 - **AAB installation** — install `.aab` files via bundletool with optional keystore signing
 - **Package management** — launch or uninstall apps by package name
 - **Auto package name detection** — extracts the package name from APK and AAB files automatically
 
-### ⚙️ Tools & Setup
+#### ⚙️ Tools & Setup
 
 - **Zero dependencies** — downloads ADB, bundletool, and Java JRE on demand (no Android SDK or system Java needed)
 - **Update reminders** — notifies when managed tools are 30+ days old (never auto-downloads without consent)
 - **Visual status indicators** — flashing red borders when tools are missing or no device is connected
 
-### 🎨 Interface
+#### 🎨 Interface
 
 - **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app
 - **Keyboard shortcuts** — `Cmd/Ctrl+O` open file, `Cmd/Ctrl+I` install, `Cmd/Ctrl+Shift+I` install & run, `Cmd/Ctrl+L` launch, `Cmd/Ctrl+U` uninstall
@@ -76,7 +76,7 @@
 - **Version display** — app version shown in the header so you always know what build you're running
 - **Dynamic title bar** — window title updates to show the currently selected filename
 
-### 🖥️ Cross-Platform
+#### 🖥️ Cross-Platform
 
 - **macOS** — Apple Silicon (ARM64) and Intel (x64)
 - **Windows** — installer (`.msi` / `-setup.exe`) and portable (`.exe`)
@@ -84,7 +84,7 @@
 
 ---
 
-## 📥 Downloads
+### 📥 Downloads
 
 Grab the latest release from the [**Releases page**](https://github.com/havokentity/android-application-installer/releases).
 
@@ -98,9 +98,9 @@ Grab the latest release from the [**Releases page**](https://github.com/havokent
 
 ---
 
-## Getting Started
+### Getting Started
 
-### Prerequisites
+#### Prerequisites
 
 - An Android device with **USB debugging** enabled
 - A USB cable (or wireless ADB pairing)
@@ -109,7 +109,7 @@ Grab the latest release from the [**Releases page**](https://github.com/havokent
 > - [Node.js](https://nodejs.org/) >= 18
 > - [Rust](https://rustup.rs/) (stable toolchain)
 
-### Using a release build
+#### Using a release build
 
 1. Download from the [Releases page](https://github.com/havokentity/android-application-installer/releases)
 2. Open the app
@@ -117,7 +117,7 @@ Grab the latest release from the [**Releases page**](https://github.com/havokent
 4. Connect your Android device via USB
 5. Select an APK or AAB file and hit **Install**
 
-### Building from source
+#### Building from source
 
 ```bash
 # Install frontend dependencies
@@ -134,9 +134,9 @@ Build artifacts output to `src-tauri/target/release/bundle/`.
 
 ---
 
-## How It Works
+### How It Works
 
-### Managed Tools
+#### Managed Tools
 
 The app downloads and manages its own tools — nothing is installed system-wide.
 
@@ -146,7 +146,7 @@ The app downloads and manages its own tools — nothing is installed system-wide
 | **bundletool** | [GitHub Releases](https://github.com/google/bundletool) | Convert `.aab` → `.apks` and install |
 | **Java JRE 21** | [Eclipse Temurin](https://adoptium.net/) | Required to run bundletool |
 
-### AAB Installation Flow
+#### AAB Installation Flow
 
 <p align="center">
   <picture>
@@ -158,7 +158,7 @@ The app downloads and manages its own tools — nothing is installed system-wide
 
 Custom keystores are supported for signed builds — the app auto-detects key aliases from your keystore file.
 
-### UI Layout
+#### UI Layout
 
 <p align="center">
   <picture>
@@ -170,7 +170,7 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 
 ---
 
-## Project Structure
+### Project Structure
 
 <p align="center">
   <picture>
@@ -230,7 +230,7 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 
 ---
 
-## CI / CD
+### CI / CD
 
 The GitHub Actions workflow builds for macOS (ARM64 + x64), Windows (x64), and Linux (x64).
 
@@ -260,7 +260,7 @@ git push --tags
 
 ---
 
-## 🛠️ Tech Stack
+### 🛠️ Tech Stack
 
 | Component | Technology |
 |:----------|:-----------|
@@ -275,6 +275,6 @@ git push --tags
 
 ---
 
-## License
+### License
 
 [MIT](LICENSE)
