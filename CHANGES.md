@@ -8,6 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- Sync native window theme with app theme to match macOS title bar
+
+### Changed
+- Enhance Tauri build process to open built bundle automatically after build completion
+
+### Other
+- Updated CHANGES.md
+
 ---
 
 ## [1.5.2] — 2026-04-10
