@@ -9,7 +9,7 @@
  *   node scripts/release.mjs patch --skip-tests
  *
  * What it does:
- *   1. Runs frontend (vitest) and Rust (cargo test) tests
+ *   1. Runs all tests (vitest + cargo test via `npm run test:all`)
  *   2. Runs bump-version.mjs to update all version files
  *   3. Extracts "What's New" from CHANGES.md for this version
  *   4. Writes .release-notes.md (used by CI for GitHub Release body)
@@ -105,24 +105,14 @@ const skipTests = process.argv.includes("--skip-tests");
 if (skipTests) {
   console.log("\n  ⚠  Skipping tests (--skip-tests flag)\n");
 } else {
-  console.log("\n  Running tests before release...\n");
+  console.log("\n  Running all tests before release...\n");
 
   try {
-    runLoud("npx vitest run");
-    console.log("\n  ✓  Frontend tests passed\n");
+    runLoud("npm run test:all");
+    console.log("\n  ✓  All tests passed\n");
   } catch {
-    console.error("\n  ✗  Frontend tests failed. Fix them before releasing.");
-    console.error("     Run `npm test` to see failures.");
-    console.error("     To release anyway: node scripts/release.mjs <version> --skip-tests\n");
-    process.exit(1);
-  }
-
-  try {
-    runLoud("cd src-tauri && cargo test");
-    console.log("\n  ✓  Rust tests passed\n");
-  } catch {
-    console.error("\n  ✗  Rust tests failed. Fix them before releasing.");
-    console.error("     Run `npm run test:rust` to see failures.");
+    console.error("\n  ✗  Tests failed. Fix them before releasing.");
+    console.error("     Run `npm run test:all` to see failures.");
     console.error("     To release anyway: node scripts/release.mjs <version> --skip-tests\n");
     process.exit(1);
   }
