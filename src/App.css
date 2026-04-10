@@ -993,6 +993,12 @@ body {
 
 /* ─── Toolbar (Layout + Theme toggles) ────────────────────────────────────── */
 
+.toolbar-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
 .toolbar {
   display: flex;
   align-items: center;
@@ -1041,6 +1047,54 @@ body {
   border-left: 1px solid var(--border);
 }
 
+/* ─── Update Download Progress Banner ─────────────────────────────────────── */
+
+.update-progress-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--blue-dim);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: var(--radius-sm);
+  margin-top: 6px;
+  animation: slideDown 200ms ease;
+}
+
+.update-progress-icon {
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.update-progress-bar-container {
+  flex: 1;
+  min-width: 0;
+}
+
+.update-progress-bar-track {
+  height: 6px;
+  background: var(--bg-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.update-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue), #79c0ff);
+  border-radius: 3px;
+  transition: width 150ms ease;
+}
+
+.update-progress-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--blue);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 60px;
+  text-align: right;
+}
+
 /* ─── Landscape Layout ────────────────────────────────────────────────────── */
 
 .app.landscape {
@@ -1055,6 +1109,10 @@ body {
 }
 
 .app.landscape .toolbar {
+  grid-column: 1 / -1;
+}
+
+.app.landscape .toolbar-wrapper {
   grid-column: 1 / -1;
 }
 

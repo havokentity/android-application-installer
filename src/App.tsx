@@ -98,6 +98,7 @@ function App() {
 
   // ── Auto updater ──────────────────────────────────────────────────────
   const [checkingForUpdates, setCheckingForUpdates] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<{ downloaded: number; total: number; percent: number } | null>(null);
 
   const checkForUpdates = useCallback(async (manual = false) => {
     setCheckingForUpdates(true);
@@ -112,11 +113,23 @@ function App() {
         });
         if (yes) {
           addLog("info", `Downloading update ${update.version}...`);
+          let downloaded = 0;
+          setUpdateProgress({ downloaded: 0, total: 0, percent: 0 });
           await update.downloadAndInstall((event) => {
-            if (event.event === "Progress") {
-              addLog("info", `Downloading update: ${event.data.chunkLength} bytes`);
+            if (event.event === "Started" && event.data.contentLength) {
+              setUpdateProgress({ downloaded: 0, total: event.data.contentLength, percent: 0 });
+            } else if (event.event === "Progress") {
+              downloaded += event.data.chunkLength;
+              setUpdateProgress((prev) => {
+                const total = prev?.total || 0;
+                const percent = total > 0 ? Math.min(100, Math.round((downloaded / total) * 100)) : 0;
+                return { downloaded, total, percent };
+              });
+            } else if (event.event === "Finished") {
+              setUpdateProgress((prev) => ({ downloaded: prev?.total || 0, total: prev?.total || 0, percent: 100 }));
             }
           });
+          setUpdateProgress(null);
           addLog("success", "Update installed. Relaunching...");
           await relaunch();
         }
@@ -124,6 +137,7 @@ function App() {
         addLog("info", "You're on the latest version.");
       }
     } catch (e) {
+      setUpdateProgress(null);
       addLog("warning", `Failed to check for updates: ${e}`);
     } finally {
       setCheckingForUpdates(false);
@@ -691,7 +705,7 @@ function App() {
 
   // ─── Shared UI elements ───────────────────────────────────────────────
 
-  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => checkForUpdates(true)} checkingForUpdates={checkingForUpdates} />;
+  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} onCheckForUpdates={() => checkForUpdates(true)} checkingForUpdates={checkingForUpdates} updateProgress={updateProgress} />;
   const headerEl = <AppHeader appVersion={appVersion} onTitleClick={handleTitleClick} />;
   const staleBannerEl = <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />;
 

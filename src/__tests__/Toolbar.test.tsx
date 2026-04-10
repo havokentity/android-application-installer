@@ -11,6 +11,7 @@ describe("Toolbar", () => {
     onSetTheme: vi.fn(),
     onCheckForUpdates: vi.fn(),
     checkingForUpdates: false,
+    updateProgress: null,
   };
 
   it("renders Portrait and Landscape buttons", () => {
@@ -89,6 +90,17 @@ describe("Toolbar", () => {
     const btn = screen.getByTitle("Check for updates");
     expect(btn).toBeDisabled();
     expect(screen.getByText("Checking…")).toBeInTheDocument();
+  });
+
+  it("shows update progress bar when updateProgress is set", () => {
+    render(<Toolbar {...defaults} updateProgress={{ downloaded: 5242880, total: 10485760, percent: 50 }} />);
+    expect(screen.getByText(/50%/)).toBeInTheDocument();
+    expect(screen.getByText(/5\.0 MB/)).toBeInTheDocument();
+  });
+
+  it("hides update progress bar when updateProgress is null", () => {
+    render(<Toolbar {...defaults} updateProgress={null} />);
+    expect(screen.queryByText(/MB/)).not.toBeInTheDocument();
   });
 });
 
