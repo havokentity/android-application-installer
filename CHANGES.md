@@ -10,7 +10,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
-## [1.6.4] — 2026-04-10
+## [1.6.5] — 2026-04-11
+### Added
+- **Uninstall confirmation dialog** — warns before removing an app and all its data from the device
+
+### Changed
+- **Typed IPC layer** — all Tauri `invoke()` calls now go through `src/api.ts` with fully typed functions; zero string-based command names
+- **State extraction** — extracted `useUpdater`, `useToolsState`, `useDeviceState`, `useFileState`, `useAabSettings` hooks; App.tsx reduced from ~830 to ~320 lines
+- **Removed duplicate `formatBytes`** — Toolbar now imports the shared helper from `helpers.ts`
+- Added `docs/feature-analysis.md` tracking planned features and improvements
+
 ---
 
 ## [1.6.4] — 2026-04-11
