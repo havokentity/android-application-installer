@@ -46,10 +46,10 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 ## 3. UX Improvements
 
 - [x] **Persist manual ADB path** — Save user-entered ADB path to localStorage or config.
-- [ ] **"Install & Run" as default action** — Make it the primary green button.
+- [x] **"Install & Run" as default action** — Make it the primary green button.
 - [x] **Better drag rejection** — Show drop zone in red for unsupported file types during drag-over.
 - [x] **Keyboard shortcut for Extract APK** — Add e.g. `Cmd+E`.
-- [ ] **Empty state for devices** — Visual guide when no device is connected.
+- [x] **Empty state for devices** — Visual guide when no device is connected.
 - [x] **Toast/snackbar notifications** — Brief auto-dismissing toasts for important events.
 
 ---
@@ -78,8 +78,8 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 |----------|------|-----------|
 | New Features (1) | 1 | 12 |
 | Code Quality (2) | 2 | 5 |
-| UX (3) | 4 | 2 |
+| UX (3) | 6 | 0 |
 | Performance (4) | 0 | 4 |
 | Architecture (5) | 1 | 3 |
-| **Total** | **8** | **26** |
+| **Total** | **10** | **24** |
 

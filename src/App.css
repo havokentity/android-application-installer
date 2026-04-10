@@ -1263,6 +1263,43 @@ body {
   }
 }
 
+/* ─── Device Empty State ───────────────────────────────────────────────────── */
+
+.device-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 16px;
+  margin-top: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  text-align: center;
+}
+
+.device-empty-icon {
+  color: var(--text-3);
+  opacity: 0.5;
+}
+
+.device-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.device-empty-steps {
+  font-size: 12px;
+  color: var(--text-2);
+  text-align: left;
+  padding-left: 20px;
+  line-height: 1.8;
+}
+
+.device-empty-steps strong {
+  color: var(--text-1);
+}
+
 /* ─── Multi-Device Install ─────────────────────────────────────────────────── */
 
 .multi-device-row {
