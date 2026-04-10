@@ -2,28 +2,38 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
-  import {
-  Smartphone, RefreshCw, FolderOpen, Download, Play, Rocket,
-  Check, X, AlertTriangle, Search, Settings, Loader2, Package,
-  MonitorSmartphone, Coffee, ChevronDown, ChevronRight, Trash2, Key, Clock,
-  Monitor, Columns2, Sun, Moon,
-} from "lucide-react";
 
 import "./App.css";
 import type {
   DeviceInfo, LogEntry, ToolsStatus, DownloadProgress,
   StaleTool, DetectionStatus, RecentFilesConfig,
 } from "./types";
-import { nextLogId, getFileName, getFileType, now, shortcutLabel } from "./helpers";
-import { StatusDot } from "./components/StatusIndicators";
+import { nextLogId, getFileName, getFileType, now } from "./helpers";
+
+// ─── Hooks ───────────────────────────────────────────────────────────────────
+import { useLayout } from "./hooks/useLayout";
+import { useEasterEgg } from "./hooks/useEasterEgg";
+import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
+
+// ─── Components ──────────────────────────────────────────────────────────────
+import { Toolbar } from "./components/Toolbar";
+import { AppHeader } from "./components/AppHeader";
+import { DeviceSection } from "./components/DeviceSection";
+import { FileSection } from "./components/FileSection";
+import { AabSettingsSection } from "./components/AabSettingsSection";
+import { EasterEggOverlay } from "./components/EasterEggOverlay";
 import { StaleBanner, ToolsSection } from "./components/ToolsSection";
 import { LogPanel } from "./components/LogPanel";
 
 // ─── App Component ────────────────────────────────────────────────────────────
 
 function App() {
+  // ── Layout, theme & easter egg (extracted hooks) ──────────────────────
+  const { layout, theme, setTheme, sidePanelWidth, toggleLayout, onDividerMouseDown, appRef } = useLayout();
+  const { easterEggVisible, easterEggIndex, easterEggVerses, handleTitleClick } = useEasterEgg();
+
   // ── Tools state ───────────────────────────────────────────────────────
   const [toolsStatus, setToolsStatus] = useState<ToolsStatus | null>(null);
   const [downloadingAdb, setDownloadingAdb] = useState(false);
@@ -43,11 +53,14 @@ function App() {
   const [devices, setDevices] = useState<DeviceInfo[]>([]);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [loadingDevices, setLoadingDevices] = useState(false);
+  const [deviceExpanded, setDeviceExpanded] = useState(true);
+  const [installAllDevices, setInstallAllDevices] = useState(false);
 
   // ── File state ────────────────────────────────────────────────────────
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
   const [packageName, setPackageName] = useState("");
+  const [isDragOver, setIsDragOver] = useState(false);
 
   // ── AAB settings ──────────────────────────────────────────────────────
   const [showAabSettings, setShowAabSettings] = useState(false);
@@ -63,129 +76,23 @@ function App() {
   const [keyAliases, setKeyAliases] = useState<string[]>([]);
   const [loadingAliases, setLoadingAliases] = useState(false);
 
-  // ── UI collapse state ──────────────────────────────────────────────────
-  const [deviceExpanded, setDeviceExpanded] = useState(true);
-
   // ── General state ─────────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
-
-  // ── Layout & Theme ────────────────────────────────────────────────────
-  const DEFAULT_SIDE_WIDTH = 340;
-
-  const [layout, setLayout] = useState<"portrait" | "landscape">(() => {
-    return (localStorage.getItem("layout") as "portrait" | "landscape") || "landscape";
-  });
-  const [sidePanelWidth, setSidePanelWidth] = useState<number>(() => {
-    const saved = localStorage.getItem("landscapeWidth");
-    return saved ? Number(saved) : DEFAULT_SIDE_WIDTH;
-  });
-  const [theme, setTheme] = useState<"dark" | "light">(() => {
-    return (localStorage.getItem("theme") as "dark" | "light") || "dark";
-  });
-
-  // ── New feature state ─────────────────────────────────────────────────
-  const [isDragOver, setIsDragOver] = useState(false);
   const [appVersion, setAppVersion] = useState("");
-  const [installAllDevices, setInstallAllDevices] = useState(false);
-  const [easterEggVisible, setEasterEggVisible] = useState(false);
-  const [easterEggIndex, setEasterEggIndex] = useState(0);
-  const easterEggClicks = useRef(0);
-  const easterEggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const prevDeviceSerials = useRef("");
   const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
-  const shortcutRefs = useRef({
-    browseFile: () => {}, install: (_andRun: boolean) => {},
-    launchApp: () => {}, uninstallApp: () => {},
-    canInstall: false as boolean | string | null,
-    canLaunch: false, canUninstall: false,
-  });
-
-  // Apply correct window size on first mount based on saved layout
-  useEffect(() => {
-    const win = getCurrentWindow();
-    (async () => {
-      if (layout === "landscape") {
-        await win.setMinSize(new LogicalSize(1080, 520));
-        await win.setSize(new LogicalSize(1280, 720));
-      } else {
-        await win.setMinSize(new LogicalSize(680, 520));
-        await win.setSize(new LogicalSize(920, 740));
-      }
-      await win.center();
-    })();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
-  }, [theme]);
-
-  // ── Fetch app version ──────────────────────────────────────────────────
-  useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => {});
-  }, []);
-
-  const toggleLayout = useCallback(async (mode: "portrait" | "landscape") => {
-    const win = getCurrentWindow();
-    if (mode === "landscape") {
-      await win.setMinSize(new LogicalSize(1080, 520));
-      await win.setSize(new LogicalSize(1280, 720));
-      // Switching to landscape always resets to defaults
-      setSidePanelWidth(DEFAULT_SIDE_WIDTH);
-      localStorage.setItem("landscapeWidth", String(DEFAULT_SIDE_WIDTH));
-    } else {
-      await win.setSize(new LogicalSize(920, 740));
-      await win.setMinSize(new LogicalSize(680, 520));
-      // Switching to portrait clears saved landscape width
-      localStorage.removeItem("landscapeWidth");
-    }
-    await win.center();
-    setLayout(mode);
-    localStorage.setItem("layout", mode);
-  }, []);
-
-  // ── Draggable divider ─────────────────────────────────────────────────
-  const dragging = useRef(false);
-  const appRef = useRef<HTMLDivElement>(null);
-
-  const onDividerMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragging.current || !appRef.current) return;
-      const appRect = appRef.current.getBoundingClientRect();
-      const newSideWidth = appRect.right - ev.clientX - 12; // 12 = half gap + divider
-      const clamped = Math.max(240, Math.min(newSideWidth, appRect.width - 400));
-      setSidePanelWidth(clamped);
-    };
-
-    const onMouseUp = () => {
-      dragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      // Save final width
-      setSidePanelWidth((w) => {
-        localStorage.setItem("landscapeWidth", String(w));
-        return w;
-      });
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  }, []);
 
   // ─── Logging ──────────────────────────────────────────────────────────
 
   const addLog = useCallback((level: LogEntry["level"], message: string) => {
     setLogs((prev) => [...prev, { id: nextLogId(), time: now(), level, message }]);
   }, []);
+
+  // ── Fetch app version ─────────────────────────────────────────────────
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
   // ─── Download progress listener ───────────────────────────────────────
 
@@ -373,7 +280,6 @@ function App() {
     } catch { /* silent */ }
   }, [adbPath, addLog]);
 
-  // Keep prevDeviceSerials in sync with manual refreshes too
   useEffect(() => {
     prevDeviceSerials.current = devices.map(d => d.serial).sort().join(",");
   }, [devices]);
@@ -389,7 +295,6 @@ function App() {
     };
   }, [adbStatus, adbPath, refreshDevicesQuiet]);
 
-  // Auto-collapse device section when a device is selected, expand when none
   useEffect(() => {
     if (selectedDevice && devices.length > 0) setDeviceExpanded(false);
     else setDeviceExpanded(true);
@@ -437,7 +342,6 @@ function App() {
       if (javaStatus === "unknown") await checkJava();
       if (bundletoolStatus === "unknown") await detectBundletool();
 
-      // Try to extract package name from AAB if Java + bundletool are available
       try {
         const jp = javaPath || (await invoke<string>("check_java")).split("|")[0];
         const bt = bundletoolPath || (await invoke<string>("find_bundletool"));
@@ -454,7 +358,6 @@ function App() {
     }
   };
 
-  // Keep ref to latest handleFileSelected for drag-drop effect
   handleFileSelectedRef.current = handleFileSelected;
 
   // ─── Drag & drop ───────────────────────────────────────────────────────
@@ -540,9 +443,7 @@ function App() {
         javaPath, keystorePath: ksPath, keystorePass: ksPass,
       });
       setKeyAliases(aliases);
-      if (aliases.length === 1) {
-        setKeyAlias(aliases[0]);
-      }
+      if (aliases.length === 1) setKeyAlias(aliases[0]);
       addLog("info", `Found ${aliases.length} key alias(es) in keystore`);
     } catch (e) {
       setKeyAliases([]);
@@ -564,30 +465,17 @@ function App() {
   // ─── Installation ─────────────────────────────────────────────────────
 
   const install = async (andRun = false) => {
-    if (!selectedFile) {
-      addLog("error", "Please select a file first.");
-      return;
-    }
+    if (!selectedFile) { addLog("error", "Please select a file first."); return; }
 
     const targetDevices = installAllDevices && devices.length > 1
       ? devices.filter(d => d.state === "device").map(d => d.serial)
       : selectedDevice ? [selectedDevice] : [];
 
-    if (targetDevices.length === 0) {
-      addLog("error", "Please select a device first.");
-      return;
-    }
+    if (targetDevices.length === 0) { addLog("error", "Please select a device first."); return; }
 
-    // Check AAB prerequisites before starting
     if (fileType === "aab") {
-      if (!javaPath || javaStatus !== "found") {
-        addLog("error", "Java is required for AAB installation. Please install a JDK.");
-        return;
-      }
-      if (!bundletoolPath || bundletoolStatus !== "found") {
-        addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section.");
-        return;
-      }
+      if (!javaPath || javaStatus !== "found") { addLog("error", "Java is required for AAB installation. Please install a JDK."); return; }
+      if (!bundletoolPath || bundletoolStatus !== "found") { addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section."); return; }
     }
 
     setIsInstalling(true);
@@ -603,9 +491,7 @@ function App() {
         try {
           if (fileType === "apk") {
             addLog("info", `${prefix}Installing ${fileName}...`);
-            addLog("success", prefix + await invoke<string>("install_apk", {
-              adbPath, device, apkPath: selectedFile,
-            }));
+            addLog("success", prefix + await invoke<string>("install_apk", { adbPath, device, apkPath: selectedFile }));
           } else if (fileType === "aab") {
             addLog("info", `${prefix}Installing ${fileName} via bundletool...`);
             addLog("success", prefix + await invoke<string>("install_aab", {
@@ -648,13 +534,13 @@ function App() {
 
   // ─── Derived state ────────────────────────────────────────────────────
 
-  const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
   const canInstall = selectedFile &&
     (selectedDevice || (installAllDevices && devices.length > 0)) &&
     !isInstalling && adbStatus === "found";
   const adbManaged = toolsStatus?.adb_installed ?? false;
   const javaManaged = toolsStatus?.java_installed ?? false;
   const toolsMissing = toolsStatus !== null && (!toolsStatus.adb_installed || !toolsStatus.bundletool_installed || !toolsStatus.java_installed);
+  const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
 
   // ── Window title with current file ─────────────────────────────────────
   useEffect(() => {
@@ -663,348 +549,79 @@ function App() {
     win.setTitle(selectedFile ? `${base} — ${getFileName(selectedFile)}` : base);
   }, [selectedFile]);
 
-  // ── Keyboard shortcuts (Cmd/Ctrl + O, I, L, U) ─────────────────────────
-  const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
-  shortcutRefs.current = {
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────
+  useKeyboardShortcuts({
     browseFile, install, launchApp, uninstallApp,
     canInstall, canLaunch: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall,
-  };
+  });
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
-      const key = e.key.toLowerCase();
-      if (key === "o") {
-        e.preventDefault();
-        shortcutRefs.current.browseFile();
-      } else if (key === "i" && e.shiftKey) {
-        e.preventDefault();
-        if (shortcutRefs.current.canInstall) shortcutRefs.current.install(true);
-      } else if (key === "i") {
-        e.preventDefault();
-        if (shortcutRefs.current.canInstall) shortcutRefs.current.install(false);
-      } else if (key === "l") {
-        e.preventDefault();
-        if (shortcutRefs.current.canLaunch) shortcutRefs.current.launchApp();
-      } else if (key === "u") {
-        e.preventDefault();
-        if (shortcutRefs.current.canUninstall) shortcutRefs.current.uninstallApp();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, []);
+  // ─── Shared UI elements ───────────────────────────────────────────────
 
-  // ── Easter egg ─────────────────────────────────────────────────────────
-  const easterEggVerses = [
-    { text: "Kiss the Son, lest he be angry, and ye perish from the way, when his wrath is kindled but a little. Blessed are all they that put their trust in him.", ref: "Psalm 2:12" },
-    { text: "Who hath ascended up into heaven, or descended? who hath gathered the wind in his fists? who hath bound the waters in a garment? who hath established all the ends of the earth? what is his name, and what is his son\u2019s name, if thou canst tell?", ref: "Proverbs 30:4" },
-  ];
-
-  const handleTitleClick = useCallback(() => {
-    easterEggClicks.current += 1;
-    if (easterEggTimer.current) clearTimeout(easterEggTimer.current);
-
-    if (easterEggClicks.current >= 7) {
-      easterEggClicks.current = 0;
-      setEasterEggIndex(prev => prev);  // capture current
-      setEasterEggVisible(true);
-      setTimeout(() => {
-        setEasterEggVisible(false);
-        setEasterEggIndex(prev => (prev + 1) % 2);
-      }, 6500);
-    } else {
-      easterEggTimer.current = setTimeout(() => {
-        easterEggClicks.current = 0;
-      }, 2000);
-    }
-  }, []);
-
-  // ─── Render ───────────────────────────────────────────────────────────
-
-  // ─── Shared UI blocks ─────────────────────────────────────────────────
-
-  const toolbarEl = (
-    <div className="toolbar">
-      <div className="toolbar-group">
-        <button className={`toolbar-btn ${layout === "portrait" ? "active" : ""}`} onClick={() => toggleLayout("portrait")} title="Portrait layout">
-          <Monitor size={13} /> Portrait
-        </button>
-        <button className={`toolbar-btn ${layout === "landscape" ? "active" : ""}`} onClick={() => toggleLayout("landscape")} title="Landscape layout">
-          <Columns2 size={13} /> Landscape
-        </button>
-      </div>
-      <div className="toolbar-group">
-        <button className={`toolbar-btn ${theme === "light" ? "active" : ""}`} onClick={() => setTheme("light")} title="Light theme">
-          <Sun size={13} />
-        </button>
-        <button className={`toolbar-btn ${theme === "dark" ? "active" : ""}`} onClick={() => setTheme("dark")} title="Dark theme">
-          <Moon size={13} />
-        </button>
-      </div>
-    </div>
-  );
-
-  const headerEl = (
-    <header className="header">
-      <div className="header-title">
-        <MonitorSmartphone size={28} className="header-icon" />
-        <h1 onClick={handleTitleClick}>Android Application Installer</h1>
-      </div>
-      <p className="header-subtitle">
-        Install APK & AAB files onto connected Android devices
-        {appVersion && <span className="version-badge">v{appVersion}</span>}
-      </p>
-    </header>
-  );
-
-  const staleBannerEl = (
-    <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />
-  );
+  const toolbarEl = <Toolbar layout={layout} theme={theme} onToggleLayout={toggleLayout} onSetTheme={setTheme} />;
+  const headerEl = <AppHeader appVersion={appVersion} onTitleClick={handleTitleClick} />;
+  const staleBannerEl = <StaleBanner staleTools={staleTools} dismissed={staleDismissed} onDismiss={() => setStaleDismissed(true)} />;
 
   const toolsSectionEl = (
     <ToolsSection
       toolsStatus={toolsStatus}
-      downloadingAdb={downloadingAdb}
-      downloadingBundletool={downloadingBundletool}
-      downloadingJava={downloadingJava}
-      adbProgress={adbProgress}
-      btProgress={btProgress}
-      javaProgress={javaProgress}
-      onSetupAdb={setupAdb}
-      onSetupBundletool={setupBundletool}
-      onSetupJava={setupJava}
-      needsAttention={toolsMissing}
-      compact={layout === "landscape"}
-      collapsible
+      downloadingAdb={downloadingAdb} downloadingBundletool={downloadingBundletool} downloadingJava={downloadingJava}
+      adbProgress={adbProgress} btProgress={btProgress} javaProgress={javaProgress}
+      onSetupAdb={setupAdb} onSetupBundletool={setupBundletool} onSetupJava={setupJava}
+      needsAttention={toolsMissing} compact={layout === "landscape"} collapsible
     />
   );
 
-  const deviceConnected = selectedDevice && devices.length > 0;
-  const deviceLabel = deviceConnected
-    ? (selectedDeviceInfo?.model || selectedDevice)
-    : null;
-
   const deviceSectionEl = (
-    <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
-      <div className="section-header clickable device-header" onClick={() => setDeviceExpanded(!deviceExpanded)}>
-        <div className="device-header-left">
-          {deviceExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-          <Settings size={16} /><span>Device</span>
-          {deviceConnected && <span className="tool-badge badge-green">{deviceLabel}</span>}
-          {!deviceConnected && <span className="tool-badge badge-yellow">No device</span>}
-        </div>
-        <div className="device-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="btn btn-primary btn-small" disabled={!canInstall} onClick={() => install(false)} title={`Install (${shortcutLabel("I")})`}>
-            {isInstalling ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
-            {isInstalling ? "Installing..." : "Install"}
-          </button>
-          <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => install(true)} title={`Install & Run (${shortcutLabel("I", true)})`}><Play size={14} /> Install & Run</button>
-          <button className="btn btn-secondary btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp} title={`Launch (${shortcutLabel("L")})`}><Rocket size={14} /> Launch</button>
-          <button className="btn btn-danger btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp} title={`Uninstall (${shortcutLabel("U")})`}><Trash2 size={14} /> Uninstall</button>
-        </div>
-      </div>
-      {deviceExpanded && (
-        <div className="collapsible-content">
-          <div className="adb-row">
-            <label className="field-label">ADB Path</label>
-            <div className="input-group">
-              <input type="text" className="input" value={adbPath}
-                onChange={(e) => { setAdbPath(e.target.value); setAdbStatus(e.target.value ? "found" : "not-found"); }}
-                placeholder={adbManaged ? "Managed by app — auto-detected" : "Path to adb binary..."} />
-              <StatusDot status={adbStatus} />
-              <button className="btn btn-icon" onClick={detectAdb} title="Auto-detect ADB"><Search size={16} /></button>
-            </div>
-          </div>
-          <div className="device-row">
-            <label className="field-label"><Smartphone size={14} /> Connected Device</label>
-            <div className="input-group">
-              <select className="select" value={selectedDevice} onChange={(e) => setSelectedDevice(e.target.value)} disabled={devices.length === 0}>
-                {devices.length === 0 && <option value="">No devices connected</option>}
-                {devices.map((d) => (
-                  <option key={d.serial} value={d.serial}>
-                    {d.model ? `${d.model} (${d.serial})` : d.serial}
-                    {d.state !== "device" ? ` — ${d.state}` : ""}
-                  </option>
-                ))}
-              </select>
-              <button className="btn btn-icon" onClick={refreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
-                <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
-              </button>
-            </div>
-            {selectedDeviceInfo?.state === "unauthorized" && (
-              <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
-            )}
-            {devices.length > 1 && (
-              <div className="multi-device-row">
-                <label className="multi-device-label">
-                  <input
-                    type="checkbox"
-                    checked={installAllDevices}
-                    onChange={(e) => setInstallAllDevices(e.target.checked)}
-                  />
-                  Install to all {devices.filter(d => d.state === "device").length} connected devices
-                </label>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </section>
+    <DeviceSection
+      devices={devices} selectedDevice={selectedDevice} onSelectDevice={setSelectedDevice}
+      loadingDevices={loadingDevices} onRefreshDevices={refreshDevices}
+      adbPath={adbPath} adbStatus={adbStatus} adbManaged={adbManaged}
+      onAdbPathChange={(path, status) => { setAdbPath(path); setAdbStatus(status); }}
+      onDetectAdb={detectAdb}
+      expanded={deviceExpanded} onToggleExpanded={() => setDeviceExpanded(!deviceExpanded)}
+      installAllDevices={installAllDevices} onInstallAllDevicesChange={setInstallAllDevices}
+      isInstalling={isInstalling} canInstall={canInstall} packageName={packageName}
+      onInstall={install} onLaunch={launchApp} onUninstall={uninstallApp}
+    />
   );
 
   const fileSectionEl = (
-    <section className="section">
-      <div className="section-header"><Package size={16} /><span>Package</span></div>
-      <div className={`drop-zone ${selectedFile ? "has-file" : ""} ${isDragOver ? "drag-over" : ""}`} onClick={browseFile}>
-        {selectedFile ? (
-          <div className="file-info">
-            <div className="file-icon">{fileType === "apk" ? <Package size={32} /> : <FolderOpen size={32} />}</div>
-            <div className="file-details">
-              <span className="file-name">{getFileName(selectedFile)}</span>
-              <span className="file-type">{fileType?.toUpperCase()} File</span>
-              <span className="file-path">{selectedFile}</span>
-            </div>
-            <button className="btn btn-icon btn-ghost" onClick={(e) => { e.stopPropagation(); setSelectedFile(null); setFileType(null); setPackageName(""); }} title="Clear selection">
-              <X size={16} />
-            </button>
-          </div>
-        ) : (
-          <div className="drop-zone-content">
-            <FolderOpen size={40} className="drop-icon" />
-            <p className="drop-text">{isDragOver ? "Drop to select file" : "Click or drop an APK or AAB file"}</p>
-            {!isDragOver && <p className="drop-hint">Supports .apk and .aab files — {shortcutLabel("O")} to browse</p>}
-          </div>
-        )}
-      </div>
-      {!selectedFile && recentFiles.packages.length > 0 && (
-        <div className="recent-list">
-          <div className="recent-header"><Clock size={12} /> Recent Packages</div>
-          {recentFiles.packages.map((f) => (
-            <div key={f.path} className="recent-item" onClick={() => handleFileSelected(f.path)} title={f.path}>
-              <Package size={14} className="recent-icon" />
-              <span className="recent-name">{f.name}</span>
-              <span className="recent-path">{f.path}</span>
-              <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "packages"); }} title="Remove">
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="package-row">
-        <label className="field-label">Package Name (for Launch / Uninstall)</label>
-        <input type="text" className="input" value={packageName} onChange={(e) => setPackageName(e.target.value)} placeholder="com.example.myapp" />
-      </div>
-    </section>
+    <FileSection
+      selectedFile={selectedFile} fileType={fileType} isDragOver={isDragOver}
+      packageName={packageName} onPackageNameChange={setPackageName}
+      onBrowseFile={browseFile} onClearFile={() => { setSelectedFile(null); setFileType(null); setPackageName(""); }}
+      onFileSelected={handleFileSelected}
+      recentFiles={recentFiles} onRemoveRecentFile={(path) => removeRecentFile(path, "packages")}
+    />
   );
 
   const aabSettingsEl = (
-    <section className="section collapsible">
-      <button className="section-header clickable" onClick={() => setShowAabSettings(!showAabSettings)}>
-        {showAabSettings ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <Coffee size={16} /><span>AAB Settings</span>
-        <span className="section-hint">(Java, bundletool, keystore — required for .aab files)</span>
-      </button>
-      {showAabSettings && (
-        <div className="collapsible-content">
-          <div className="setting-row">
-            <label className="field-label">Java</label>
-            <div className="input-group">
-              <input type="text" className="input" value={javaPath} onChange={(e) => setJavaPath(e.target.value)} placeholder={javaManaged ? "Managed by app — auto-detected" : "java"} />
-              <StatusDot status={javaStatus} />
-              <button className="btn btn-icon" onClick={checkJava} title="Detect Java"><Search size={16} /></button>
-              {javaStatus === "not-found" && (
-                <button className="btn btn-small" onClick={setupJava} disabled={downloadingJava} title="Download Java JRE">
-                  {downloadingJava ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
-                </button>
-              )}
-            </div>
-            {javaVersion && <p className="hint hint-success"><Check size={12} /> {javaVersion}</p>}
-          </div>
-          <div className="setting-row">
-            <label className="field-label">bundletool.jar</label>
-            <div className="input-group">
-              <input type="text" className="input" value={bundletoolPath} onChange={(e) => { setBundletoolPath(e.target.value); setBundletoolStatus(e.target.value ? "found" : "not-found"); }} placeholder="Path to bundletool.jar..." />
-              <StatusDot status={bundletoolStatus} />
-              <button className="btn btn-icon" onClick={detectBundletool} title="Detect bundletool"><Search size={16} /></button>
-              <button className="btn btn-small" onClick={setupBundletool} disabled={downloadingBundletool} title="Download latest from GitHub">
-                {downloadingBundletool ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Download
-              </button>
-            </div>
-          </div>
-          <div className="setting-row">
-            <label className="field-label">Keystore (optional)</label>
-            <div className="input-group">
-              <input type="text" className="input" value={keystorePath} onChange={(e) => setKeystorePath(e.target.value)} placeholder="Path to .jks / .keystore (leave empty for debug key)" />
-              <button className="btn btn-icon" onClick={browseKeystore} title="Browse"><FolderOpen size={16} /></button>
-            </div>
-            {!keystorePath && recentFiles.keystores.length > 0 && (
-              <div className="recent-list recent-list-compact">
-                <div className="recent-header"><Clock size={12} /> Recent Keystores</div>
-                {recentFiles.keystores.map((f) => (
-                  <div key={f.path} className="recent-item" onClick={() => { setKeystorePath(f.path); setKeyAlias(""); setKeyAliases([]); recordRecentFile(f.path, "keystores"); }} title={f.path}>
-                    <Key size={14} className="recent-icon" />
-                    <span className="recent-name">{f.name}</span>
-                    <span className="recent-path">{f.path}</span>
-                    <button className="btn btn-icon btn-ghost recent-remove" onClick={(e) => { e.stopPropagation(); removeRecentFile(f.path, "keystores"); }} title="Remove">
-                      <X size={12} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          {keystorePath && (
-            <>
-              <div className="setting-row indent">
-                <label className="field-label">Keystore Password</label>
-                <input type="password" className="input" value={keystorePass} onChange={(e) => setKeystorePass(e.target.value)} placeholder="Keystore password" />
-              </div>
-              <div className="setting-row indent">
-                <label className="field-label"><Key size={14} /> Key Alias</label>
-                <div className="input-group">
-                  {keyAliases.length > 0 ? (
-                    <select className="select" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)}>
-                      <option value="">— Select alias —</option>
-                      {keyAliases.map((a) => (
-                        <option key={a} value={a}>{a}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input type="text" className="input" value={keyAlias} onChange={(e) => setKeyAlias(e.target.value)} placeholder={loadingAliases ? "Loading aliases..." : "Key alias (enter password to list)"} />
-                  )}
-                  {loadingAliases && <Loader2 size={14} className="spin" />}
-                  {keystorePass && !loadingAliases && (
-                    <button className="btn btn-icon" onClick={() => fetchKeyAliases(keystorePath, keystorePass)} title="Refresh aliases">
-                      <RefreshCw size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div className="setting-row indent">
-                <label className="field-label">Key Password</label>
-                <input type="password" className="input" value={keyPass} onChange={(e) => setKeyPass(e.target.value)} placeholder="Key password" />
-              </div>
-            </>
-          )}
-        </div>
-      )}
-    </section>
+    <AabSettingsSection
+      show={showAabSettings} onToggle={() => setShowAabSettings(!showAabSettings)}
+      javaPath={javaPath} javaVersion={javaVersion} javaStatus={javaStatus} javaManaged={javaManaged}
+      onJavaPathChange={setJavaPath} onCheckJava={checkJava} onSetupJava={setupJava} downloadingJava={downloadingJava}
+      bundletoolPath={bundletoolPath} bundletoolStatus={bundletoolStatus}
+      onBundletoolPathChange={(path, status) => { setBundletoolPath(path); setBundletoolStatus(status); }}
+      onDetectBundletool={detectBundletool} onSetupBundletool={setupBundletool} downloadingBundletool={downloadingBundletool}
+      keystorePath={keystorePath} keystorePass={keystorePass} keyAlias={keyAlias} keyPass={keyPass}
+      keyAliases={keyAliases} loadingAliases={loadingAliases}
+      onKeystorePathChange={setKeystorePath} onKeystorePassChange={setKeystorePass}
+      onKeyAliasChange={setKeyAlias} onKeyPassChange={setKeyPass}
+      onBrowseKeystore={browseKeystore} onFetchKeyAliases={() => fetchKeyAliases(keystorePath, keystorePass)}
+      recentKeystores={recentFiles.keystores}
+      onSelectRecentKeystore={(path) => { setKeystorePath(path); setKeyAlias(""); setKeyAliases([]); recordRecentFile(path, "keystores"); }}
+      onRemoveRecentKeystore={(path) => removeRecentFile(path, "keystores")}
+    />
   );
 
   const logPanelEl = <LogPanel logs={logs} onClear={() => setLogs([])} />;
+  const easterEggEl = <EasterEggOverlay visible={easterEggVisible} verse={easterEggVerses[easterEggIndex]} />;
 
   // ─── Render ───────────────────────────────────────────────────────────
 
   if (layout === "landscape") {
     return (
-      <div
-        className="app landscape"
-        ref={appRef}
-        style={{ gridTemplateColumns: `1fr auto ${sidePanelWidth}px` }}
-      >
+      <div className="app landscape" ref={appRef} style={{ gridTemplateColumns: `1fr auto ${sidePanelWidth}px` }}>
         {toolbarEl}
         {headerEl}
         <div className="main-content">
@@ -1020,14 +637,7 @@ function App() {
           {toolsSectionEl}
           {logPanelEl}
         </div>
-        {easterEggVisible && (
-          <div className="easter-egg-overlay">
-            <p className="easter-egg-text">
-              &ldquo;{easterEggVerses[easterEggIndex].text}&rdquo;
-            </p>
-            <p className="easter-egg-ref">— {easterEggVerses[easterEggIndex].ref}</p>
-          </div>
-        )}
+        {easterEggEl}
       </div>
     );
   }
@@ -1042,14 +652,7 @@ function App() {
       {aabSettingsEl}
       {toolsSectionEl}
       {logPanelEl}
-      {easterEggVisible && (
-        <div className="easter-egg-overlay">
-          <p className="easter-egg-text">
-            &ldquo;{easterEggVerses[easterEggIndex].text}&rdquo;
-          </p>
-          <p className="easter-egg-ref">— {easterEggVerses[easterEggIndex].ref}</p>
-        </div>
-      )}
+      {easterEggEl}
     </div>
   );
 }
