@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.5.3] — 2026-04-10
 ### Added
 - Sync native window theme with app theme to match macOS title bar
 
