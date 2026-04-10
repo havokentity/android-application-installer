@@ -34,7 +34,7 @@ export interface DownloadProgress {
 }
 
 export interface OperationProgress {
-  operation: string;  // "install_apk" | "install_aab" | "launch" | "uninstall"
+  operation: string;  // "install_apk" | "install_aab" | "extract_apk" | "launch" | "uninstall"
   device: string;
   status: string;     // "running" | "done" | "cancelled" | "error"
   message: string;

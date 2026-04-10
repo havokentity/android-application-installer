@@ -1,4 +1,4 @@
-import { FolderOpen, Package, X, Clock } from "lucide-react";
+import { FolderOpen, Package, X, Clock, FileOutput, Loader2 } from "lucide-react";
 import { getFileName, shortcutLabel } from "../helpers";
 import type { RecentFilesConfig } from "../types";
 
@@ -13,12 +13,16 @@ interface FileSectionProps {
   onFileSelected: (path: string) => void;
   recentFiles: RecentFilesConfig;
   onRemoveRecentFile: (path: string) => void;
+  canExtract: boolean;
+  isExtracting: boolean;
+  onExtractApk: () => void;
 }
 
 export function FileSection({
   selectedFile, fileType, isDragOver, packageName,
   onPackageNameChange, onBrowseFile, onClearFile, onFileSelected,
   recentFiles, onRemoveRecentFile,
+  canExtract, isExtracting, onExtractApk,
 }: FileSectionProps) {
   return (
     <section className="section">
@@ -32,6 +36,12 @@ export function FileSection({
               <span className="file-type">{fileType?.toUpperCase()} File</span>
               <span className="file-path">{selectedFile}</span>
             </div>
+            {fileType === "aab" && (
+              <button className="btn btn-secondary btn-small" disabled={!canExtract} onClick={(e) => { e.stopPropagation(); onExtractApk(); }} title="Extract universal APK from AAB">
+                {isExtracting ? <Loader2 size={14} className="spin" /> : <FileOutput size={14} />}
+                {isExtracting ? "Extracting..." : "Extract APK"}
+              </button>
+            )}
             <button className="btn btn-icon btn-ghost" onClick={(e) => { e.stopPropagation(); onClearFile(); }} title="Clear selection">
               <X size={16} />
             </button>

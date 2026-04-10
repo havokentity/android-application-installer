@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
 
@@ -78,6 +78,7 @@ function App() {
 
   // ── General state ─────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
   const [appVersion, setAppVersion] = useState("");
@@ -582,11 +583,53 @@ function App() {
     }
   };
 
+  // ─── Extract APK from AAB ─────────────────────────────────────────
+
+  const extractApk = async () => {
+    if (!selectedFile || fileType !== "aab") { addLog("error", "Please select an AAB file first."); return; }
+    if (!javaPath || javaStatus !== "found") { addLog("error", "Java is required for APK extraction. Please install a JDK."); return; }
+    if (!bundletoolPath || bundletoolStatus !== "found") { addLog("error", "bundletool is required for APK extraction. Download it in the Tools or AAB Settings section."); return; }
+
+    const stem = getFileName(selectedFile).replace(/\.aab$/i, "");
+    const outputPath = await save({
+      title: "Save extracted APK",
+      defaultPath: `${stem}.apk`,
+      filters: [{ name: "APK Files", extensions: ["apk"] }],
+    });
+    if (!outputPath) return;
+
+    setIsExtracting(true);
+    setOperationProgress(null);
+    try { await invoke("set_cancel_flag", { cancel: false }); } catch { /* non-critical */ }
+
+    try {
+      addLog("info", `Extracting universal APK from ${getFileName(selectedFile)}...`);
+      const result = await invoke<string>("extract_apk_from_aab", {
+        aabPath: selectedFile,
+        outputPath,
+        javaPath,
+        bundletoolPath,
+        keystorePath: keystorePath || null,
+        keystorePass: keystorePass || null,
+        keyAlias: keyAlias || null,
+        keyPass: keyPass || null,
+      });
+      addLog("success", result);
+    } catch (e) {
+      addLog("error", String(e));
+    } finally {
+      setIsExtracting(false);
+      setOperationProgress(null);
+    }
+  };
+
   // ─── Derived state ────────────────────────────────────────────────────
 
   const canInstall = selectedFile &&
     (selectedDevice || (installAllDevices && devices.length > 0)) &&
-    !isInstalling && adbStatus === "found";
+    !isInstalling && !isExtracting && adbStatus === "found";
+  const canExtract = selectedFile && fileType === "aab" && !isExtracting && !isInstalling &&
+    javaStatus === "found" && bundletoolStatus === "found";
   const adbManaged = toolsStatus?.adb_installed ?? false;
   const javaManaged = toolsStatus?.java_installed ?? false;
   const toolsMissing = toolsStatus !== null && (!toolsStatus.adb_installed || !toolsStatus.bundletool_installed || !toolsStatus.java_installed);
@@ -643,6 +686,7 @@ function App() {
       onBrowseFile={browseFile} onClearFile={() => { setSelectedFile(null); setFileType(null); setPackageName(""); }}
       onFileSelected={handleFileSelected}
       recentFiles={recentFiles} onRemoveRecentFile={(path) => removeRecentFile(path, "packages")}
+      canExtract={!!canExtract} isExtracting={isExtracting} onExtractApk={extractApk}
     />
   );
 

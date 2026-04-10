@@ -309,6 +309,119 @@ pub(crate) async fn install_aab(
     Ok(format!("AAB installed successfully.\n{}", inst_out.trim()))
 }
 
+/// Extract a universal APK from an AAB file using bundletool (no device required).
+#[tauri::command]
+pub(crate) async fn extract_apk_from_aab(
+    app: tauri::AppHandle,
+    aab_path: String,
+    output_path: String,
+    java_path: String,
+    bundletool_path: String,
+    keystore_path: Option<String>,
+    keystore_pass: Option<String>,
+    key_alias: Option<String>,
+    key_pass: Option<String>,
+) -> Result<String, String> {
+    // 1. Prepare temp .apks output path
+    let stem = Path::new(&aab_path)
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    let apks_path = env::temp_dir().join(format!("{}_universal.apks", stem));
+    let _ = fs::remove_file(&apks_path);
+    let apks_str = apks_path.to_string_lossy().to_string();
+
+    // 2. Build args for `java -jar bundletool.jar build-apks --mode=universal ...`
+    let mut build_args: Vec<String> = vec![
+        "-jar".into(),
+        bundletool_path,
+        "build-apks".into(),
+        format!("--bundle={}", aab_path),
+        format!("--output={}", apks_str),
+        "--mode=universal".into(),
+    ];
+
+    // Add keystore args if provided
+    if let Some(ref ks) = keystore_path {
+        if !ks.is_empty() {
+            build_args.push(format!("--ks={}", ks));
+            if let Some(ref pass) = keystore_pass {
+                if !pass.is_empty() {
+                    build_args.push(format!("--ks-pass=pass:{}", pass));
+                }
+            }
+            if let Some(ref alias) = key_alias {
+                if !alias.is_empty() {
+                    build_args.push(format!("--ks-key-alias={}", alias));
+                }
+            }
+            if let Some(ref pass) = key_pass {
+                if !pass.is_empty() {
+                    build_args.push(format!("--key-pass=pass:{}", pass));
+                }
+            }
+        }
+    }
+
+    // ── Step 1/2: Build universal APKs from AAB ─────────────────────────
+    emit_op_progress(
+        &app, "extract_apk", "", "running",
+        "Building universal APK from AAB...", Some(1), Some(2), true,
+    );
+
+    let args_ref: Vec<&str> = build_args.iter().map(|s| s.as_str()).collect();
+    if let Err(e) = run_cmd_async(&java_path, &args_ref).await {
+        let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+        let msg = if e.contains("cancelled") {
+            e.clone()
+        } else {
+            format!("bundletool build-apks failed:\n{}", e)
+        };
+        emit_op_progress(&app, "extract_apk", "", status, &msg, None, None, false);
+        return Err(msg);
+    }
+
+    // ── Step 2/2: Extract universal.apk from the .apks ZIP ──────────────
+    emit_op_progress(
+        &app, "extract_apk", "", "running",
+        "Extracting universal APK...", Some(2), Some(2), true,
+    );
+
+    let apks_file = fs::File::open(&apks_path)
+        .map_err(|e| format!("Failed to open .apks file: {}", e))?;
+    let mut archive = zip::ZipArchive::new(apks_file)
+        .map_err(|e| format!("Failed to read .apks archive: {}", e))?;
+
+    // Find the universal.apk entry
+    let apk_entry_name = (0..archive.len())
+        .filter_map(|i| {
+            let entry = archive.by_index(i).ok()?;
+            let name = entry.name().to_string();
+            if name.ends_with(".apk") { Some(name) } else { None }
+        })
+        .next()
+        .ok_or_else(|| "No APK found inside the .apks archive".to_string())?;
+
+    let mut apk_entry = archive.by_name(&apk_entry_name)
+        .map_err(|e| format!("Failed to read APK from archive: {}", e))?;
+
+    let mut out_file = fs::File::create(&output_path)
+        .map_err(|e| format!("Failed to create output file: {}", e))?;
+
+    std::io::copy(&mut apk_entry, &mut out_file)
+        .map_err(|e| format!("Failed to write APK: {}", e))?;
+
+    // Cleanup temp file
+    let _ = fs::remove_file(&apks_path);
+
+    emit_op_progress(
+        &app, "extract_apk", "", "done",
+        "APK extracted successfully", Some(2), Some(2), false,
+    );
+    Ok(format!("Universal APK extracted to:\n{}", output_path))
+}
+
 /// Launch an installed app on the device by package name (async with cancellation).
 #[tauri::command]
 pub(crate) async fn launch_app(
