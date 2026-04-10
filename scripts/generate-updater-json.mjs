@@ -92,8 +92,23 @@ async function fetchText(url) {
 async function main() {
   console.log(`\n  Generating updater.json for ${tag}...\n`);
 
-  // Fetch release
-  const release = await fetchJSON(`https://api.github.com/repos/${REPO}/releases/tags/${tag}`);
+  // Fetch release — use the releases list API because /releases/tags/{tag}
+  // returns 404 for draft releases (which is what tauri-action creates).
+  let release;
+  try {
+    // Try the direct endpoint first (works for published releases)
+    release = await fetchJSON(`https://api.github.com/repos/${REPO}/releases/tags/${tag}`);
+  } catch {
+    // Fall back to listing releases and finding the draft by tag name
+    console.log(`  Release not found by tag — searching drafts...\n`);
+    const releases = await fetchJSON(`https://api.github.com/repos/${REPO}/releases?per_page=10`);
+    release = releases.find((r) => r.tag_name === tag);
+    if (!release) {
+      throw new Error(`No release found for tag ${tag} (checked published and drafts)`);
+    }
+    console.log(`  Found draft release: ${release.name || release.tag_name}\n`);
+  }
+
   const assets = release.assets;
   const pubDate = release.published_at || release.created_at;
   const notes = release.body || `See https://github.com/${REPO}/releases/tag/${tag} for details.`;
@@ -131,8 +146,9 @@ async function main() {
       continue;
     }
 
-    // Download the signature content
-    const signature = await fetchText(sigAsset.browser_download_url);
+    // Download the signature content (use API URL for draft release compatibility)
+    const sigUrl = sigAsset.url; // api.github.com/repos/.../assets/{id}
+    const signature = await fetchText(sigUrl);
 
     platforms[platform] = {
       signature: signature.trim(),
