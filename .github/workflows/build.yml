@@ -146,7 +146,6 @@ jobs:
           releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
           args: --target ${{ matrix.target }}
 
       # ── Manual trigger → build only (no release) ────────────────────────
@@ -158,24 +157,6 @@ jobs:
         with:
           args: --target ${{ matrix.target }}
 
-      # ── Upload updater signature files (.sig) to the release ────────────
-      # tauri-action may not upload all .sig files — use find to catch them
-      - name: Upload updater artifacts to release
-        if: startsWith(github.ref, 'refs/tags/')
-        shell: bash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
-          echo "=== All files in bundle directory ==="
-          find "$BUNDLE_DIR" -type f 2>/dev/null | sort || echo "  (no bundle directory found)"
-          echo ""
-          echo "=== Uploading .sig, .tar.gz, .nsis.zip files ==="
-          find "$BUNDLE_DIR" -type f \( -name "*.sig" -o -name "*.tar.gz" -o -name "*.nsis.zip" \) 2>/dev/null | while IFS= read -r f; do
-            echo "Uploading: $(basename "$f")"
-            gh release upload "${{ github.ref_name }}" "$f" --clobber || true
-          done
-          echo "Done."
 
       # ── Portable EXE for Windows ─────────────────────────────────────────
       - name: Prepare portable EXE
@@ -212,7 +193,11 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
             src-tauri/target/${{ matrix.target }}/release/*-portable.exe
 
-  # ── Update updater.json after all builds complete ─────────────────────────
+  # ── Create updater bundles, sign, upload, generate updater.json ────────────
+  # tauri-action deletes .sig files and updater bundles (.AppImage.tar.gz,
+  # .nsis.zip) from disk after the build.  Only .app.tar.gz survives for macOS.
+  # This job downloads the release assets, creates any missing updater bundles,
+  # signs everything with the Tauri Ed25519 key, and uploads .sig files.
   update-updater-json:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
@@ -230,8 +215,94 @@ jobs:
         with:
           node-version: 22
 
-      - name: Wait for release assets
-        run: sleep 30
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for release assets to propagate
+        run: sleep 15
+
+      # ── Download release assets, create updater bundles, sign, upload ───
+      - name: Create updater bundles and sign
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p _updater && cd _updater
+
+          echo "=== Current release assets ==="
+          gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' | sort
+          echo ""
+
+          # ── 1. macOS: .app.tar.gz already uploaded by tauri-action ──────
+          echo "=== Downloading macOS updater bundles ==="
+          gh release download "${{ github.ref_name }}" --pattern '*_aarch64.app.tar.gz' --skip-existing 2>/dev/null || true
+          gh release download "${{ github.ref_name }}" --pattern '*_x64.app.tar.gz' --skip-existing 2>/dev/null || true
+
+          # ── 2. Linux: create .AppImage.tar.gz from .AppImage ────────────
+          echo "=== Downloading Linux AppImage ==="
+          gh release download "${{ github.ref_name }}" --pattern '*.AppImage' --skip-existing 2>/dev/null || true
+          for img in *.AppImage; do
+            [ -f "$img" ] || continue
+            echo "Creating ${img}.tar.gz"
+            tar czf "${img}.tar.gz" "$img"
+          done
+
+          # ── 3. Windows: create .nsis.zip from NSIS setup exe ────────────
+          echo "=== Downloading Windows NSIS setup ==="
+          gh release download "${{ github.ref_name }}" --pattern '*_x64-setup.exe' --skip-existing 2>/dev/null || true
+          for exe in *_x64-setup.exe; do
+            [ -f "$exe" ] || continue
+            NSIS_ZIP="${exe%-setup.exe}-setup.nsis.zip"
+            echo "Creating ${NSIS_ZIP}"
+            zip -j "$NSIS_ZIP" "$exe"
+          done
+
+          echo ""
+          echo "=== Files to sign ==="
+          ls -la *.tar.gz *.nsis.zip 2>/dev/null || echo "(none)"
+          echo ""
+
+          # ── 4. Sign all updater bundles ─────────────────────────────────
+          echo "=== Signing updater bundles ==="
+          SIGNED=0
+          for f in *.app.tar.gz *.AppImage.tar.gz *.nsis.zip; do
+            [ -f "$f" ] || continue
+            echo "Signing: $f"
+            npx tauri signer sign "$f" \
+              --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+              --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" 2>&1 || {
+              echo "  ⚠ Failed to sign $f"
+              continue
+            }
+            if [ -f "$f.sig" ]; then
+              echo "  ✓ Signed: $f.sig"
+              SIGNED=$((SIGNED + 1))
+            fi
+          done
+
+          echo ""
+          echo "Signed $SIGNED bundle(s)."
+
+          if [ "$SIGNED" -eq 0 ]; then
+            echo "::error::No updater bundles were signed — cannot proceed"
+            exit 1
+          fi
+
+          # ── 5. Upload updater bundles + signatures to release ───────────
+          echo ""
+          echo "=== Uploading updater artifacts to release ==="
+          for f in *.AppImage.tar.gz *.nsis.zip *.sig; do
+            [ -f "$f" ] || continue
+            echo "  Uploading: $f"
+            gh release upload "${{ github.ref_name }}" "$f" --clobber
+          done
+
+          echo ""
+          echo "=== Final release assets ==="
+          gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' | sort
 
       - name: Generate updater.json
         env:
