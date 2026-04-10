@@ -1,6 +1,6 @@
 [package]
 name = "android-application-installer"
-version = "1.4.1"
+version = "1.4.2"
 description = "A cross-platform desktop app for installing APK & AAB files onto Android devices"
 authors = ["yahushadmonte"]
 edition = "2021"
