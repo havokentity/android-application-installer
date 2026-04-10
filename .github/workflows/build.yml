@@ -101,22 +101,43 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
+      # ── macOS code signing setup ──────────────────────────────────────────
+      # If APPLE_CERTIFICATE secret is configured → full Developer ID signing + notarization
+      # If not → ad-hoc signing ("-") which avoids the "app is damaged" error
+      #          (users see "unidentified developer" instead, bypassable via right-click → Open)
+      # NOTE: env vars are set conditionally via GITHUB_ENV so that APPLE_CERTIFICATE
+      #       is never set to an empty string (which would make Tauri try to import
+      #       an invalid certificate and fail).
+      - name: Configure macOS code signing
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASS: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGN_ID: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          A_ID: ${{ secrets.APPLE_ID }}
+          A_PASS: ${{ secrets.APPLE_PASSWORD }}
+          A_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -n "$CERT" ]; then
+            echo "Using Developer ID signing + notarization"
+            echo "APPLE_CERTIFICATE=$CERT" >> "$GITHUB_ENV"
+            echo "APPLE_CERTIFICATE_PASSWORD=$CERT_PASS" >> "$GITHUB_ENV"
+            echo "APPLE_SIGNING_IDENTITY=$SIGN_ID" >> "$GITHUB_ENV"
+            echo "APPLE_ID=$A_ID" >> "$GITHUB_ENV"
+            echo "APPLE_PASSWORD=$A_PASS" >> "$GITHUB_ENV"
+            echo "APPLE_TEAM_ID=$A_TEAM" >> "$GITHUB_ENV"
+          else
+            echo "No Apple certificate found — using ad-hoc signing"
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+          fi
+
       # ── Tag push → build + create/update GitHub Release draft ────────────
-      # macOS signing: if APPLE_CERTIFICATE is set → full Developer ID signing + notarization
-      #                if not → ad-hoc signing ("-") which avoids the "app is damaged" error
-      #                         (users see "unidentified developer" instead, bypassable via right-click → Open)
       - name: Build & create release
         if: startsWith(github.ref, 'refs/tags/')
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ── macOS code signing & notarization ──
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "Android Application Installer ${{ github.ref_name }}"
@@ -131,13 +152,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ── macOS code signing & notarization ──
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: --target ${{ matrix.target }}
 
