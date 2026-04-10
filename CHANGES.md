@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.4.0] — 2026-04-10
 ### Added
 - Modular component structure — split App.tsx into dedicated components (AppHeader, FileSection, DeviceSection, AabSettingsSection, ToolsSection, LogPanel, Toolbar, StatusIndicators, EasterEggOverlay)
 - Custom React hooks — useLayout, useKeyboardShortcuts, useEasterEgg extracted from App.tsx
