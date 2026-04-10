@@ -1,7 +1,9 @@
 <img src="src-tauri/icons/icon.png" align="left" width="120" height="120" style="margin-right: 20px" />
 
-# Android Application Installer
-### <small>(apk/aab installer for Android)</small>
+<div align="right">
+
+### **Android Application Installer**
+<small>(apk/aab installer for Android)</small>
 
 **Install APK & AAB files onto Android devices — no SDK required.**
 
@@ -15,9 +17,9 @@
 [![Platform: Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)](#downloads)
 [![Platform: Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=333)](#downloads)
 
-<br clear="left" />
+</div>
 
----
+<br clear="left" />
 
 ## Screenshots
 
