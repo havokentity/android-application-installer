@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Device empty state styling** — visual guide (USB icon, numbered setup steps, refresh button) when no device is connected now properly styled
+- **Drag rejection styling** — drop zone turns red with red icon when unsupported file types are dragged over
+
+### Changed
+- Updated README with toast notifications, full keyboard shortcut list (`Cmd+K` stop, `Cmd+E` extract), and complete project structure listing all 8 hooks, `api.ts`, and `Toast.tsx`
+- Updated architecture docs — source layout, frontend state management rewritten for hook-based architecture, auto-updater components table updated
+
 ---
 
 ## [1.6.6] — 2026-04-10
