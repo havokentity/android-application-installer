@@ -1,132 +1,227 @@
+<div align="center">
+
 # Android Application Installer
 
-A cross-platform desktop application for installing **APK** and **AAB** files onto connected Android devices — no Android SDK required.
+**Install APK & AAB files onto Android devices — no SDK required.**
 
-Built with [Tauri 2](https://tauri.app/) (Rust backend) and React + TypeScript (frontend).
+[![Build & Release](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml/badge.svg)](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?logo=tauri&logoColor=333)](https://tauri.app/)
+[![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=333)](https://react.dev/)
+[![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Platform: macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](#downloads)
+[![Platform: Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)](#downloads)
+[![Platform: Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=333)](#downloads)
+
+</div>
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="screenshots/landscape-dark.png" alt="Landscape mode (dark theme)" width="800" />
+</p>
+<p align="center"><em>Landscape mode — dark theme</em></p>
+
+<p align="center">
+  <img src="screenshots/landscape-light.png" alt="Landscape mode (light theme)" width="800" />
+</p>
+<p align="center"><em>Landscape mode — light theme</em></p>
+
+<p align="center">
+  <img src="screenshots/portrait-dark.png" alt="Portrait mode (dark theme)" width="500" />
+</p>
+<p align="center"><em>Portrait mode — compact vertical layout</em></p>
 
 ---
 
 ## Features
 
-- **One-click tool setup** — downloads ADB, bundletool, and a Java JRE automatically (no Android SDK or system Java needed)
+### Core
+
 - **APK installation** — install `.apk` files directly via ADB
-- **AAB installation** — install `.aab` files via bundletool (build-apks → install-apks), with optional keystore signing
-- **Device management** — auto-detect connected USB devices, refresh, and select target device
+- **AAB installation** — install `.aab` files via bundletool with optional keystore signing
 - **Package management** — launch or uninstall apps by package name
-- **Automatic package name detection** — extracts the package name from APK files using `aapt2`
-- **Update reminders** — notifies you when managed tools haven't been updated in 30+ days (no auto-downloads without consent)
-- **Cross-platform** — works on macOS, Windows, and Linux
+- **Auto package name detection** — extracts the package name from APK and AAB files automatically
 
-## Screenshots
+### Tools & Setup
 
-<!-- Add screenshots here -->
+- **Zero dependencies** — downloads ADB, bundletool, and Java JRE on demand (no Android SDK or system Java needed)
+- **Update reminders** — notifies when managed tools are 30+ days old (never auto-downloads without consent)
+- **Visual status indicators** — flashing red borders when tools are missing or no device is connected
+
+### Interface
+
+- **Landscape & Portrait modes** — toggle between a wide two-panel layout and a compact vertical layout
+- **Dark & Light themes** — switch themes with one click; preference is saved across sessions
+- **Collapsible sections** — Device, Tools, and AAB Settings collapse when not needed, expand when they need attention
+- **Draggable panel divider** — resize the log panel width in landscape mode; width is remembered
+- **Smart auto-collapse** — Device section collapses once a device is connected, Tools section collapses once everything is installed
+- **Inline action buttons** — Install, Launch, and Uninstall buttons live on the Device header, always accessible
+- **Recent files** — quickly re-select recently used APK/AAB files and keystores
+
+### Cross-Platform
+
+- **macOS** — Apple Silicon (ARM64) and Intel (x64)
+- **Windows** — installer (`.msi` / `-setup.exe`) and portable (`.exe`)
+- **Linux** — `.deb` and `.AppImage`
+
+---
+
+## Downloads
+
+Grab the latest release from the [**Releases page**](https://github.com/havokentity/android-application-installer/releases).
+
+| Platform | Files |
+|----------|-------|
+| macOS (Apple Silicon) | `.dmg` |
+| macOS (Intel) | `.dmg` |
+| Windows (installer) | `.msi` or `-setup.exe` |
+| Windows (portable) | `-portable.exe` — no install needed |
+| Linux | `.deb` or `.AppImage` |
+
+---
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Node.js** ≥ 18
-- **Rust** (stable toolchain) — install via [rustup](https://rustup.rs/)
 - An Android device with **USB debugging** enabled
+- A USB cable (or wireless ADB pairing)
 
-### Install dependencies
+> **For development only:**
+> - [Node.js](https://nodejs.org/) >= 18
+> - [Rust](https://rustup.rs/) (stable toolchain)
+
+### Using a release build
+
+1. Download from the [Releases page](https://github.com/havokentity/android-application-installer/releases)
+2. Open the app
+3. Click **Download ADB** when prompted
+4. Connect your Android device via USB
+5. Select an APK or AAB file and hit **Install**
+
+### Building from source
 
 ```bash
+# Install frontend dependencies
 npm install
-```
 
-### Run in development mode
-
-```bash
+# Run in development mode
 npm run tauri dev
-```
 
-### Build for production
-
-```bash
+# Build for production
 npm run tauri build
 ```
 
-Build artifacts will be in `src-tauri/target/release/bundle/`:
-- **macOS**: `.app` bundle and `.dmg` installer
-- **Windows**: `.exe` and `.msi` installer
-- **Linux**: `.deb` and `.AppImage`
+Build artifacts output to `src-tauri/target/release/bundle/`.
+
+---
+
+## How It Works
+
+### Managed Tools
+
+The app downloads and manages its own tools — nothing is installed system-wide.
+
+| Tool | Source | Purpose |
+|------|--------|---------|
+| **ADB** | [Google Platform-Tools](https://developer.android.com/tools/releases/platform-tools) | Communicate with Android devices |
+| **bundletool** | [GitHub Releases](https://github.com/google/bundletool) | Convert `.aab` → `.apks` and install |
+| **Java JRE 21** | [Eclipse Temurin](https://adoptium.net/) | Required to run bundletool |
+
+### AAB Installation Flow
+
+```
+.aab file
+   │
+   ├─ bundletool build-apks ──→ device-specific .apks
+   │                               │
+   └─ bundletool install-apks ─────┘──→ installed on device
+                                         │
+                                    temp files cleaned up
+```
+
+Custom keystores are supported for signed builds — the app auto-detects key aliases from your keystore file.
+
+### UI Layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  [Portrait | Landscape]                      [☀ | ☾]       │
+│                                                             │
+│            Android Application Installer                    │
+├──────────────────────────────────┬──────────────────────────┤
+│                                  │  ▸ Required Tools        │
+│  ┌ Package ────────────────────┐ │    ADB ● bundletool ●   │
+│  │  Click to select APK / AAB  │ │    Java ●               │
+│  └──────────────────────────────┘ │                          │
+│                                  │  ┌ Log ────────────────┐ │
+│  ▸ Device  [Pixel 8]            │  │ 12:00:01 ✓ ADB found│ │
+│    [Install] [Install & Run]    │  │ 12:00:02 ℹ 1 device │ │
+│    [Launch]  [Uninstall]        │  │ 12:00:05 ✓ Installed│ │
+│                                  │  │                      │ │
+│  ▸ AAB Settings                 │  └──────────────────────┘ │
+│                                  │         ◂ drag ▸         │
+└──────────────────────────────────┴──────────────────────────┘
+```
+
+---
 
 ## Project Structure
 
 ```
 ├── src/                          # React frontend
 │   ├── App.tsx                   # Main application component
-│   ├── App.css                   # Styles (dark theme)
+│   ├── App.css                   # Styles (dark/light themes, layouts)
 │   ├── types.ts                  # Shared TypeScript interfaces
 │   ├── helpers.ts                # Utility functions
 │   ├── main.tsx                  # React entry point
 │   └── components/
 │       ├── LogPanel.tsx          # Activity log panel
 │       ├── StatusIndicators.tsx  # StatusDot & LogIcon components
-│       └── ToolsSection.tsx      # Tools setup section + stale banner
+│       └── ToolsSection.tsx      # Tools setup + stale banner
 │
 ├── src-tauri/                    # Rust backend (Tauri)
 │   ├── src/
-│   │   ├── main.rs               # App entry point
-│   │   ├── lib.rs                 # Tauri commands (ADB, install, launch, etc.)
-│   │   └── tools.rs               # Managed tool downloads (ADB, bundletool, Java JRE)
-│   ├── Cargo.toml                 # Rust dependencies
-│   ├── tauri.conf.json            # Tauri app configuration
+│   │   ├── main.rs              # App entry point
+│   │   ├── lib.rs               # Tauri commands (ADB, install, launch, etc.)
+│   │   └── tools.rs             # Managed tool downloads
+│   ├── Cargo.toml               # Rust dependencies
+│   ├── tauri.conf.json          # Tauri app configuration
 │   └── capabilities/
-│       └── default.json           # Tauri permissions
+│       └── default.json         # Tauri permissions
+│
+├── docs/
+│   └── architecture.md          # Technical architecture docs
 │
 ├── .github/workflows/
-│   └── build.yml                  # CI: build for macOS & Windows
+│   └── build.yml                # CI: build & release for all platforms
 │
-├── index.html                     # HTML entry point
-├── vite.config.ts                 # Vite configuration
-├── tsconfig.json                  # TypeScript configuration
-└── package.json                   # npm scripts & dependencies
+├── index.html                   # HTML entry point
+├── vite.config.ts               # Vite configuration
+├── tsconfig.json                # TypeScript configuration
+└── package.json                 # npm scripts & dependencies
 ```
 
-## How It Works
-
-### Managed Tools
-
-On first launch, the app has no external dependencies. When you click the download buttons:
-
-| Tool | Source | Purpose |
-|------|--------|---------|
-| **ADB** | [Google Platform-Tools](https://developer.android.com/tools/releases/platform-tools) | Communicate with Android devices |
-| **bundletool** | [GitHub Releases](https://github.com/google/bundletool) | Convert `.aab` → `.apks` and install |
-| **Java JRE 21** | [Eclipse Temurin (Adoptium)](https://adoptium.net/) | Required to run bundletool |
-
-All tools are stored in the app's local data directory — nothing is installed system-wide.
-
-### Update Checks
-
-The app tracks when each tool was last downloaded. If any tool hasn't been updated in **30+ days**, a non-intrusive banner appears suggesting an update. No automatic downloads happen without your consent.
-
-### AAB Installation Flow
-
-1. `bundletool build-apks` generates a device-specific `.apks` set from the `.aab`
-2. `bundletool install-apks` sideloads the APK set onto the device
-3. Temp files are cleaned up automatically
-
-Custom keystores are supported for signed builds.
+---
 
 ## CI / CD
 
-The included GitHub Actions workflow (`.github/workflows/build.yml`) builds the app for:
+The GitHub Actions workflow builds for macOS (ARM64 + x64), Windows (x64), and Linux (x64).
 
-- **macOS ARM64** (Apple Silicon)
-- **macOS x64** (Intel)
-- **Windows x64**
-
-Trigger it by pushing a version tag:
+**Automatic release** — push a version tag:
 
 ```bash
-git tag v0.1.0
+git tag v1.0.2
 git push --tags
 ```
 
-Or run it manually from the GitHub Actions tab.
+**Manual build** — trigger from the [Actions tab](https://github.com/havokentity/android-application-installer/actions) (artifacts downloadable without creating a release).
+
+---
 
 ## Tech Stack
 
@@ -140,6 +235,8 @@ Or run it manually from the GitHub Actions tab.
 | HTTP | reqwest (Rust) |
 | Dialogs | tauri-plugin-dialog |
 
+---
+
 ## License
 
-MIT
+[MIT](LICENSE)

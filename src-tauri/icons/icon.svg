@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1a2332"/>
+      <stop offset="100%" stop-color="#0d1117"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#4de89b"/>
+      <stop offset="100%" stop-color="#2bb86a"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="8" flood-color="#3ddc84" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bg)" stroke="#2a3a4a" stroke-width="2"/>
+
+  <!-- Phone body -->
+  <rect x="156" y="72" width="200" height="340" rx="24" ry="24" fill="none" stroke="#4a5568" stroke-width="10" opacity="0.5"/>
+  <rect x="156" y="72" width="200" height="340" rx="24" ry="24" fill="none" stroke="url(#glow)" stroke-width="6" opacity="0.8"/>
+
+  <!-- Phone screen area -->
+  <rect x="172" y="104" width="168" height="260" rx="8" ry="8" fill="#161b22"/>
+
+  <!-- Phone home indicator -->
+  <rect x="226" y="384" width="60" height="6" rx="3" ry="3" fill="#4a5568" opacity="0.5"/>
+
+  <!-- Android robot head (on screen, upper area) -->
+  <g transform="translate(256, 175)" filter="url(#shadow)">
+    <!-- Head -->
+    <rect x="-40" y="-20" width="80" height="50" rx="20" ry="20" fill="url(#glow)"/>
+    <!-- Eyes -->
+    <circle cx="-16" cy="4" r="5" fill="#0d1117"/>
+    <circle cx="16" cy="4" r="5" fill="#0d1117"/>
+    <!-- Antennae -->
+    <line x1="-20" y1="-20" x2="-30" y2="-38" stroke="url(#glow)" stroke-width="4" stroke-linecap="round"/>
+    <line x1="20" y1="-20" x2="30" y2="-38" stroke="url(#glow)" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <!-- Download arrow (on screen, lower area) -->
+  <g transform="translate(256, 290)" filter="url(#shadow)">
+    <!-- Arrow shaft -->
+    <rect x="-6" y="-40" width="12" height="48" rx="4" fill="url(#glow)"/>
+    <!-- Arrow head -->
+    <polygon points="-22,4 0,30 22,4" fill="url(#glow)"/>
+    <!-- Base line -->
+    <rect x="-28" y="36" width="56" height="6" rx="3" fill="url(#glow)" opacity="0.7"/>
+  </g>
+
+  <!-- Decorative corner accents -->
+  <circle cx="96" cy="440" r="4" fill="#3ddc84" opacity="0.3"/>
+  <circle cx="416" cy="440" r="4" fill="#3ddc84" opacity="0.3"/>
+  <circle cx="96" cy="72" r="4" fill="#3ddc84" opacity="0.3"/>
+  <circle cx="416" cy="72" r="4" fill="#3ddc84" opacity="0.3"/>
+</svg>
