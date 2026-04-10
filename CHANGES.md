@@ -10,6 +10,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.6.5] — 2026-04-10
+---
+
 ## [1.6.5] — 2026-04-11
 ### Added
 - **Uninstall confirmation dialog** — warns before removing an app and all its data from the device
