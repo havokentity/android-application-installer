@@ -2,10 +2,12 @@
 
 <div align="right">
 
-### **Android Application Installer**
+## **Android Application Installer**
 <small>(apk/aab installer for Android)</small>
 
 **Install APK & AAB files onto Android devices — no SDK required.**
+
+<p align="center">
 
 [![Build & Release](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml/badge.svg)](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -16,6 +18,8 @@
 [![Platform: macOS](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)](#downloads)
 [![Platform: Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)](#downloads)
 [![Platform: Linux](https://img.shields.io/badge/Linux-FCC624?logo=linux&logoColor=333)](#downloads)
+
+</p>
 
 </div>
 
