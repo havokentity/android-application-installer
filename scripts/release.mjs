@@ -41,6 +41,7 @@
 import { execSync } from "child_process";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { categorizeCommits, buildSections, COMMIT_SEP, LOG_FORMAT } from "./lib/categorize-commits.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
@@ -145,28 +146,10 @@ try {
   // Tag doesn't exist — good
 }
 
-// ─── Promote [Unreleased] → version heading in CHANGES.md ───────────────────
+// ─── Extract "What's New" from CHANGES.md ────────────────────────────────────
+// Reads CHANGES.md but never writes to it — changelog updates are manual.
 
 const changesPath = resolve(root, "CHANGES.md");
-try {
-  let changesContent = readFileSync(changesPath, "utf-8");
-  const today = new Date().toISOString().slice(0, 10);
-  const unreleasedRe = /^## \[Unreleased\]\s*$/m;
-
-  if (unreleasedRe.test(changesContent)) {
-    changesContent = changesContent.replace(
-      unreleasedRe,
-      `## [Unreleased]\n\n---\n\n## [${version}] — ${today}`
-    );
-    writeFileSync(changesPath, changesContent, "utf-8");
-    console.log(`  Promoted [Unreleased] → [${version}] in CHANGES.md\n`);
-  }
-} catch {
-  // non-fatal
-}
-
-// ─── Extract "What's New" from CHANGES.md ────────────────────────────────────
-
 let releaseNotes = "";
 
 try {
@@ -201,7 +184,7 @@ console.log(`  Wrote release notes to .release-notes.md\n`);
 
 console.log(`  Creating commit and tag ${tag}...\n`);
 
-runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock CHANGES.md .release-notes.md");
+runLoud("git add package.json package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock .release-notes.md");
 
 // If bump wrote the same values (e.g. files already at this version), there's nothing to commit
 const staged = run("git diff --cached --name-only");
@@ -268,66 +251,21 @@ function extractVersionNotes(content, ver) {
 function generateNotesFromGitLog() {
   let lastTag;
   try {
-    // Get the tag before the one we're about to create
     lastTag = run("git describe --tags --abbrev=0 HEAD");
   } catch {
-    // No previous tags — use all history
     lastTag = null;
   }
 
   const range = lastTag ? `${lastTag}..HEAD` : "HEAD";
   let log;
   try {
-    log = run(`git log ${range} --pretty=format:"%s" --no-merges`);
+    log = run(`git log ${range} --pretty=format:${LOG_FORMAT} --no-merges`);
   } catch {
     return "";
   }
 
   if (!log) return "";
-
-  const lines = log.split("\n").filter(l => l.trim());
-
-  // Categorize commits
-  const added = [];
-  const changed = [];
-  const fixed = [];
-  const other = [];
-
-  for (const line of lines) {
-    const clean = line.replace(/^"|"$/g, "").trim();
-    if (!clean || clean.startsWith("release:")) continue;
-
-    const lower = clean.toLowerCase();
-    if (lower.startsWith("add:") || lower.startsWith("feat:") || lower.startsWith("feature:")) {
-      added.push(formatCommitLine(clean));
-    } else if (lower.startsWith("fix:") || lower.startsWith("bugfix:")) {
-      fixed.push(formatCommitLine(clean));
-    } else if (lower.startsWith("update:") || lower.startsWith("refactor:") || lower.startsWith("chore:")) {
-      changed.push(formatCommitLine(clean));
-    } else {
-      other.push(`- ${clean}`);
-    }
-  }
-
-  const sections = [];
-  if (added.length) sections.push(`### Added\n${added.join("\n")}`);
-  if (changed.length) sections.push(`### Changed\n${changed.join("\n")}`);
-  if (fixed.length) sections.push(`### Fixed\n${fixed.join("\n")}`);
-  if (other.length) sections.push(`### Other\n${other.join("\n")}`);
-
-  return sections.join("\n\n");
-}
-
-/** Strip the conventional-commit prefix and format as a bullet point. */
-function formatCommitLine(line) {
-  // Remove "prefix: " from the start
-  const colonIdx = line.indexOf(":");
-  if (colonIdx > 0 && colonIdx < 20) {
-    const rest = line.slice(colonIdx + 1).trim();
-    // Capitalize first letter
-    return `- ${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
-  }
-  return `- ${line}`;
+  return buildSections(categorizeCommits(log));
 }
 
 /**

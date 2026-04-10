@@ -17,6 +17,8 @@
     "release:minor": "node scripts/release.mjs minor",
     "release:major": "node scripts/release.mjs major",
     "release:publish": "node scripts/publish-release.mjs",
+    "changelog": "node scripts/update-changelog.mjs",
+    "changelog:preview": "node scripts/update-changelog.mjs --preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
