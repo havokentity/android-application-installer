@@ -28,21 +28,46 @@ src/                          ← React frontend
 ├── App.css                   Dark/light theme styles, layouts
 ├── types.ts                  Shared TS interfaces (mirrors Rust structs)
 ├── helpers.ts                Pure utility functions (IDs, formatting)
-└── components/
-    ├── LogPanel.tsx           Activity log with auto-scroll + copy
-    ├── StatusIndicators.tsx   StatusDot + LogIcon components
-    └── ToolsSection.tsx       Tools download section + stale-tools banner
+├── main.tsx                  React entry point
+├── components/
+│   ├── AppHeader.tsx         Header with title & version
+│   ├── FileSection.tsx       File selection & AAB extraction
+│   ├── DeviceSection.tsx     Device selection & actions
+│   ├── AabSettingsSection.tsx  AAB signing settings
+│   ├── ToolsSection.tsx      Tools setup & stale banner
+│   ├── LogPanel.tsx          Activity log with auto-scroll + copy
+│   ├── Toolbar.tsx           Layout & theme toggles
+│   ├── EasterEggOverlay.tsx  Easter egg overlay
+│   └── StatusIndicators.tsx  StatusDot + LogIcon components
+├── hooks/
+│   ├── useLayout.ts          Layout state & persistence
+│   ├── useKeyboardShortcuts.ts  Keyboard shortcuts
+│   └── useEasterEgg.ts       Easter egg hook
+└── __tests__/                Unit tests (vitest)
 
 src-tauri/src/                ← Rust backend
 ├── main.rs                   Entry point (calls lib::run)
-├── lib.rs                    Tauri commands: ADB detection, device listing,
-│                             APK/AAB install, launch, uninstall, package name
-└── tools.rs                  Managed tool downloads (platform-tools, bundletool,
-                              Java JRE) + staleness tracking via tools_config.json
+├── lib.rs                    Tauri command registry (thin entry point)
+├── adb.rs                    ADB device ops: install APK/AAB, extract APK,
+│                             launch, uninstall, stop, list packages
+├── cmd.rs                    Command execution utilities, cancellation
+├── java.rs                   Java & bundletool detection, key alias listing
+├── package.rs                Package name extraction from APK & AAB
+└── tools/                    Managed tool downloads
+    ├── mod.rs                Module root & shared helpers
+    ├── config.rs             Tool config persistence (tools_config.json)
+    ├── download.rs           Download & extract logic (ADB, bundletool, Java)
+    ├── paths.rs              Platform-specific tool paths
+    ├── recent.rs             Recent files tracking
+    └── status.rs             Tool status & staleness checks
 
 scripts/                      ← Developer tooling
 ├── bump-version.mjs          Sync version across package.json, tauri.conf.json, Cargo.toml
-└── release.mjs               Bump + commit + tag + push (triggers CI release)
+├── release.mjs               Bump + commit + tag + push (triggers CI release)
+├── publish-release.mjs       Publish draft GitHub releases
+├── update-changelog.mjs      Auto-generate CHANGES.md entries from git log
+└── lib/
+    └── categorize-commits.mjs  Shared commit categorization logic
 ```
 
 ## Key Design Decisions
@@ -111,26 +136,31 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 
 ## Tauri Commands (IPC)
 
-| Command                | File      | Purpose                                        |
-|------------------------|-----------|-------------------------------------------------|
-| `find_adb`             | lib.rs    | Auto-detect ADB binary                          |
-| `get_devices`          | lib.rs    | List connected devices via `adb devices -l`     |
-| `install_apk`          | lib.rs    | `adb install -r <apk>`                          |
-| `install_aab`          | lib.rs    | bundletool build-apks + install-apks            |
-| `extract_apk_from_aab` | lib.rs   | Extract universal APK from AAB via bundletool   |
-| `launch_app`           | lib.rs    | `adb shell monkey -p <pkg> 1`                   |
-| `get_package_name`     | lib.rs    | Extract package name from APK (binary XML parser) |
-| `get_aab_package_name` | lib.rs    | Extract package name from AAB via bundletool     |
-| `check_java`           | lib.rs    | Detect Java path + version                      |
-| `find_bundletool`      | lib.rs    | Locate bundletool.jar                           |
-| `uninstall_app`        | lib.rs    | `adb uninstall <pkg>`                           |
-| `list_packages`        | lib.rs    | `adb shell pm list packages -3`                 |
-| `list_key_aliases`     | lib.rs    | List key aliases from a keystore via keytool    |
-| `get_tools_status`     | tools.rs  | Check which managed tools are installed          |
-| `setup_platform_tools` | tools.rs  | Download + extract ADB platform-tools           |
-| `setup_bundletool`     | tools.rs  | Download latest bundletool from GitHub           |
-| `setup_java`           | tools.rs  | Download + extract Temurin JRE 21               |
-| `check_for_stale_tools`| tools.rs  | Return tools not updated in 30+ days            |
+| Command                | File        | Purpose                                        |
+|------------------------|-------------|-------------------------------------------------|
+| `find_adb`             | adb.rs      | Auto-detect ADB binary                          |
+| `get_devices`          | adb.rs      | List connected devices via `adb devices -l`     |
+| `install_apk`          | adb.rs      | `adb install -r <apk>`                          |
+| `install_aab`          | adb.rs      | bundletool build-apks + install-apks            |
+| `extract_apk_from_aab` | adb.rs      | Extract universal APK from AAB via bundletool   |
+| `launch_app`           | adb.rs      | `adb shell monkey -p <pkg> 1`                   |
+| `uninstall_app`        | adb.rs      | `adb uninstall <pkg>`                           |
+| `stop_app`             | adb.rs      | `adb shell am force-stop <pkg>`                 |
+| `list_packages`        | adb.rs      | `adb shell pm list packages -3`                 |
+| `get_package_name`     | package.rs  | Extract package name from APK (binary XML parser) |
+| `get_aab_package_name` | package.rs  | Extract package name from AAB via bundletool     |
+| `check_java`           | java.rs     | Detect Java path + version                      |
+| `find_bundletool`      | java.rs     | Locate bundletool.jar                           |
+| `list_key_aliases`     | java.rs     | List key aliases from a keystore via keytool    |
+| `set_cancel_flag`      | cmd.rs      | Set/clear cancellation flag for async ops       |
+| `get_tools_status`     | tools/status.rs  | Check which managed tools are installed     |
+| `setup_platform_tools` | tools/download.rs | Download + extract ADB platform-tools      |
+| `setup_bundletool`     | tools/download.rs | Download latest bundletool from GitHub      |
+| `setup_java`           | tools/download.rs | Download + extract Temurin JRE 21          |
+| `check_for_stale_tools`| tools/status.rs  | Return tools not updated in 30+ days        |
+| `get_recent_files`     | tools/recent.rs  | Load recent packages & keystores            |
+| `add_recent_file`      | tools/recent.rs  | Add a file to recent list                   |
+| `remove_recent_file`   | tools/recent.rs  | Remove a file from recent list              |
 
 ## CI / CD
 

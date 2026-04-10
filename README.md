@@ -207,30 +207,46 @@ Custom keystores are supported for signed builds — the app auto-detects key al
 │   ├── main.tsx                        # React entry point
 │   ├── components/
 │   │   ├── AppHeader.tsx               # Header with title & version
-│   │   ├── FileSection.tsx             # File drop zone & selection
+│   │   ├── FileSection.tsx             # File selection & AAB extraction
 │   │   ├── DeviceSection.tsx           # Device selection & actions
 │   │   ├── AabSettingsSection.tsx      # AAB signing settings
 │   │   ├── ToolsSection.tsx            # Tools setup & stale banner
 │   │   ├── LogPanel.tsx                # Activity log panel
 │   │   ├── Toolbar.tsx                 # Layout & theme toggles
+│   │   ├── EasterEggOverlay.tsx        # Easter egg overlay
 │   │   └── StatusIndicators.tsx        # StatusDot & LogIcon
 │   ├── hooks/
 │   │   ├── useLayout.ts                # Layout state & persistence
-│   │   └── useKeyboardShortcuts.ts     # Keyboard shortcuts
+│   │   ├── useKeyboardShortcuts.ts     # Keyboard shortcuts
+│   │   └── useEasterEgg.ts             # Easter egg hook
 │   └── __tests__/                      # Unit tests (vitest)
 │
 ├── src-tauri/                          # Rust backend (Tauri)
 │   ├── src/
 │   │   ├── main.rs                     # App entry point
-│   │   ├── lib.rs                      # Tauri commands
-│   │   └── tools.rs                    # Managed tool downloads
+│   │   ├── lib.rs                      # Tauri command registry
+│   │   ├── adb.rs                      # ADB ops, install, extract APK
+│   │   ├── cmd.rs                      # Command execution utilities
+│   │   ├── java.rs                     # Java & bundletool detection
+│   │   ├── package.rs                  # Package name extraction
+│   │   └── tools/                      # Managed tool downloads
+│   │       ├── mod.rs                  # Module root
+│   │       ├── config.rs               # Tool config persistence
+│   │       ├── download.rs             # Download & extract logic
+│   │       ├── paths.rs                # Platform-specific paths
+│   │       ├── recent.rs               # Recent files tracking
+│   │       └── status.rs               # Tool status & staleness
 │   ├── Cargo.toml                      # Rust dependencies
 │   ├── tauri.conf.json                 # Tauri app config
 │   └── capabilities/                   # Tauri permissions
 │
 ├── scripts/                            # Developer tooling
 │   ├── bump-version.mjs                # Version sync script
-│   └── release.mjs                     # Release automation
+│   ├── release.mjs                     # Release automation
+│   ├── publish-release.mjs             # Publish GitHub release drafts
+│   ├── update-changelog.mjs            # Auto-generate changelog
+│   └── lib/
+│       └── categorize-commits.mjs      # Commit categorization
 │
 ├── .github/workflows/
 │   └── build.yml                       # CI: build & release
