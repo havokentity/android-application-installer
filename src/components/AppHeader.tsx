@@ -13,7 +13,7 @@ export function AppHeader({ appVersion, onTitleClick }: AppHeaderProps) {
         <h1 onClick={onTitleClick}>Android Application Installer</h1>
       </div>
       <p className="header-subtitle">
-        Install APK & AAB files onto connected Android devices
+        Install <span className="smaller-text">apk & aab</span> files onto connected Android devices
         {appVersion && <span className="version-badge">v{appVersion}</span>}
       </p>
     </header>
