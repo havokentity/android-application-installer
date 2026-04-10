@@ -112,7 +112,15 @@ try {
 console.log(`  Creating commit and tag ${tag}...\n`);
 
 runLoud("git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml");
-runLoud(`git commit -m "release: ${tag}"`);
+
+// If bump wrote the same values (e.g. files already at this version), there's nothing to commit
+const staged = run("git diff --cached --name-only");
+if (staged) {
+  runLoud(`git commit -m "release: ${tag}"`);
+} else {
+  console.log("  (version files already up to date — no commit needed)\n");
+}
+
 runLoud(`git tag ${tag}`);
 
 console.log(`\n  Pushing to origin/${branch} with tag ${tag}...\n`);
@@ -130,4 +138,5 @@ console.log(`
   Check progress: https://github.com/havokentity/android-application-installer/actions
   Releases:       https://github.com/havokentity/android-application-installer/releases
 `);
+
 
