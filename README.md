@@ -55,7 +55,7 @@
 ### Interface
 
 - **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app
-- **Keyboard shortcuts** — `Cmd/Ctrl+O` to open file, `Cmd/Ctrl+I` to install
+- **Keyboard shortcuts** — `Cmd/Ctrl+O` open file, `Cmd/Ctrl+I` install, `Cmd/Ctrl+Shift+I` install & run, `Cmd/Ctrl+L` launch, `Cmd/Ctrl+U` uninstall
 - **Landscape & Portrait modes** — toggle between a wide two-panel layout and a compact vertical layout
 - **Dark & Light themes** — switch themes with one click; preference is saved across sessions
 - **Collapsible sections** — Device, Tools, and AAB Settings collapse when not needed, expand when they need attention

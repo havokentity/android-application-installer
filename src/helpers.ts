@@ -31,3 +31,14 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** Whether the user is on macOS. */
+export const isMac = navigator.platform.toUpperCase().includes("MAC") ||
+  navigator.userAgent.toUpperCase().includes("MAC");
+
+/** Format a keyboard shortcut label, e.g. shortcutLabel("O") → "⌘O" on Mac, "Ctrl+O" elsewhere. */
+export function shortcutLabel(key: string, shift = false): string {
+  const mod = isMac ? "⌘" : "Ctrl+";
+  const shiftMod = shift ? (isMac ? "⇧" : "Shift+") : "";
+  return isMac ? `${mod}${shiftMod}${key.toUpperCase()}` : `${mod}${shiftMod}${key.toUpperCase()}`;
+}
+

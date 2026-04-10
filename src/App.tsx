@@ -16,7 +16,7 @@ import type {
   DeviceInfo, LogEntry, ToolsStatus, DownloadProgress,
   StaleTool, DetectionStatus, RecentFilesConfig,
 } from "./types";
-import { nextLogId, getFileName, getFileType, now } from "./helpers";
+import { nextLogId, getFileName, getFileType, now, shortcutLabel } from "./helpers";
 import { StatusDot } from "./components/StatusIndicators";
 import { StaleBanner, ToolsSection } from "./components/ToolsSection";
 import { LogPanel } from "./components/LogPanel";
@@ -95,7 +95,12 @@ function App() {
   const easterEggTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevDeviceSerials = useRef("");
   const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
-  const shortcutRefs = useRef({ browseFile: () => {}, install: (_andRun: boolean) => {}, canInstall: false as boolean | string | null });
+  const shortcutRefs = useRef({
+    browseFile: () => {}, install: (_andRun: boolean) => {},
+    launchApp: () => {}, uninstallApp: () => {},
+    canInstall: false as boolean | string | null,
+    canLaunch: false, canUninstall: false,
+  });
 
   // Apply correct window size on first mount based on saved layout
   useEffect(() => {
@@ -658,18 +663,33 @@ function App() {
     win.setTitle(selectedFile ? `${base} — ${getFileName(selectedFile)}` : base);
   }, [selectedFile]);
 
-  // ── Keyboard shortcuts (Cmd/Ctrl+O, Cmd/Ctrl+I) ───────────────────────
-  shortcutRefs.current = { browseFile, install, canInstall };
+  // ── Keyboard shortcuts (Cmd/Ctrl + O, I, L, U) ─────────────────────────
+  const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
+  shortcutRefs.current = {
+    browseFile, install, launchApp, uninstallApp,
+    canInstall, canLaunch: canLaunchOrUninstall, canUninstall: canLaunchOrUninstall,
+  };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
-      if (mod && e.key.toLowerCase() === "o") {
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === "o") {
         e.preventDefault();
         shortcutRefs.current.browseFile();
-      } else if (mod && e.key.toLowerCase() === "i") {
+      } else if (key === "i" && e.shiftKey) {
+        e.preventDefault();
+        if (shortcutRefs.current.canInstall) shortcutRefs.current.install(true);
+      } else if (key === "i") {
         e.preventDefault();
         if (shortcutRefs.current.canInstall) shortcutRefs.current.install(false);
+      } else if (key === "l") {
+        e.preventDefault();
+        if (shortcutRefs.current.canLaunch) shortcutRefs.current.launchApp();
+      } else if (key === "u") {
+        e.preventDefault();
+        if (shortcutRefs.current.canUninstall) shortcutRefs.current.uninstallApp();
       }
     };
     window.addEventListener("keydown", handler);
@@ -776,13 +796,13 @@ function App() {
           {!deviceConnected && <span className="tool-badge badge-yellow">No device</span>}
         </div>
         <div className="device-actions" onClick={(e) => e.stopPropagation()}>
-          <button className="btn btn-primary btn-small" disabled={!canInstall} onClick={() => install(false)}>
+          <button className="btn btn-primary btn-small" disabled={!canInstall} onClick={() => install(false)} title={`Install (${shortcutLabel("I")})`}>
             {isInstalling ? <Loader2 size={14} className="spin" /> : <Download size={14} />}
             {isInstalling ? "Installing..." : "Install"}
           </button>
-          <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => install(true)}><Play size={14} /> Install & Run</button>
-          <button className="btn btn-secondary btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp}><Rocket size={14} /> Launch</button>
-          <button className="btn btn-danger btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp}><Trash2 size={14} /> Uninstall</button>
+          <button className="btn btn-accent btn-small" disabled={!canInstall} onClick={() => install(true)} title={`Install & Run (${shortcutLabel("I", true)})`}><Play size={14} /> Install & Run</button>
+          <button className="btn btn-secondary btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={launchApp} title={`Launch (${shortcutLabel("L")})`}><Rocket size={14} /> Launch</button>
+          <button className="btn btn-danger btn-small" disabled={!packageName || !selectedDevice || isInstalling} onClick={uninstallApp} title={`Uninstall (${shortcutLabel("U")})`}><Trash2 size={14} /> Uninstall</button>
         </div>
       </div>
       {deviceExpanded && (
@@ -854,7 +874,7 @@ function App() {
           <div className="drop-zone-content">
             <FolderOpen size={40} className="drop-icon" />
             <p className="drop-text">{isDragOver ? "Drop to select file" : "Click or drop an APK or AAB file"}</p>
-            {!isDragOver && <p className="drop-hint">Supports .apk and .aab files</p>}
+            {!isDragOver && <p className="drop-hint">Supports .apk and .aab files — {shortcutLabel("O")} to browse</p>}
           </div>
         )}
       </div>
