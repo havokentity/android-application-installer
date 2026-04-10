@@ -527,6 +527,7 @@ function App() {
   const canInstall = selectedFile && selectedDevice && !isInstalling && adbStatus === "found";
   const adbManaged = toolsStatus?.adb_installed ?? false;
   const javaManaged = toolsStatus?.java_installed ?? false;
+  const toolsMissing = toolsStatus !== null && (!toolsStatus.adb_installed || !toolsStatus.bundletool_installed || !toolsStatus.java_installed);
 
   // ─── Render ───────────────────────────────────────────────────────────
 
@@ -579,6 +580,8 @@ function App() {
       onSetupAdb={setupAdb}
       onSetupBundletool={setupBundletool}
       onSetupJava={setupJava}
+      needsAttention={layout === "landscape" && toolsMissing}
+      compact={layout === "landscape"}
     />
   );
 
@@ -784,8 +787,6 @@ function App() {
         {toolbarEl}
         {headerEl}
         <div className="main-content">
-          {staleBannerEl}
-          {toolsSectionEl}
           {deviceSectionEl}
           {fileSectionEl}
           {actionsEl}
@@ -795,6 +796,8 @@ function App() {
           <div className="divider-handle" />
         </div>
         <div className="side-panel">
+          {staleBannerEl}
+          {toolsSectionEl}
           {logPanelEl}
         </div>
       </div>

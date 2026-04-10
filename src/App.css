@@ -757,6 +757,66 @@ body {
   border-color: rgba(61, 220, 132, 0.25);
 }
 
+/* Compact mode for landscape side panel */
+.tools-compact {
+  padding: 12px 14px;
+}
+
+.tools-compact .section-header {
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.tools-compact .tool-row {
+  padding: 6px 0;
+  gap: 8px;
+}
+
+.tools-compact .tool-name {
+  font-size: 12px;
+}
+
+.tools-compact .tool-hint {
+  display: none;
+}
+
+.tools-compact .btn-small {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* Flashing red border when tools need attention */
+.tools-attention {
+  border-color: var(--red);
+  animation: attentionPulse 2s ease-in-out infinite;
+}
+
+@keyframes attentionPulse {
+  0%, 100% {
+    border-color: var(--red);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    border-color: var(--red);
+    box-shadow: 0 0 8px rgba(248, 81, 73, 0.4);
+  }
+}
+
+[data-theme="light"] .tools-attention {
+  animation: attentionPulseLight 2s ease-in-out infinite;
+}
+
+@keyframes attentionPulseLight {
+  0%, 100% {
+    border-color: var(--red);
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    border-color: var(--red);
+    box-shadow: 0 0 8px rgba(207, 34, 46, 0.25);
+  }
+}
+
 .tool-row {
   display: flex;
   align-items: center;
@@ -969,9 +1029,7 @@ body {
   margin-bottom: 14px;
 }
 
-.app.landscape .stale-banner {
-  grid-column: 1 / -1;
-}
+/* stale banner lives inside side-panel in landscape, no grid override needed */
 
 .app.landscape .main-content {
   grid-column: 1;
@@ -1013,9 +1071,14 @@ body {
   grid-row: 3;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   min-height: 0;
   overflow: hidden;
+}
+
+.app.landscape .side-panel > .section {
+  flex-shrink: 0;
+  margin-bottom: 0;
 }
 
 .app.landscape .side-panel .log-section {

@@ -130,6 +130,8 @@ interface ToolsSectionProps {
   onSetupAdb: () => void;
   onSetupBundletool: () => void;
   onSetupJava: () => void;
+  needsAttention?: boolean;
+  compact?: boolean;
 }
 
 export function ToolsSection({
@@ -143,17 +145,25 @@ export function ToolsSection({
   onSetupAdb,
   onSetupBundletool,
   onSetupJava,
+  needsAttention,
+  compact,
 }: ToolsSectionProps) {
   const adbManaged = toolsStatus?.adb_installed ?? false;
   const btManaged = toolsStatus?.bundletool_installed ?? false;
   const javaManaged = toolsStatus?.java_installed ?? false;
 
+  const cls = [
+    "section tools-section",
+    needsAttention ? "tools-attention" : "",
+    compact ? "tools-compact" : "",
+  ].filter(Boolean).join(" ");
+
   return (
-    <section className="section tools-section">
+    <section className={cls}>
       <div className="section-header">
         <Wrench size={16} />
         <span>Required Tools</span>
-        <span className="section-hint">(auto-downloaded — no SDK needed)</span>
+        {!compact && <span className="section-hint">(auto-downloaded — no SDK needed)</span>}
       </div>
 
       <ToolRow
