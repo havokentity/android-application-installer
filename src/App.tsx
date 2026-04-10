@@ -4,6 +4,9 @@ import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getVersion } from "@tauri-apps/api/app";
+import { check } from "@tauri-apps/plugin-updater";
+import { ask } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 import "./App.css";
 import type {
@@ -92,6 +95,36 @@ function App() {
   const addLog = useCallback((level: LogEntry["level"], message: string) => {
     setLogs((prev) => [...prev, { id: nextLogId(), time: now(), level, message }]);
   }, []);
+
+  // ── Auto updater ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const checkForUpdates = async () => {
+      try {
+        const update = await check();
+        if (update) {
+          const yes = await ask(`Update to ${update.version} is available! \n\nRelease notes: ${update.body}`, {
+            title: 'Update Available',
+            kind: 'info',
+            okLabel: 'Update',
+            cancelLabel: 'Cancel'
+          });
+          if (yes) {
+            addLog("info", `Downloading update ${update.version}...`);
+            await update.downloadAndInstall((event) => {
+              if (event.event === "Progress") {
+                addLog("info", `Downloading update: ${event.data.chunkLength} bytes`);
+              }
+            });
+            addLog("success", "Update installed. Relaunching...");
+            await relaunch();
+          }
+        }
+      } catch (e) {
+        addLog("warning", `Failed to check for updates: ${e}`);
+      }
+    };
+    checkForUpdates();
+  }, [addLog]);
 
   // ── Fetch app version ─────────────────────────────────────────────────
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
@@ -753,4 +786,3 @@ function App() {
 }
 
 export default App;
-
