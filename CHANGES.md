@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **macOS ad-hoc code signing** — builds are now ad-hoc signed by default, eliminating the "app is damaged" Gatekeeper error without needing an Apple Developer account
+- **macOS notarization support** — CI workflow accepts optional Apple Developer ID secrets for full code signing and notarization (zero Gatekeeper warnings)
+- macOS first-launch instructions in README, GitHub Release notes, and release script output
+
+### Changed
+- CI workflow defaults `APPLE_SIGNING_IDENTITY` to `-` (ad-hoc) when no signing secrets are configured
+- `tauri.conf.json` now includes `macOS.signing` configuration block
+- Release script includes macOS Gatekeeper bypass note in generated GitHub Release body
+
 ---
 
 ## [1.5.1] — 2026-04-10
