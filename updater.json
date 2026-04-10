@@ -1,23 +1,23 @@
 {
-  "version": "1.6.2",
-  "notes": "## Downloads\n\n| Platform | File |\n|----------|------|\n| macOS (Apple Silicon) | `.dmg` |\n| macOS (Intel) | `.dmg` |\n| Windows (installer) | `.msi` or `-setup.exe` |\n| Windows (portable) | `-portable.exe` — no install needed |\n| Linux | `.deb` or `.AppImage` |\n\n> **🍎 macOS:** On first launch, right-click the app → **Open** → click **Open** to bypass the Gatekeeper prompt.\n\n### What's New in v1.6.2\n\n### Added\n- **Check for Updates button** — manually trigger an update check from the toolbar; shows a spinner while checking and reports \"You're on the latest version\" when no update is found\n\n---\n\nFull changelog: [CHANGES.md](https://github.com/havokentity/android-application-installer/blob/main/CHANGES.md)",
-  "pub_date": "2026-04-10T19:52:13Z",
+  "version": "1.6.3",
+  "notes": "## Downloads\n\n| Platform | File |\n|----------|------|\n| macOS (Apple Silicon) | `.dmg` |\n| macOS (Intel) | `.dmg` |\n| Windows (installer) | `.msi` or `-setup.exe` |\n| Windows (portable) | `-portable.exe` — no install needed |\n| Linux | `.deb` or `.AppImage` |\n\n> **🍎 macOS:** On first launch, right-click the app → **Open** → click **Open** to bypass the Gatekeeper prompt.\n\n### What's New in v1.6.3\n\n### Changed\n- **Update download progress bar** — replaced per-chunk log spam with a clean inline progress bar showing download percentage, downloaded/total bytes, and a smooth animated fill; appears below the toolbar during updates\n\n---\n\nFull changelog: [CHANGES.md](https://github.com/havokentity/android-application-installer/blob/main/CHANGES.md)",
+  "pub_date": "2026-04-10T20:07:59Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTd4K2E0OE1YQVR6Q2VzMVJJVVY0b2k5b2dOcXNRQUgxcVhtNTdsRjdKL0JvZjNmcHhFMVpyOFF0aEVYME9HQzQvcWgweld6TjFkUlo3Z1NJNktvSkFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUwMzk4CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfYWFyY2g2NC5hcHAudGFyLmd6Ck1MK2kvT0hNOUNTbE5sRmd5eE5USGpiT2JGTEt6eFVXdS9GUXhYWG9yaWpMUHFDWVE3SGVEMlNXOHNGbzVnUWtxU3JubE14OFU2T2htaVFDaUJ2MERnPT0K",
-      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.2/Android.Application.Installer_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTNKZ3d5TU5MMnEvS1RRa1ZaMHpQeFZpZ1ZkQ0Q3R2trazRYOWVTYWVpSDhrTGk5RXlPY0RyVStKOVBwQTV2SjFUZTlaLzBXb0FNOVpXV29sKzNSOWd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUxNjY1CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfYWFyY2g2NC5hcHAudGFyLmd6CnpWcWxDSzdJRFpQWVhsRzRsVTIwZDZYOVBoTXI2QnFvdVV4UllWZHRrdVNESmpWdTl1Y2NXUkZQMS9OUDZTbFJyb1A0a3VUVEpmdlZWWWxMS20rYkRBPT0K",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.3/Android.Application.Installer_aarch64.app.tar.gz"
     },
     "darwin-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdThMQVk3SWNFUkN2VUlhY25iUGwyVGVHT1Y2NnNKcTlxMWxpVkltOGkyYjlucGdmQk1tYXlTTUt2aDVVM0VLRnZqdGNTbmFUQVovQWQ0TWh0cmUvV3djPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUwMzk5CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfeDY0LmFwcC50YXIuZ3oKK0Z2VG1uVkFFNlE2REhrbWh5cWx4YnkybWZlejY4a1paanFLTUhsZDIwbEVDK0dEdGV1SUFjcDRaWEpiZWxZcEYzcTBUcFkyVmFOV0JEZjlDTW45QVE9PQo=",
-      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.2/Android.Application.Installer_x64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTBYY1RQTE8vYXY3UzdzZlNtbndFcWQ3ZW8yYWhSSWU4SGdoZzNBaXN2TjJNOFBza2hkWjc3NzUzVmZaTTlLYjNhMkpkNFI4T1dEWEZMODlCaGZBSkFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUxNjY2CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfeDY0LmFwcC50YXIuZ3oKK3piNGpOdHpvMzF5M0JsRlVDcVpWanBlUTFsL0hJWXhxa3FtcjRTTFZhVG4vYUNUTmVPNDdCZVZpcHdZTGg0WXBjU01iZ0FQV3QybWF4empyKzA1QUE9PQo=",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.3/Android.Application.Installer_x64.app.tar.gz"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTl3K1NzQjlBT2dHMnZIbXJCdXl2MzZ5dFpxeWlZM2pRU0pFZFJTa2tZSzNwTkppd09oeC9oaGxVbi9SbzllMm01NWN2R0l2R0l6RnVRYTZ0RXNRU2dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUwMzk5CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfMS42LjJfYW1kNjQuQXBwSW1hZ2UudGFyLmd6CjZ5cDFFWDduTnMwYUprQ1lSV01VR1c0UnhCNVB3V3h3V0xHb0dFMUt4LzR3RjJ0SG82dzhlcGVnWmw4N09BWFM3OXFsVkdkdlZGcndDV1g3MmlwU0JnPT0K",
-      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.2/Android.Application.Installer_1.6.2_amd64.AppImage.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTByREU2VldSMEt4OFdNdFQ4eGpOdExkMlIwSWEzaEg4VWhPaHNsV05zbzdZaDJ3RnFoWEpGWjE0bDFlU1JJOVREVXMvSjZWaEZMYSs2cWhNNzV0aGdNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUxNjY2CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfMS42LjNfYW1kNjQuQXBwSW1hZ2UudGFyLmd6CldKZW16clYyQm1BV2k5bXJoaG9pN2s0Y0xrcG1qcUFWL0I1cDVtWmxvM3Rzcm1vaXZvNjQ5UzZUd2svdUtJczVnbHI3dnd6VjEzd3ZrVmlyWGVkbkJRPT0K",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.3/Android.Application.Installer_1.6.3_amd64.AppImage.tar.gz"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTNtQlJjdFMvbE00U3ZQdDl0K1RkZmJ2NnFlWnhaT25iK2VDdUxLUVY0QzVPREdiUDVNU3YzbGZmTW1MQy9RTml6NndtMWhFeXRvOUs2V2tMdG9JQXdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUwNDAwCWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfMS42LjJfeDY0LXNldHVwLm5zaXMuemlwCmxRRWRzTmF3SDA0V3VUdUJDVE94Rk1RWDQzZVJTclloeDUwWnVWR1JYRVN4djc1TXZyTG4xRFMweDI5dXpuejVqZ3oyMlZPOERRRTczb0Z3bTNzVkFnPT0K",
-      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.2/Android.Application.Installer_1.6.2_x64-setup.nsis.zip"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVTK2F3MDNUNmFUdTdoQWpVYnhsZk9OOTNicUpLRjNGTHhDWW1qMnVpNU1DcjZqdElVeDkyanYzZGZDcFFudm9IM3hRTnI5Vnhza2IzS09DRXlKZG9DVzB4SDhGS29HL3cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc1ODUxNjY3CWZpbGU6QW5kcm9pZC5BcHBsaWNhdGlvbi5JbnN0YWxsZXJfMS42LjNfeDY0LXNldHVwLm5zaXMuemlwCnB1aTRZUExENHVlZWJMWk5UaDN5QTZ5UXd6aDZLMlBrWnI3NCtHdnVFUnI5aTdaZGk3amRITDRrbkhSZFQ3cEVzL3Y5RG5mTVd1Qm55NjlyLzROZERnPT0K",
+      "url": "https://github.com/havokentity/android-application-installer/releases/download/v1.6.3/Android.Application.Installer_1.6.3_x64-setup.nsis.zip"
     }
   }
 }
