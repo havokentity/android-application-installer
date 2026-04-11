@@ -21,6 +21,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 - CSS for `.batch-file-list`, `.device-details-row`, `.badge-blue` styles
 - 11 new frontend tests (batch file display, device details row, OperationState type, DeviceDetails type) — total: 399
 
+### Fixed
+- **AAB metadata on first selection** — `onAabSelected` now returns `javaPath` and `bundletoolPath` directly, preventing stale React state from causing metadata retrieval to silently fail on the very first AAB file selection; `useFileState` prefers the returned paths and falls back to `getAabToolPaths` only when needed
+- Refactored `checkJava` and `detectBundletool` in `useAabSettings` to return tool paths directly
+
 ### Changed
 - File dialog now uses `multiple: true` for multi-file selection
 - Drag-drop accepts multiple files and filters valid APK/AAB files
