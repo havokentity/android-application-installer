@@ -179,11 +179,6 @@ pub(crate) async fn run_cmd_async_with_cancel(program: &str, args: &[&str], canc
     }
 }
 
-/// Backward-compatible wrapper using the global cancel flag.
-/// Used by wireless ADB commands that don't need per-operation cancellation.
-pub(crate) async fn run_cmd_async(program: &str, args: &[&str]) -> Result<(String, String), String> {
-    run_cmd_async_with_cancel(program, args, &OPERATION_CANCEL).await
-}
 
 /// Same as run_cmd_async_with_cancel but doesn't fail on non-zero exit.
 /// Returns (stdout, stderr, success).

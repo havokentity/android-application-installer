@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Emitter;
 
-use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, run_cmd, run_cmd_async, run_cmd_async_lenient, run_cmd_async_with_cancel, run_cmd_lenient};
+use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, run_cmd, run_cmd_async_lenient, run_cmd_async_with_cancel, run_cmd_lenient};
 use crate::tools;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
