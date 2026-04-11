@@ -58,6 +58,7 @@ const wirelessDefaults: WirelessAdbState = {
   pair: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  connectDirect: vi.fn(),
   cancelWirelessOp: vi.fn(),
   needsPairing: false,
   promptPairing: vi.fn(),
@@ -336,7 +337,7 @@ describe("DeviceSection", () => {
     const wireless = { ...wirelessDefaults, disconnect };
     render(<DeviceSection {...defaults} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" expanded={true} wireless={wireless} />);
     fireEvent.click(screen.getByText(/Disconnect 192\.168\.1\.100:5555/));
-    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555");
+    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555", undefined);
   });
 
   it("does not show Disconnect button for USB devices", () => {
@@ -497,7 +498,7 @@ describe("DeviceSection", () => {
     render(<DeviceSection {...defaults} expanded={true} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
     const disconnectBtn = screen.getByTitle("Disconnect 192.168.1.100:5555");
     fireEvent.click(disconnectBtn);
-    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555");
+    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555", undefined);
   });
 
   it("shows status badge for wireless devices", () => {
@@ -578,6 +579,31 @@ describe("DeviceSection", () => {
     render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} installMode="direct" onInstallModeChange={onInstallModeChange} />);
     fireEvent.click(screen.getByText("Verified"));
     expect(onInstallModeChange).toHaveBeenCalledWith("verified");
+  });
+
+  it("calls disconnect with both serials when device has alternateSerial", () => {
+    const disconnect = vi.fn();
+    const wireless = { ...wirelessDefaults, disconnect };
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText(/Disconnect 192\.168\.1\.100:5555/));
+    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555", "adb-PIXEL7-abc._adb-tls-connect._tcp");
+  });
+
+  it("calls disconnect with both serials from inline WiFi panel button", () => {
+    const disconnect = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, disconnect };
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} expanded={true} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
+    const disconnectBtn = screen.getByTitle("Disconnect 192.168.1.100:5555");
+    fireEvent.click(disconnectBtn);
+    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555", "adb-PIXEL7-abc._adb-tls-connect._tcp");
   });
 
   // ── Pairing Prompt ─────────────────────────────────────────────────────

@@ -18,8 +18,9 @@ import { useToolsState } from "./hooks/useToolsState";
 import { useDeviceState } from "./hooks/useDeviceState";
 import { useFileState } from "./hooks/useFileState";
 import { useAabSettings } from "./hooks/useAabSettings";
-import { useWirelessAdb, deduplicateDevices, isIpPortDevice, enrichWithDiscoveredServices } from "./hooks/useWirelessAdb";
+import { useWirelessAdb, deduplicateDevices, isIpPortDevice, isMdnsDevice, enrichWithDiscoveredServices } from "./hooks/useWirelessAdb";
 import type { DeduplicatedDevice } from "./hooks/useWirelessAdb";
+import type { InstallMode } from "./hooks/useDeviceState";
 
 // ─── Components ──────────────────────────────────────────────────────────────
 import { Toolbar } from "./components/Toolbar";
@@ -153,6 +154,40 @@ function App() {
     [dev.devices, wireless.discoveredDevices],
   );
 
+  // Handle install mode change with auto-connect/scan for alternate transport.
+  // When switching to "direct" → auto-connect IP:port if not yet in device list.
+  // When switching to "verified" → re-scan mDNS to help ADB discover the transport.
+  const handleInstallModeChange = useCallback((mode: InstallMode) => {
+    dev.setInstallMode(mode);
+
+    const deviceInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+    if (!deviceInfo?.alternateSerial) return;
+
+    if (mode === "direct") {
+      // We need the IP:port transport for direct installs
+      const ipSerial = isIpPortDevice(deviceInfo.serial) ? deviceInfo.serial : deviceInfo.alternateSerial;
+      if (ipSerial && isIpPortDevice(ipSerial) && ipSerial !== deviceInfo.serial) {
+        // Check if this IP:port is already connected in ADB
+        const alreadyConnected = dev.devices.some((d) => d.serial === ipSerial);
+        if (!alreadyConnected) {
+          addLog("info", `Connecting ${ipSerial} for direct mode...`);
+          wireless.connectDirect(ipSerial);
+        }
+      }
+    } else if (mode === "verified") {
+      // We need the mDNS transport for verified installs; can't force-connect,
+      // but re-scanning helps ADB discover it faster
+      const mdnsSerial = isMdnsDevice(deviceInfo.serial) ? deviceInfo.serial : deviceInfo.alternateSerial;
+      if (mdnsSerial && isMdnsDevice(mdnsSerial) && mdnsSerial !== deviceInfo.serial) {
+        const alreadyConnected = dev.devices.some((d) => d.serial === mdnsSerial);
+        if (!alreadyConnected) {
+          addLog("info", "Scanning for mDNS transport for verified mode...");
+          wireless.scan();
+        }
+      }
+    }
+  }, [enrichedDevices, dev, wireless, addLog]);
+
   // ── Tools ─────────────────────────────────────────────────────────────
   const tools = useToolsState(addLog, {
     onAdbSetup: (path) => {
@@ -194,22 +229,28 @@ function App() {
 
   /** Resolve the effective ADB serial for a device based on the current install mode.
    *  In "verified" mode, use the mDNS alternate serial if available.
-   *  In "direct" mode (default), use the primary (IP:port) serial. */
+   *  In "direct" mode (default), use the primary (IP:port) serial.
+   *  Falls back to primary serial if the preferred transport isn't actually connected. */
   const resolveSerial = useCallback((device: DeduplicatedDevice): string => {
+    let preferred = device.serial;
+
     if (dev.installMode === "verified" && device.alternateSerial) {
-      // alternateSerial is the mDNS serial when primary is IP:port, or vice versa
       // We want the mDNS serial for verified mode
-      if (isIpPortDevice(device.serial)) return device.alternateSerial;
-      // If the primary is already mDNS, use it as-is
-      return device.serial;
-    }
-    if (dev.installMode === "direct" && device.alternateSerial) {
+      if (isIpPortDevice(device.serial)) preferred = device.alternateSerial;
+    } else if (dev.installMode === "direct" && device.alternateSerial) {
       // We want the IP:port serial for direct mode
-      if (isIpPortDevice(device.serial)) return device.serial;
-      return device.alternateSerial;
+      if (!isIpPortDevice(device.serial)) preferred = device.alternateSerial;
     }
-    return device.serial;
-  }, [dev.installMode]);
+
+    // Safety: if we resolved to an alternate that isn't actually connected
+    // in ADB, fall back to the primary (which is always in the device list)
+    if (preferred !== device.serial) {
+      const isConnected = dev.devices.some((d) => d.serial === preferred);
+      if (!isConnected) return device.serial;
+    }
+
+    return preferred;
+  }, [dev.installMode, dev.devices]);
 
   const install = async (andRun = false) => {
     if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
@@ -416,7 +457,7 @@ function App() {
       onDetectAdb={detectAdb}
       expanded={dev.deviceExpanded} onToggleExpanded={() => dev.setDeviceExpanded(!dev.deviceExpanded)}
       installAllDevices={dev.installAllDevices} onInstallAllDevicesChange={dev.setInstallAllDevices}
-      installMode={dev.installMode} onInstallModeChange={dev.setInstallMode}
+      installMode={dev.installMode} onInstallModeChange={handleInstallModeChange}
       isInstalling={isInstalling} canInstall={canInstall} packageName={file.packageName}
       onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}

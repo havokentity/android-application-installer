@@ -115,7 +115,6 @@ export function DeviceSection({
   const uniqueActiveDevices = deduplicateDevices(activeDevices);
   // Show mode toggle when the selected device is wireless
   const selectedIsWireless = !!(selectedDeviceInfo && isWirelessDevice(selectedDeviceInfo.serial));
-  const selectedHasAlternate = !!(selectedDeviceInfo && selectedDeviceInfo.alternateSerial);
   // Determine which modes are available
   const hasDirectMode = selectedIsWireless && (
     isIpPortDevice(selectedDeviceInfo!.serial) ||
@@ -249,7 +248,7 @@ export function DeviceSection({
             {hasWirelessDevices && selectedDevice && isWirelessDevice(selectedDevice) && (
               <button
                 className="btn btn-ghost btn-small wifi-disconnect-btn"
-                onClick={() => wireless.disconnect(selectedDevice)}
+                onClick={() => wireless.disconnect(selectedDevice, selectedDeviceInfo?.alternateSerial)}
                 title="Disconnect wireless device"
               >
                 <Unplug size={12} /> Disconnect {getDisplaySerial(selectedDevice, wireless.discoveredDevices)}
@@ -444,7 +443,7 @@ export function DeviceSection({
                         </div>
                         <button
                           className="btn btn-ghost btn-small wifi-disconnect-inline"
-                          onClick={() => wireless.disconnect(d.serial)}
+                          onClick={() => wireless.disconnect(d.serial, d.alternateSerial)}
                           title={`Disconnect ${getDisplaySerial(d.serial, wireless.discoveredDevices)}`}
                         >
                           <Unplug size={12} />

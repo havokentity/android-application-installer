@@ -1,6 +1,6 @@
 // ─── Wireless ADB Hook ───────────────────────────────────────────────────────
 import { useState, useCallback } from "react";
-import type { LogEntry, MdnsService } from "../types";
+import type { DeviceInfo, LogEntry, MdnsService } from "../types";
 import type { ToastLevel } from "../components/Toast";
 import * as api from "../api";
 
@@ -20,7 +20,7 @@ export function isWirelessDevice(serial: string): boolean {
 }
 
 /** A device entry that may carry an alternate serial from deduplication. */
-export interface DeduplicatedDevice extends import("../types").DeviceInfo {
+export interface DeduplicatedDevice extends DeviceInfo {
   /** The alternate serial (mDNS or IP:port twin) if both transports are available. */
   alternateSerial?: string;
 }
@@ -37,7 +37,7 @@ export interface DeduplicatedDevice extends import("../types").DeviceInfo {
  *
  * The discarded twin's serial is stored as `alternateSerial` on the surviving entry.
  */
-export function deduplicateDevices(devices: import("../types").DeviceInfo[]): DeduplicatedDevice[] {
+export function deduplicateDevices(devices: DeviceInfo[]): DeduplicatedDevice[] {
   const result: DeduplicatedDevice[] = [];
   const consumed = new Set<string>();
 
@@ -55,8 +55,8 @@ export function deduplicateDevices(devices: import("../types").DeviceInfo[]): De
       );
 
       if (twin) {
-        let preferred: import("../types").DeviceInfo;
-        let discarded: import("../types").DeviceInfo;
+        let preferred: DeviceInfo;
+        let discarded: DeviceInfo;
 
         // Priority 1: prefer the online ("device") entry
         if (d.state === "device" && twin.state !== "device") {
@@ -97,7 +97,7 @@ export function deduplicateDevices(devices: import("../types").DeviceInfo[]): De
  */
 export function enrichWithDiscoveredServices(
   devices: DeduplicatedDevice[],
-  discoveredServices: import("../types").MdnsService[],
+  discoveredServices: MdnsService[],
 ): DeduplicatedDevice[] {
   if (discoveredServices.length === 0) return devices;
 
@@ -171,7 +171,9 @@ export interface WirelessAdbState {
   canConnect: boolean;
   pair: () => Promise<void>;
   connect: () => Promise<void>;
-  disconnect: (serial: string) => Promise<void>;
+  disconnect: (serial: string, alsoDisconnect?: string) => Promise<void>;
+  /** Silently connect to an IP:port target without touching form state. */
+  connectDirect: (target: string) => Promise<boolean>;
   cancelWirelessOp: () => Promise<void>;
   // pairing prompt after connect failure
   needsPairing: boolean;
@@ -268,13 +270,20 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     }
   }, [canConnect, connectIp, connectPort, adbPath, addLog, addToast, onDeviceChange]);
 
-  const disconnect = useCallback(async (serial: string) => {
+  const disconnect = useCallback(async (serial: string, alsoDisconnect?: string) => {
     setIsDisconnecting(true);
     await api.setCancelFlag(false);
     addLog("info", `Disconnecting ${serial}...`);
     try {
       const result = await api.adbDisconnect(adbPath, serial);
       addLog("success", result);
+      // Also disconnect the alternate transport (twin) if provided
+      if (alsoDisconnect) {
+        try {
+          await api.adbDisconnect(adbPath, alsoDisconnect);
+          addLog("info", `Also disconnected alternate transport.`);
+        } catch { /* alternate may not be connected — that's fine */ }
+      }
       addToast("Device disconnected", "info");
       onDeviceChange?.();
     } catch (e) {
@@ -295,9 +304,23 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     addLog("info", "Cancelling wireless operation...");
   }, [addLog]);
 
+  /** Silently connect to an IP:port target without touching UI form state.
+   *  Used for auto-connecting alternate transports when switching install modes. */
+  const connectDirect = useCallback(async (target: string): Promise<boolean> => {
+    if (!adbPath) return false;
+    try {
+      await api.adbConnect(adbPath, target);
+      onDeviceChange?.();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [adbPath, onDeviceChange]);
+
   const scan = useCallback(async () => {
     if (!adbPath || isScanning) return;
     setIsScanning(true);
+    setDiscoveredDevices([]); // clear stale results before scanning
     await api.setCancelFlag(false);
     try {
       // Check mDNS support on first scan
@@ -310,6 +333,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
           return;
         }
       }
+      addLog("info", "Scanning for wireless devices...");
       const services = await api.adbMdnsServices(adbPath);
       setDiscoveredDevices(services);
       // Count unique devices (by base name) not raw service entries
@@ -364,7 +388,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     connectIp, setConnectIp, connectPort, setConnectPort,
     isPairing, isConnecting, isDisconnecting,
     canPair, canConnect,
-    pair, connect, disconnect, cancelWirelessOp,
+    pair, connect, disconnect, connectDirect, cancelWirelessOp,
     needsPairing, promptPairing,
     discoveredDevices, isScanning, mdnsSupported, scan, selectDiscovered,
   };

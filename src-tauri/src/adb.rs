@@ -387,6 +387,12 @@ pub(crate) async fn adb_mdns_check(adb_path: String) -> Result<bool, String> {
 
 /// Discover devices on the local network via `adb mdns services`.
 /// Async with cancellation support. Deduplicates by (name, service_type, ip_port).
+///
+/// ADB's mDNS daemon can have a stale cache after disconnecting a device —
+/// it already "consumed" the service announcement and won't report it again
+/// until the phone re-announces (e.g. toggling WiFi debugging off/on).
+/// When no services are found and no devices are connected, we restart the
+/// ADB server to force a fresh mDNS discovery round, then retry.
 #[tauri::command]
 pub(crate) async fn adb_mdns_services(adb_path: String) -> Result<Vec<MdnsService>, String> {
     let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["mdns", "services"]).await?;
@@ -394,6 +400,31 @@ pub(crate) async fn adb_mdns_services(adb_path: String) -> Result<Vec<MdnsServic
         return Err("mDNS discovery is not supported by this ADB version. Update platform-tools to 31+.".into());
     }
     let mut services = parse_mdns_services(&stdout);
+
+    // If nothing was found, the mDNS cache may be stale (common after `adb disconnect`).
+    // Restart the ADB server to reset mDNS state, but only when no devices are
+    // currently connected so we don't disrupt active sessions.
+    if services.is_empty() {
+        let has_connected = run_cmd_async_lenient(&adb_path, &["devices"])
+            .await
+            .map(|(out, _, _)| {
+                out.lines()
+                    .skip(1)
+                    .any(|l| !l.trim().is_empty() && l.contains('\t'))
+            })
+            .unwrap_or(false);
+
+        if !has_connected {
+            let _ = run_cmd_async_lenient(&adb_path, &["kill-server"]).await;
+            let _ = run_cmd_async_lenient(&adb_path, &["start-server"]).await;
+            // Give the fresh mDNS daemon time to discover services on the network
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+            let (stdout2, _, _) = run_cmd_async_lenient(&adb_path, &["mdns", "services"]).await?;
+            services = parse_mdns_services(&stdout2);
+        }
+    }
+
     // Deduplicate — adb mdns services can return the same entry multiple times.
     // Sort first so identical entries are adjacent, then dedup.
     services.sort_by(|a, b| (&a.name, &a.service_type, &a.ip_port).cmp(&(&b.name, &b.service_type, &b.ip_port)));

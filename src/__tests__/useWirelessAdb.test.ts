@@ -597,5 +597,19 @@ describe("useWirelessAdb", () => {
     expect(result.current.pairPort).toBe("");
     expect(result.current.pairingCode).toBe("");
   });
+
+  it("connectDirect is a function", () => {
+    const { result } = renderHook(() => useWirelessAdb(defaults));
+    expect(typeof result.current.connectDirect).toBe("function");
+  });
+
+  it("connectDirect returns false when adbPath is empty", async () => {
+    const { result } = renderHook(() => useWirelessAdb({ ...defaults, adbPath: "" }));
+    let success: boolean;
+    await act(async () => {
+      success = await result.current.connectDirect("192.168.1.42:5555");
+    });
+    expect(success!).toBe(false);
+  });
 });
 
