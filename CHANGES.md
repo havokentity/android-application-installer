@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.8.4] — 2026-04-11
 ### Fixed
 - **Device status log spam** — "Device update: N device(s) connected" and "All devices disconnected" messages repeated every few seconds even when nothing changed; the fingerprint deduplication check was bypassed for empty device lists, causing every tracker emission to log; now only logs on actual state changes
 
