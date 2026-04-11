@@ -21,6 +21,17 @@ export const startDeviceTracking = (adbPath: string) =>
 export const stopDeviceTracking = () =>
   invoke<void>("stop_device_tracking");
 
+// ─── Wireless ADB ─────────────────────────────────────────────────────────────
+
+export const adbPair = (adbPath: string, ipPort: string, pairingCode: string) =>
+  invoke<string>("adb_pair", { adbPath, ipPort, pairingCode });
+
+export const adbConnect = (adbPath: string, ipPort: string) =>
+  invoke<string>("adb_connect", { adbPath, ipPort });
+
+export const adbDisconnect = (adbPath: string, ipPort: string) =>
+  invoke<string>("adb_disconnect", { adbPath, ipPort });
+
 export const installApk = (adbPath: string, device: string, apkPath: string) =>
   invoke<string>("install_apk", { adbPath, device, apkPath });
 

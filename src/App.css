@@ -1318,6 +1318,79 @@ body {
   border-top: 1px solid var(--border);
 }
 
+/* ─── Wireless ADB Panel ──────────────────────────────────────────────────── */
+
+.wifi-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+
+.wifi-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 12px;
+}
+
+.wifi-group {
+  margin-bottom: 12px;
+}
+
+.wifi-group:last-child {
+  margin-bottom: 0;
+}
+
+.wifi-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wifi-inputs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.wifi-inputs .input {
+  flex: 1;
+  min-width: 100px;
+}
+
+.wifi-port-input {
+  max-width: 80px !important;
+  flex: 0 0 80px !important;
+}
+
+.wifi-code-input {
+  max-width: 110px !important;
+  flex: 0 0 110px !important;
+}
+
+.wifi-disconnect-btn {
+  margin-top: 6px;
+  color: var(--text-3);
+}
+
+.wifi-disconnect-btn:hover {
+  color: var(--red);
+}
+
+.btn-active {
+  color: var(--green) !important;
+  background: var(--green-dim) !important;
+}
+
 /* ─── Operation Progress Bar ───────────────────────────────────────────────── */
 
 .operation-progress {

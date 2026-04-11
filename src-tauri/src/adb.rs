@@ -340,6 +340,87 @@ pub(crate) async fn stop_device_tracking(
     Ok(())
 }
 
+// ─── Wireless ADB (WiFi) ────────────────────────────────────────────────────
+
+/// Parse the result of `adb pair <ip:port> <code>`.
+pub(crate) fn parse_pair_result(stdout: &str, stderr: &str) -> Result<String, String> {
+    let combined = format!("{}\n{}", stdout, stderr);
+    if stdout.contains("Successfully paired") {
+        Ok(stdout.trim().to_string())
+    } else if combined.contains("Failed") || combined.contains("error") || combined.contains("refused") {
+        Err(format!("Pairing failed: {}", combined.trim()))
+    } else if combined.contains("timed out") || combined.contains("timeout") {
+        Err("Pairing timed out. Make sure the pairing code is correct and the device is on the same network.".into())
+    } else if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        Err("Pairing failed: no response from ADB.".into())
+    } else {
+        Err(format!("Unexpected pairing response: {}", combined.trim()))
+    }
+}
+
+/// Parse the result of `adb connect <ip:port>`.
+pub(crate) fn parse_connect_result(stdout: &str, stderr: &str) -> Result<String, String> {
+    let combined = format!("{}\n{}", stdout, stderr);
+    if stdout.contains("connected to") {
+        Ok(stdout.trim().to_string())
+    } else if stdout.contains("already connected") {
+        Ok(stdout.trim().to_string())
+    } else if combined.contains("refused") || combined.contains("Connection refused") {
+        Err("Connection refused. Make sure wireless debugging is enabled and the port is correct.".into())
+    } else if combined.contains("timed out") || combined.contains("timeout") {
+        Err("Connection timed out. Check the IP address and that the device is on the same network.".into())
+    } else if combined.contains("failed") || combined.contains("error") {
+        Err(format!("Connection failed: {}", combined.trim()))
+    } else if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        Err("Connection failed: no response from ADB.".into())
+    } else {
+        Err(format!("Unexpected connection response: {}", combined.trim()))
+    }
+}
+
+/// Parse the result of `adb disconnect <ip:port>`.
+pub(crate) fn parse_disconnect_result(stdout: &str, _stderr: &str) -> Result<String, String> {
+    if stdout.contains("disconnected") {
+        Ok(stdout.trim().to_string())
+    } else if stdout.contains("error") || stdout.contains("no such device") {
+        Err(format!("Disconnect failed: {}", stdout.trim()))
+    } else {
+        Ok(format!("Disconnected: {}", stdout.trim()))
+    }
+}
+
+/// Pair with a device over WiFi using `adb pair <ip:port> <pairing_code>`.
+/// Requires Android 11+ with wireless debugging enabled.
+#[tauri::command]
+pub(crate) fn adb_pair(
+    adb_path: String,
+    ip_port: String,
+    pairing_code: String,
+) -> Result<String, String> {
+    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["pair", &ip_port, &pairing_code])?;
+    parse_pair_result(&stdout, &stderr)
+}
+
+/// Connect to a device over WiFi using `adb connect <ip:port>`.
+#[tauri::command]
+pub(crate) fn adb_connect(
+    adb_path: String,
+    ip_port: String,
+) -> Result<String, String> {
+    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["connect", &ip_port])?;
+    parse_connect_result(&stdout, &stderr)
+}
+
+/// Disconnect a wireless device using `adb disconnect <ip:port>`.
+#[tauri::command]
+pub(crate) fn adb_disconnect(
+    adb_path: String,
+    ip_port: String,
+) -> Result<String, String> {
+    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["disconnect", &ip_port])?;
+    parse_disconnect_result(&stdout, &stderr)
+}
+
 /// Install an APK onto the specified device (async with progress & cancellation).
 #[tauri::command]
 pub(crate) async fn install_apk(
@@ -892,5 +973,104 @@ mod tests {
         let output = "\n\nABC123\tdevice\n\n";
         let devices = parse_device_list(output);
         assert_eq!(devices.len(), 1);
+    }
+
+    // ── Wireless ADB parse tests ─────────────────────────────────────────
+
+    #[test]
+    fn parse_pair_success() {
+        let stdout = "Successfully paired to 192.168.1.100:37123 [guid=adb-ABC123-def456]";
+        let result = parse_pair_result(stdout, "");
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Successfully paired"));
+    }
+
+    #[test]
+    fn parse_pair_failed() {
+        let result = parse_pair_result("", "error: Failed to pair");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed"));
+    }
+
+    #[test]
+    fn parse_pair_timeout() {
+        let result = parse_pair_result("", "error: connection timed out");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timed out"));
+    }
+
+    #[test]
+    fn parse_pair_empty_response() {
+        let result = parse_pair_result("", "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no response"));
+    }
+
+    #[test]
+    fn parse_pair_refused() {
+        let result = parse_pair_result("", "error: connection refused");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_connect_success() {
+        let stdout = "connected to 192.168.1.100:5555";
+        let result = parse_connect_result(stdout, "");
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("connected to"));
+    }
+
+    #[test]
+    fn parse_connect_already_connected() {
+        let stdout = "already connected to 192.168.1.100:5555";
+        let result = parse_connect_result(stdout, "");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_connect_refused() {
+        let result = parse_connect_result("", "Connection refused");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("refused"));
+    }
+
+    #[test]
+    fn parse_connect_timeout() {
+        let result = parse_connect_result("", "connection timed out");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timed out"));
+    }
+
+    #[test]
+    fn parse_connect_failed_generic() {
+        let result = parse_connect_result("failed to connect", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_connect_empty_response() {
+        let result = parse_connect_result("", "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no response"));
+    }
+
+    #[test]
+    fn parse_disconnect_success() {
+        let stdout = "disconnected 192.168.1.100:5555";
+        let result = parse_disconnect_result(stdout, "");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_disconnect_error() {
+        let stdout = "error: no such device '192.168.1.100:5555'";
+        let result = parse_disconnect_result(stdout, "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_disconnect_unknown_output() {
+        let result = parse_disconnect_result("some other output", "");
+        assert!(result.is_ok()); // graceful fallback
     }
 }

@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DeviceSection } from "../components/DeviceSection";
 import type { DeviceInfo } from "../types";
+import type { WirelessAdbState } from "../hooks/useWirelessAdb";
 
 const device1: DeviceInfo = {
   serial: "ABC123",
@@ -26,6 +27,36 @@ const unauthorizedDevice: DeviceInfo = {
   model: "",
   product: "",
   transport_id: "3",
+};
+
+const wirelessDevice: DeviceInfo = {
+  serial: "192.168.1.100:5555",
+  state: "device",
+  model: "Pixel 7",
+  product: "panther",
+  transport_id: "4",
+};
+
+const wirelessDefaults: WirelessAdbState = {
+  wifiExpanded: false,
+  setWifiExpanded: vi.fn(),
+  pairIp: "",
+  setPairIp: vi.fn(),
+  pairPort: "",
+  setPairPort: vi.fn(),
+  pairingCode: "",
+  setPairingCode: vi.fn(),
+  connectIp: "",
+  setConnectIp: vi.fn(),
+  connectPort: "",
+  setConnectPort: vi.fn(),
+  isPairing: false,
+  isConnecting: false,
+  canPair: false,
+  canConnect: false,
+  pair: vi.fn(),
+  connect: vi.fn(),
+  disconnect: vi.fn(),
 };
 
 const defaults = {
@@ -52,6 +83,7 @@ const defaults = {
   onUninstall: vi.fn(),
   operationProgress: null,
   onCancelOperation: vi.fn(),
+  wireless: wirelessDefaults,
 };
 
 describe("DeviceSection", () => {
@@ -215,6 +247,110 @@ describe("DeviceSection", () => {
   it("disables refresh button when adbPath is empty", () => {
     render(<DeviceSection {...defaults} adbPath="" expanded={true} />);
     expect(screen.getByTitle("Refresh devices")).toBeDisabled();
+  });
+
+  // ── Wireless ADB ──────────────────────────────────────────────────────
+
+  it("shows WiFi toggle button when expanded", () => {
+    render(<DeviceSection {...defaults} expanded={true} />);
+    expect(screen.getByTitle("Wireless ADB (WiFi)")).toBeInTheDocument();
+  });
+
+  it("does not show WiFi panel when wifiExpanded is false", () => {
+    render(<DeviceSection {...defaults} expanded={true} />);
+    expect(screen.queryByText("Wireless ADB (Android 11+)")).not.toBeInTheDocument();
+  });
+
+  it("shows WiFi panel when wifiExpanded is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Wireless ADB (Android 11+)")).toBeInTheDocument();
+  });
+
+  it("shows Pair and Connect sections in WiFi panel", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("1. Pair (first time only)")).toBeInTheDocument();
+    expect(screen.getByText("2. Connect")).toBeInTheDocument();
+  });
+
+  it("shows Pair button disabled when canPair is false", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, canPair: false };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Pair").closest("button")).toBeDisabled();
+  });
+
+  it("shows Connect button disabled when canConnect is false", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, canConnect: false };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Connect").closest("button")).toBeDisabled();
+  });
+
+  it("enables Pair button when canPair is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, canPair: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Pair").closest("button")).not.toBeDisabled();
+  });
+
+  it("enables Connect button when canConnect is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, canConnect: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Connect").closest("button")).not.toBeDisabled();
+  });
+
+  it("calls pair when Pair button is clicked", () => {
+    const pair = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, canPair: true, pair };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText("Pair"));
+    expect(pair).toHaveBeenCalledOnce();
+  });
+
+  it("calls connect when Connect button is clicked", () => {
+    const connect = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, canConnect: true, connect };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText("Connect"));
+    expect(connect).toHaveBeenCalledOnce();
+  });
+
+  it("shows Disconnect button for wireless devices", () => {
+    const wireless = { ...wirelessDefaults, disconnect: vi.fn() };
+    render(<DeviceSection {...defaults} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" expanded={true} wireless={wireless} />);
+    expect(screen.getByText(/Disconnect 192\.168\.1\.100:5555/)).toBeInTheDocument();
+  });
+
+  it("calls disconnect when Disconnect button is clicked", () => {
+    const disconnect = vi.fn();
+    const wireless = { ...wirelessDefaults, disconnect };
+    render(<DeviceSection {...defaults} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText(/Disconnect 192\.168\.1\.100:5555/));
+    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555");
+  });
+
+  it("does not show Disconnect button for USB devices", () => {
+    render(<DeviceSection {...defaults} devices={[device1]} selectedDevice="ABC123" expanded={true} />);
+    expect(screen.queryByText(/Disconnect/)).not.toBeInTheDocument();
+  });
+
+  it("shows 'Pairing...' when isPairing is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, isPairing: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Pairing...")).toBeInTheDocument();
+  });
+
+  it("shows 'Connecting...' when isConnecting is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, isConnecting: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Connecting...")).toBeInTheDocument();
+  });
+
+  it("calls setWifiExpanded when WiFi toggle is clicked", () => {
+    const setWifiExpanded = vi.fn();
+    const wireless = { ...wirelessDefaults, setWifiExpanded };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByTitle("Wireless ADB (WiFi)"));
+    expect(setWifiExpanded).toHaveBeenCalledWith(true);
   });
 });
 

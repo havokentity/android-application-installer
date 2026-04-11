@@ -18,6 +18,7 @@ import { useToolsState } from "./hooks/useToolsState";
 import { useDeviceState } from "./hooks/useDeviceState";
 import { useFileState } from "./hooks/useFileState";
 import { useAabSettings } from "./hooks/useAabSettings";
+import { useWirelessAdb } from "./hooks/useWirelessAdb";
 
 // ─── Components ──────────────────────────────────────────────────────────────
 import { Toolbar } from "./components/Toolbar";
@@ -133,6 +134,7 @@ function App() {
 
   // ── Devices ───────────────────────────────────────────────────────────
   const dev = useDeviceState(adbPath, adbStatus, addLog);
+  const wireless = useWirelessAdb({ adbPath, addLog, addToast });
 
   // ── Tools ─────────────────────────────────────────────────────────────
   const tools = useToolsState(addLog, {
@@ -367,6 +369,7 @@ function App() {
       isInstalling={isInstalling} canInstall={canInstall} packageName={file.packageName}
       onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}
+      wireless={wireless}
     />
   );
 

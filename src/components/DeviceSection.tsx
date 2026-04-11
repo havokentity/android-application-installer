@@ -1,11 +1,13 @@
 import {
   Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
-  Usb,
+  Usb, Wifi, Unplug,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
 import { shortcutLabel } from "../helpers";
+import { isWirelessDevice } from "../hooks/useWirelessAdb";
+import type { WirelessAdbState } from "../hooks/useWirelessAdb";
 import type { DeviceInfo, DetectionStatus, OperationProgress } from "../types";
 
 interface DeviceSectionProps {
@@ -32,6 +34,7 @@ interface DeviceSectionProps {
   onUninstall: () => void;
   operationProgress: OperationProgress | null;
   onCancelOperation: () => void;
+  wireless: WirelessAdbState;
 }
 
 export function DeviceSection({
@@ -42,11 +45,13 @@ export function DeviceSection({
   isInstalling, canInstall, packageName,
   onInstall, onLaunch, onStopApp, onUninstall,
   operationProgress, onCancelOperation,
+  wireless,
 }: DeviceSectionProps) {
   const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
   const deviceConnected = selectedDevice && devices.length > 0;
   const deviceLabel = deviceConnected ? (selectedDeviceInfo?.model || selectedDevice) : null;
   const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
+  const hasWirelessDevices = devices.some((d) => isWirelessDevice(d.serial));
 
   return (
     <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
@@ -126,9 +131,26 @@ export function DeviceSection({
               <button className="btn btn-icon" onClick={onRefreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
                 <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
               </button>
+              <button
+                className={`btn btn-icon ${wireless.wifiExpanded ? "btn-active" : ""}`}
+                onClick={() => wireless.setWifiExpanded(!wireless.wifiExpanded)}
+                disabled={!adbPath}
+                title="Wireless ADB (WiFi)"
+              >
+                <Wifi size={16} />
+              </button>
             </div>
             {selectedDeviceInfo?.state === "unauthorized" && (
               <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
+            )}
+            {hasWirelessDevices && selectedDevice && isWirelessDevice(selectedDevice) && (
+              <button
+                className="btn btn-ghost btn-small wifi-disconnect-btn"
+                onClick={() => wireless.disconnect(selectedDevice)}
+                title="Disconnect wireless device"
+              >
+                <Unplug size={12} /> Disconnect {selectedDevice}
+              </button>
             )}
             {devices.length === 0 && (
               <div className="device-empty-state">
@@ -157,6 +179,69 @@ export function DeviceSection({
               </div>
             )}
           </div>
+
+          {/* ── Wireless ADB Panel ──────────────────────────────────── */}
+          {wireless.wifiExpanded && (
+            <div className="wifi-panel">
+              <div className="wifi-panel-header">
+                <Wifi size={14} />
+                <span>Wireless ADB (Android 11+)</span>
+              </div>
+
+              <div className="wifi-group">
+                <div className="wifi-group-title">1. Pair (first time only)</div>
+                <div className="wifi-inputs">
+                  <input
+                    type="text" className="input" placeholder="IP address"
+                    value={wireless.pairIp} onChange={(e) => wireless.setPairIp(e.target.value)}
+                  />
+                  <input
+                    type="text" className="input wifi-port-input" placeholder="Port"
+                    value={wireless.pairPort} onChange={(e) => wireless.setPairPort(e.target.value)}
+                    maxLength={5}
+                  />
+                  <input
+                    type="text" className="input wifi-code-input" placeholder="Pairing code"
+                    value={wireless.pairingCode} onChange={(e) => wireless.setPairingCode(e.target.value)}
+                    maxLength={6}
+                  />
+                  <button
+                    className="btn btn-accent btn-small"
+                    disabled={!wireless.canPair}
+                    onClick={wireless.pair}
+                  >
+                    {wireless.isPairing ? <Loader2 size={14} className="spin" /> : <Wifi size={14} />}
+                    {wireless.isPairing ? "Pairing..." : "Pair"}
+                  </button>
+                </div>
+                <p className="hint">Find pairing code in Settings → Developer Options → Wireless Debugging → Pair device</p>
+              </div>
+
+              <div className="wifi-group">
+                <div className="wifi-group-title">2. Connect</div>
+                <div className="wifi-inputs">
+                  <input
+                    type="text" className="input" placeholder="IP address"
+                    value={wireless.connectIp} onChange={(e) => wireless.setConnectIp(e.target.value)}
+                  />
+                  <input
+                    type="text" className="input wifi-port-input" placeholder="Port"
+                    value={wireless.connectPort} onChange={(e) => wireless.setConnectPort(e.target.value)}
+                    maxLength={5}
+                  />
+                  <button
+                    className="btn btn-primary btn-small"
+                    disabled={!wireless.canConnect}
+                    onClick={wireless.connect}
+                  >
+                    {wireless.isConnecting ? <Loader2 size={14} className="spin" /> : <Wifi size={14} />}
+                    {wireless.isConnecting ? "Connecting..." : "Connect"}
+                  </button>
+                </div>
+                <p className="hint">IP & port shown on the Wireless Debugging screen (different port from pairing)</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </section>
