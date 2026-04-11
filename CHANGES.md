@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.8.2] — 2026-04-11
 ### Fixed
 - **ADB server persists after app exit** — the ADB daemon (`adb.exe` / `adb`) kept running as a ghost process after closing the app; added an exit handler that stops the device tracker and kills the managed ADB server on shutdown
 - **Can't update ADB platform-tools on Windows** — the ADB server daemon held file locks on `adb.exe`, preventing `remove_dir_all` from deleting the old tools directory during updates; now kills the server before removal, with a retry loop (5 × 500 ms) for Windows file-lock release delay
