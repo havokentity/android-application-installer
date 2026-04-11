@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+- **Notifications not popping up as banners** — added `sound name "default"` to macOS notifications so they appear as banners instead of silently going to Notification Center
+
 ---
 
 ## [1.7.3] — 2026-04-11

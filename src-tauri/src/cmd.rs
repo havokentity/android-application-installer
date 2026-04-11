@@ -203,8 +203,8 @@ pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String
 }
 
 /// Send a native OS notification.
-/// On macOS uses `osascript` (AppleScript) — the only reliable method since
-/// `notify-rust` returns Ok but silently fails to display on modern macOS.
+/// On macOS uses `osascript` (AppleScript) with a sound to ensure the notification
+/// pops up as a banner (not just silently in Notification Center).
 /// On Linux/Windows uses `notify-rust`.
 #[tauri::command]
 pub(crate) fn send_notification(title: String, body: String) -> Result<(), String> {
@@ -213,7 +213,7 @@ pub(crate) fn send_notification(title: String, body: String) -> Result<(), Strin
         let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
         let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
         let script = format!(
-            r#"display notification "{}" with title "{}""#,
+            r#"display notification "{}" with title "{}" sound name "default""#,
             escaped_body, escaped_title
         );
         std::process::Command::new("osascript")
@@ -227,6 +227,7 @@ pub(crate) fn send_notification(title: String, body: String) -> Result<(), Strin
         notify_rust::Notification::new()
             .summary(&title)
             .body(&body)
+            .sound_name("default")
             .show()
             .map_err(|e| format!("Notification failed: {}", e))?;
         Ok(())
