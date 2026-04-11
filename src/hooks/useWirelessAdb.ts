@@ -162,6 +162,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
   const scan = useCallback(async () => {
     if (!adbPath || isScanning) return;
     setIsScanning(true);
+    await api.setCancelFlag(false);
     try {
       // Check mDNS support on first scan
       if (mdnsSupported === null) {
@@ -175,14 +176,22 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       }
       const services = await api.adbMdnsServices(adbPath);
       setDiscoveredDevices(services);
-      if (services.length === 0) {
+      // Count unique devices (by base name) not raw service entries
+      const uniqueNames = new Set(services.map((s) => s.name.replace(/-[a-zA-Z0-9]{4,}$/, "")));
+      const deviceCount = uniqueNames.size;
+      if (deviceCount === 0) {
         addLog("info", "No wireless devices discovered on the network.");
       } else {
-        addLog("info", `Found ${services.length} device(s) via mDNS.`);
+        addLog("info", `Found ${deviceCount} device${deviceCount === 1 ? "" : "s"} on the network (${services.length} service${services.length === 1 ? "" : "s"}).`);
       }
     } catch (e) {
-      addLog("warning", `mDNS scan failed: ${e}`);
-      setMdnsSupported(false);
+      const msg = String(e);
+      if (msg.includes("cancelled")) {
+        addLog("warning", "Scan cancelled.");
+      } else {
+        addLog("warning", `mDNS scan failed: ${e}`);
+        setMdnsSupported(false);
+      }
     } finally {
       setIsScanning(false);
     }

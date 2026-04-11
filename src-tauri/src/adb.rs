@@ -379,22 +379,26 @@ pub(crate) fn parse_mdns_services(stdout: &str) -> Vec<MdnsService> {
 
 /// Check if mDNS discovery is available (`adb mdns check`).
 #[tauri::command]
-pub(crate) fn adb_mdns_check(adb_path: String) -> Result<bool, String> {
-    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["mdns", "check"])?;
+pub(crate) async fn adb_mdns_check(adb_path: String) -> Result<bool, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["mdns", "check"]).await?;
     let combined = format!("{}\n{}", stdout, stderr);
-    // If daemon or mdns is running, we get something like "mdns daemon version [...]"
     Ok(combined.contains("mdns daemon version") || combined.contains("Openscreen"))
 }
 
 /// Discover devices on the local network via `adb mdns services`.
-/// Returns only connectable services (`_adb-tls-connect._tcp`).
+/// Async with cancellation support. Deduplicates by (name, service_type, ip_port).
 #[tauri::command]
-pub(crate) fn adb_mdns_services(adb_path: String) -> Result<Vec<MdnsService>, String> {
-    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["mdns", "services"])?;
+pub(crate) async fn adb_mdns_services(adb_path: String) -> Result<Vec<MdnsService>, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["mdns", "services"]).await?;
     if stderr.contains("unknown host service") || stderr.contains("mdns") && stderr.contains("not") {
         return Err("mDNS discovery is not supported by this ADB version. Update platform-tools to 31+.".into());
     }
-    Ok(parse_mdns_services(&stdout))
+    let mut services = parse_mdns_services(&stdout);
+    // Deduplicate — adb mdns services can return the same entry multiple times.
+    // Sort first so identical entries are adjacent, then dedup.
+    services.sort_by(|a, b| (&a.name, &a.service_type, &a.ip_port).cmp(&(&b.name, &b.service_type, &b.ip_port)));
+    services.dedup_by(|a, b| a.name == b.name && a.service_type == b.service_type && a.ip_port == b.ip_port);
+    Ok(services)
 }
 
 /// Parse the result of `adb pair <ip:port> <code>`.
