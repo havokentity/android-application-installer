@@ -1386,6 +1386,16 @@ body {
   color: var(--red);
 }
 
+.wifi-disconnect-inline {
+  color: var(--text-3) !important;
+  padding: 4px !important;
+}
+
+.wifi-disconnect-inline:hover:not(:disabled) {
+  color: var(--red) !important;
+  background: var(--red-dim) !important;
+}
+
 .btn-active {
   color: var(--green) !important;
   background: var(--green-dim) !important;
@@ -1412,12 +1422,12 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-sm);
   background: var(--bg-1);
   border: 1px solid var(--border);
   font-size: 12px;
-  gap: 8px;
+  gap: 10px;
 }
 
 .wifi-discovered-item:hover {
@@ -1428,8 +1438,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 1;
   min-width: 0;
+}
+
+.wifi-discovered-icon {
+  color: var(--text-3);
+  flex-shrink: 0;
 }
 
 .wifi-discovered-name {
@@ -1438,6 +1452,17 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.wifi-discovered-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wifi-discovered-actions .btn {
+  gap: 4px;
 }
 
 .wifi-discovered-addr {

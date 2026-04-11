@@ -386,7 +386,7 @@ describe("DeviceSection", () => {
     expect(screen.getByText(/mDNS not supported/)).toBeInTheDocument();
   });
 
-  it("shows discovered devices when available", () => {
+  it("shows discovered devices grouped by device name", () => {
     const wireless = {
       ...wirelessDefaults,
       wifiExpanded: true,
@@ -395,27 +395,44 @@ describe("DeviceSection", () => {
       ],
     };
     render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
-    expect(screen.getByText("adb-PIXEL7")).toBeInTheDocument();
+    expect(screen.getByText("PIXEL7")).toBeInTheDocument();
     expect(screen.getByText("192.168.1.42:43567")).toBeInTheDocument();
   });
 
-  it("shows type badges for connect and pairing services", () => {
+  it("groups connect and pairing services into one row per device", () => {
     const wireless = {
       ...wirelessDefaults,
       wifiExpanded: true,
       discoveredDevices: [
         { name: "adb-PIXEL7", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" },
-        { name: "adb-GALAXY", service_type: "_adb-tls-pairing._tcp.", ip_port: "192.168.1.42:37215" },
+        { name: "adb-PIXEL7", service_type: "_adb-tls-pairing._tcp.", ip_port: "192.168.1.42:37215" },
       ],
     };
     render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    // Only one device row, with both badges
+    const items = screen.getAllByText("PIXEL7");
+    expect(items).toHaveLength(1);
     const badges = screen.getAllByText(/^(Connect|Pair)$/);
     const badgeTexts = badges.map((b) => b.textContent);
     expect(badgeTexts).toContain("Connect");
     expect(badgeTexts).toContain("Pair");
   });
 
-  it("calls selectDiscovered when Use button is clicked", () => {
+  it("shows separate rows for different devices", () => {
+    const wireless = {
+      ...wirelessDefaults,
+      wifiExpanded: true,
+      discoveredDevices: [
+        { name: "adb-PIXEL7", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" },
+        { name: "adb-GALAXY", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.43:5555" },
+      ],
+    };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("PIXEL7")).toBeInTheDocument();
+    expect(screen.getByText("GALAXY")).toBeInTheDocument();
+  });
+
+  it("calls selectDiscovered when connect badge is clicked", () => {
     const selectDiscovered = vi.fn();
     const svc = { name: "adb-PIXEL7", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" };
     const wireless = {
@@ -425,7 +442,8 @@ describe("DeviceSection", () => {
       selectDiscovered,
     };
     render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
-    fireEvent.click(screen.getByText("Use"));
+    // Click the button that contains the connect address
+    fireEvent.click(screen.getByTitle(/Fill connect fields/).closest("button")!);
     expect(selectDiscovered).toHaveBeenCalledWith(svc);
   });
 
@@ -433,6 +451,42 @@ describe("DeviceSection", () => {
     const wireless = { ...wirelessDefaults, wifiExpanded: true, discoveredDevices: [], mdnsSupported: null };
     render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
     expect(screen.getByText(/Click Scan to discover/)).toBeInTheDocument();
+  });
+
+  // ── Connected Wireless Devices Management ─────────────────────────────
+
+  it("shows connected wireless devices section in WiFi panel", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
+    expect(screen.getByText("Connected wireless devices")).toBeInTheDocument();
+  });
+
+  it("does not show connected wireless section when no wireless devices", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} devices={[device1]} selectedDevice="ABC123" wireless={wireless} />);
+    expect(screen.queryByText("Connected wireless devices")).not.toBeInTheDocument();
+  });
+
+  it("shows disconnect button for each wireless device in WiFi panel", () => {
+    const disconnect = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, disconnect };
+    render(<DeviceSection {...defaults} expanded={true} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
+    const disconnectBtn = screen.getByTitle("Disconnect 192.168.1.100:5555");
+    fireEvent.click(disconnectBtn);
+    expect(disconnect).toHaveBeenCalledWith("192.168.1.100:5555");
+  });
+
+  it("shows status badge for wireless devices", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
+    expect(screen.getByText("Online")).toBeInTheDocument();
+  });
+
+  it("shows offline status for non-ready wireless devices", () => {
+    const offlineWireless: DeviceInfo = { ...wirelessDevice, state: "offline" };
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} devices={[offlineWireless]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
+    expect(screen.getByText("offline")).toBeInTheDocument();
   });
 });
 

@@ -8,7 +8,39 @@ import { StatusDot } from "./StatusIndicators";
 import { shortcutLabel } from "../helpers";
 import { isWirelessDevice } from "../hooks/useWirelessAdb";
 import type { WirelessAdbState } from "../hooks/useWirelessAdb";
-import type { DeviceInfo, DetectionStatus, OperationProgress } from "../types";
+import type { DeviceInfo, DetectionStatus, MdnsService, OperationProgress } from "../types";
+
+/** Extract a short display name from an mDNS service name (e.g. "adb-PIXEL7-abc" → "PIXEL7"). */
+function shortDeviceName(name: string): string {
+  // mDNS names are usually "adb-<serial>-<suffix>" or "adb-<serial>"
+  const match = name.match(/^adb-(.+?)(?:-[a-zA-Z0-9]{4,})?$/);
+  return match ? match[1] : name;
+}
+
+/** Group raw mDNS services by device name, merging connect + pairing entries. */
+interface GroupedDevice {
+  name: string;
+  displayName: string;
+  connectService: MdnsService | null;
+  pairService: MdnsService | null;
+}
+
+function groupMdnsServices(services: MdnsService[]): GroupedDevice[] {
+  const map = new Map<string, GroupedDevice>();
+  for (const svc of services) {
+    const base = shortDeviceName(svc.name);
+    if (!map.has(base)) {
+      map.set(base, { name: svc.name, displayName: base, connectService: null, pairService: null });
+    }
+    const entry = map.get(base)!;
+    if (svc.service_type.includes("pairing")) {
+      entry.pairService = svc;
+    } else {
+      entry.connectService = svc;
+    }
+  }
+  return Array.from(map.values());
+}
 
 interface DeviceSectionProps {
   devices: DeviceInfo[];
@@ -52,6 +84,7 @@ export function DeviceSection({
   const deviceLabel = deviceConnected ? (selectedDeviceInfo?.model || selectedDevice) : null;
   const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
   const hasWirelessDevices = devices.some((d) => isWirelessDevice(d.serial));
+  const wirelessDevices = devices.filter((d) => isWirelessDevice(d.serial));
 
   return (
     <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
@@ -263,27 +296,67 @@ export function DeviceSection({
                 )}
                 {wireless.discoveredDevices.length > 0 && (
                   <ul className="wifi-discovered-list">
-                    {wireless.discoveredDevices.map((svc) => (
-                      <li key={`${svc.name}-${svc.service_type}`} className="wifi-discovered-item">
+                    {groupMdnsServices(wireless.discoveredDevices).map((dev) => (
+                      <li key={dev.displayName} className="wifi-discovered-item">
                         <div className="wifi-discovered-info">
-                          <span className="wifi-discovered-name">{svc.name}</span>
-                          <span className="wifi-discovered-addr">{svc.ip_port}</span>
-                          <span className={`wifi-discovered-type ${svc.service_type.includes("pairing") ? "badge-yellow" : "badge-green"}`}>
-                            {svc.service_type.includes("pairing") ? "Pair" : "Connect"}
-                          </span>
+                          <Smartphone size={14} className="wifi-discovered-icon" />
+                          <span className="wifi-discovered-name">{dev.displayName}</span>
                         </div>
-                        <button
-                          className="btn btn-ghost btn-small"
-                          onClick={() => wireless.selectDiscovered(svc)}
-                          title={svc.service_type.includes("pairing") ? "Fill pairing fields" : "Fill connect fields"}
-                        >
-                          Use
-                        </button>
+                        <div className="wifi-discovered-actions">
+                          {dev.pairService && (
+                            <button
+                              className="btn btn-ghost btn-small"
+                              onClick={() => wireless.selectDiscovered(dev.pairService!)}
+                              title={`Fill pairing fields (${dev.pairService.ip_port})`}
+                            >
+                              <span className="wifi-discovered-type badge-yellow">Pair</span>
+                              <span className="wifi-discovered-addr">{dev.pairService.ip_port}</span>
+                            </button>
+                          )}
+                          {dev.connectService && (
+                            <button
+                              className="btn btn-ghost btn-small"
+                              onClick={() => wireless.selectDiscovered(dev.connectService!)}
+                              title={`Fill connect fields (${dev.connectService.ip_port})`}
+                            >
+                              <span className="wifi-discovered-type badge-green">Connect</span>
+                              <span className="wifi-discovered-addr">{dev.connectService.ip_port}</span>
+                            </button>
+                          )}
+                        </div>
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
+
+              {/* ── Connected Wireless Devices ─────────────────────── */}
+              {wirelessDevices.length > 0 && (
+                <div className="wifi-group">
+                  <div className="wifi-group-title">Connected wireless devices</div>
+                  <ul className="wifi-discovered-list">
+                    {wirelessDevices.map((d) => (
+                      <li key={d.serial} className="wifi-discovered-item">
+                        <div className="wifi-discovered-info">
+                          <Wifi size={14} className="wifi-discovered-icon" />
+                          <span className="wifi-discovered-name">{d.model || d.serial}</span>
+                          {d.model && <span className="wifi-discovered-addr">{d.serial}</span>}
+                          <span className={`wifi-discovered-type ${d.state === "device" ? "badge-green" : "badge-yellow"}`}>
+                            {d.state === "device" ? "Online" : d.state}
+                          </span>
+                        </div>
+                        <button
+                          className="btn btn-ghost btn-small wifi-disconnect-inline"
+                          onClick={() => wireless.disconnect(d.serial)}
+                          title={`Disconnect ${d.serial}`}
+                        >
+                          <Unplug size={12} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
