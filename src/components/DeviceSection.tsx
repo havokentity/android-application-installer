@@ -6,7 +6,7 @@ import {
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
 import { shortcutLabel } from "../helpers";
-import { isWirelessDevice } from "../hooks/useWirelessAdb";
+import { isWirelessDevice, isIpPortDevice, isMdnsDevice, deduplicateDevices } from "../hooks/useWirelessAdb";
 import type { WirelessAdbState } from "../hooks/useWirelessAdb";
 import type { DeviceInfo, DetectionStatus, MdnsService, OperationProgress } from "../types";
 
@@ -15,6 +15,13 @@ function shortDeviceName(name: string): string {
   // mDNS names are usually "adb-<serial>-<suffix>" or "adb-<serial>"
   const match = name.match(/^adb-(.+?)(?:-[a-zA-Z0-9]{4,})?$/);
   return match ? match[1] : name;
+}
+
+/** Return a short suffix indicating the wireless install mode for a device serial. */
+function deviceModeLabel(serial: string): string {
+  if (isIpPortDevice(serial)) return " ⚡ Direct";
+  if (isMdnsDevice(serial)) return " 🛡️ Verified";
+  return "";
 }
 
 /** Group raw mDNS services by device name, merging connect + pairing entries. */
@@ -83,8 +90,10 @@ export function DeviceSection({
   const deviceConnected = selectedDevice && devices.length > 0;
   const deviceLabel = deviceConnected ? (selectedDeviceInfo?.model || selectedDevice) : null;
   const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
-  const hasWirelessDevices = devices.some((d) => isWirelessDevice(d.serial));
   const wirelessDevices = devices.filter((d) => isWirelessDevice(d.serial));
+  const hasWirelessDevices = wirelessDevices.length > 0;
+  const activeDevices = devices.filter((d) => d.state === "device");
+  const uniqueActiveDevices = deduplicateDevices(activeDevices);
 
   return (
     <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
@@ -158,6 +167,7 @@ export function DeviceSection({
                   <option key={d.serial} value={d.serial}>
                     {d.model ? `${d.model} (${d.serial})` : d.serial}
                     {d.state !== "device" ? ` — ${d.state}` : ""}
+                    {d.state === "device" ? deviceModeLabel(d.serial) : ""}
                   </option>
                 ))}
               </select>
@@ -199,7 +209,7 @@ export function DeviceSection({
                 </button>
               </div>
             )}
-            {devices.length > 1 && (
+            {uniqueActiveDevices.length > 1 && (
               <div className="multi-device-row">
                 <label className="multi-device-label">
                   <input
@@ -207,7 +217,12 @@ export function DeviceSection({
                     checked={installAllDevices}
                     onChange={(e) => onInstallAllDevicesChange(e.target.checked)}
                   />
-                  Install to all {devices.filter(d => d.state === "device").length} connected devices
+                  Install to all {uniqueActiveDevices.length} connected devices
+                  {uniqueActiveDevices.length !== activeDevices.length && (
+                    <span className="hint" style={{ marginLeft: 6, display: "inline" }}>
+                      ({activeDevices.length - uniqueActiveDevices.length} duplicate connection{activeDevices.length - uniqueActiveDevices.length > 1 ? "s" : ""} excluded)
+                    </span>
+                  )}
                 </label>
               </div>
             )}

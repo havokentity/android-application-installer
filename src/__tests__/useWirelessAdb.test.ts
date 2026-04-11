@@ -3,13 +3,49 @@ import { describe, it, expect, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import {
   isWirelessDevice,
+  isIpPortDevice,
+  isMdnsDevice,
+  deduplicateDevices,
   isValidIp,
   isValidPort,
   isValidPairingCode,
   useWirelessAdb,
 } from "../hooks/useWirelessAdb";
+import type { DeviceInfo } from "../types";
 
 // ─── Utility validators ──────────────────────────────────────────────────────
+
+describe("isIpPortDevice", () => {
+  it("returns true for IP:port serial", () => {
+    expect(isIpPortDevice("192.168.1.100:5555")).toBe(true);
+  });
+
+  it("returns false for mDNS serial", () => {
+    expect(isIpPortDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp")).toBe(false);
+  });
+
+  it("returns false for USB serial", () => {
+    expect(isIpPortDevice("ABC123DEF456")).toBe(false);
+  });
+});
+
+describe("isMdnsDevice", () => {
+  it("returns true for mDNS connect serial", () => {
+    expect(isMdnsDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp")).toBe(true);
+  });
+
+  it("returns true for mDNS pairing serial", () => {
+    expect(isMdnsDevice("adb-PIXEL7-abcd._adb-tls-pairing._tcp")).toBe(true);
+  });
+
+  it("returns false for IP:port serial", () => {
+    expect(isMdnsDevice("192.168.1.100:5555")).toBe(false);
+  });
+
+  it("returns false for USB serial", () => {
+    expect(isMdnsDevice("ABC123DEF456")).toBe(false);
+  });
+});
 
 describe("isWirelessDevice", () => {
   it("returns true for IP:port serial", () => {
@@ -18,6 +54,14 @@ describe("isWirelessDevice", () => {
 
   it("returns true for another IP:port", () => {
     expect(isWirelessDevice("10.0.0.1:37123")).toBe(true);
+  });
+
+  it("returns true for mDNS connect serial", () => {
+    expect(isWirelessDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp")).toBe(true);
+  });
+
+  it("returns true for mDNS pairing serial", () => {
+    expect(isWirelessDevice("adb-PIXEL7-abcd._adb-tls-pairing._tcp")).toBe(true);
   });
 
   it("returns false for USB serial", () => {
@@ -34,6 +78,80 @@ describe("isWirelessDevice", () => {
 
   it("returns false for hostname:port", () => {
     expect(isWirelessDevice("mydevice:5555")).toBe(false);
+  });
+});
+
+// ─── deduplicateDevices ──────────────────────────────────────────────────────
+
+describe("deduplicateDevices", () => {
+  const makeDevice = (serial: string, model = "", product = ""): DeviceInfo => ({
+    serial, state: "device", model, product, transport_id: "",
+  });
+
+  it("returns same list when no duplicates", () => {
+    const devices = [
+      makeDevice("ABC123", "Pixel 7", "panther"),
+      makeDevice("192.168.1.100:5555", "Galaxy S24", "dm3q"),
+    ];
+    expect(deduplicateDevices(devices)).toHaveLength(2);
+  });
+
+  it("deduplicates IP:port and mDNS entries for the same device", () => {
+    const devices = [
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+      makeDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    // Prefers IP:port
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+  });
+
+  it("prefers IP:port over mDNS regardless of order", () => {
+    const devices = [
+      makeDevice("adb-SERIAL._adb-tls-connect._tcp", "I2401", "ossi"),
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+  });
+
+  it("does not deduplicate USB and wireless devices with same model", () => {
+    const devices = [
+      makeDevice("ABC123", "Pixel 7", "panther"),
+      makeDevice("192.168.1.100:5555", "Pixel 7", "panther"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(2);
+  });
+
+  it("does not deduplicate wireless devices with different models", () => {
+    const devices = [
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+      makeDevice("adb-SERIAL._adb-tls-connect._tcp", "Pixel 7", "panther"),
+    ];
+    expect(deduplicateDevices(devices)).toHaveLength(2);
+  });
+
+  it("does not deduplicate if model or product is empty", () => {
+    const devices = [
+      makeDevice("192.168.0.23:38355", "", ""),
+      makeDevice("adb-SERIAL._adb-tls-connect._tcp", "", ""),
+    ];
+    expect(deduplicateDevices(devices)).toHaveLength(2);
+  });
+
+  it("handles mix of USB, IP:port, and mDNS correctly", () => {
+    const devices = [
+      makeDevice("USB123", "Pixel 7", "panther"),
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+      makeDevice("adb-10BF._adb-tls-connect._tcp", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(2);
+    expect(result.map((d) => d.serial)).toContain("USB123");
+    expect(result.map((d) => d.serial)).toContain("192.168.0.23:38355");
   });
 });
 

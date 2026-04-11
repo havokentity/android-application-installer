@@ -18,7 +18,7 @@ import { useToolsState } from "./hooks/useToolsState";
 import { useDeviceState } from "./hooks/useDeviceState";
 import { useFileState } from "./hooks/useFileState";
 import { useAabSettings } from "./hooks/useAabSettings";
-import { useWirelessAdb } from "./hooks/useWirelessAdb";
+import { useWirelessAdb, deduplicateDevices } from "./hooks/useWirelessAdb";
 
 // ─── Components ──────────────────────────────────────────────────────────────
 import { Toolbar } from "./components/Toolbar";
@@ -134,7 +134,14 @@ function App() {
 
   // ── Devices ───────────────────────────────────────────────────────────
   const dev = useDeviceState(adbPath, adbStatus, addLog);
-  const wireless = useWirelessAdb({ adbPath, addLog, addToast });
+  const wireless = useWirelessAdb({
+    adbPath, addLog, addToast,
+    onDeviceChange: () => {
+      // Refresh immediately, and again after a delay to catch slow ADB server updates
+      dev.refreshDevices();
+      setTimeout(() => dev.refreshDevices(), 1500);
+    },
+  });
 
   // ── Tools ─────────────────────────────────────────────────────────────
   const tools = useToolsState(addLog, {
@@ -179,7 +186,7 @@ function App() {
     if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
 
     const targetDevices = dev.installAllDevices && dev.devices.length > 1
-      ? dev.devices.filter((d) => d.state === "device").map((d) => d.serial)
+      ? deduplicateDevices(dev.devices.filter((d) => d.state === "device")).map((d) => d.serial)
       : dev.selectedDevice ? [dev.selectedDevice] : [];
 
     if (targetDevices.length === 0) { addLog("error", "Please select a device first."); addToast("No device selected", "error"); return; }

@@ -4,9 +4,59 @@ import type { LogEntry, MdnsService } from "../types";
 import type { ToastLevel } from "../components/Toast";
 import * as api from "../api";
 
-/** Check if a device serial looks like a wireless device (IP:port format). */
-export function isWirelessDevice(serial: string): boolean {
+/** Check if a device serial is an IP:port format wireless connection. */
+export function isIpPortDevice(serial: string): boolean {
   return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{1,5}$/.test(serial);
+}
+
+/** Check if a device serial is an mDNS auto-discovered wireless connection. */
+export function isMdnsDevice(serial: string): boolean {
+  return /^adb-.*\._adb-tls-.*\._tcp/.test(serial);
+}
+
+/** Check if a device serial is any kind of wireless connection (IP:port or mDNS). */
+export function isWirelessDevice(serial: string): boolean {
+  return isIpPortDevice(serial) || isMdnsDevice(serial);
+}
+
+/**
+ * Deduplicate devices that represent the same physical device connected via
+ * multiple wireless transports (e.g. IP:port AND mDNS service name).
+ * Groups by model+product when both are non-empty and both entries are wireless.
+ * Returns one representative per physical device (prefers IP:port over mDNS).
+ */
+export function deduplicateDevices(devices: import("../types").DeviceInfo[]): import("../types").DeviceInfo[] {
+  const result: import("../types").DeviceInfo[] = [];
+  const consumed = new Set<string>();
+
+  for (const d of devices) {
+    if (consumed.has(d.serial)) continue;
+
+    if (isWirelessDevice(d.serial) && d.model && d.product) {
+      const twin = devices.find(
+        (o) =>
+          o.serial !== d.serial &&
+          !consumed.has(o.serial) &&
+          isWirelessDevice(o.serial) &&
+          o.model === d.model &&
+          o.product === d.product,
+      );
+
+      if (twin) {
+        // Prefer IP:port over mDNS — it installs without Play Protect scan
+        const preferred = isIpPortDevice(d.serial) ? d : twin;
+        consumed.add(d.serial);
+        consumed.add(twin.serial);
+        result.push(preferred);
+        continue;
+      }
+    }
+
+    consumed.add(d.serial);
+    result.push(d);
+  }
+
+  return result;
 }
 
 /** Validate an IPv4 address. */
@@ -67,9 +117,11 @@ interface UseWirelessAdbOptions {
   adbPath: string;
   addLog: (level: LogEntry["level"], message: string) => void;
   addToast: (message: string, level: ToastLevel) => void;
+  /** Called after a successful connect, pair, or disconnect so the consumer can refresh devices. */
+  onDeviceChange?: () => void;
 }
 
-export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOptions): WirelessAdbState {
+export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: UseWirelessAdbOptions): WirelessAdbState {
   const [wifiExpanded, setWifiExpanded] = useState(false);
   const [pairIp, setPairIp] = useState("");
   const [pairPort, setPairPort] = useState("");
@@ -100,6 +152,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       setConnectIp(pairIp);
       setPairingCode("");
       setNeedsPairing(false);
+      onDeviceChange?.();
     } catch (e) {
       const msg = String(e);
       if (msg.includes("cancelled")) {
@@ -112,7 +165,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     } finally {
       setIsPairing(false);
     }
-  }, [canPair, pairIp, pairPort, pairingCode, adbPath, addLog, addToast]);
+  }, [canPair, pairIp, pairPort, pairingCode, adbPath, addLog, addToast, onDeviceChange]);
 
   const connect = useCallback(async () => {
     if (!canConnect) return;
@@ -125,6 +178,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       addLog("success", result);
       addToast("Connected wirelessly", "success");
       setNeedsPairing(false);
+      onDeviceChange?.();
     } catch (e) {
       const msg = String(e);
       if (msg.includes("cancelled")) {
@@ -141,7 +195,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     } finally {
       setIsConnecting(false);
     }
-  }, [canConnect, connectIp, connectPort, adbPath, addLog, addToast]);
+  }, [canConnect, connectIp, connectPort, adbPath, addLog, addToast, onDeviceChange]);
 
   const disconnect = useCallback(async (serial: string) => {
     setIsDisconnecting(true);
@@ -151,6 +205,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       const result = await api.adbDisconnect(adbPath, serial);
       addLog("success", result);
       addToast("Device disconnected", "info");
+      onDeviceChange?.();
     } catch (e) {
       const msg = String(e);
       if (msg.includes("cancelled")) {
@@ -162,7 +217,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     } finally {
       setIsDisconnecting(false);
     }
-  }, [adbPath, addLog, addToast]);
+  }, [adbPath, addLog, addToast, onDeviceChange]);
 
   const cancelWirelessOp = useCallback(async () => {
     await api.setCancelFlag(true);
