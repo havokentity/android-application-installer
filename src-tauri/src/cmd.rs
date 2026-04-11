@@ -7,6 +7,36 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, OnceLock};
 use tauri::Emitter;
 
+// ─── Windows: Hide Console Windows ──────────────────────────────────────────
+
+/// Apply platform-specific creation flags to suppress visible console windows
+/// on Windows. No-op on other platforms.
+#[cfg(target_os = "windows")]
+fn no_window_cmd(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn no_window_cmd(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    cmd
+}
+
+/// Apply platform-specific creation flags to suppress visible console windows
+/// on Windows for async (tokio) commands. No-op on other platforms.
+#[cfg(target_os = "windows")]
+pub(crate) fn no_window_async(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn no_window_async(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
+    cmd
+}
+
 // ─── Data Types ──────────────────────────────────────────────────────────────
 
 /// Progress event emitted during async operations (install, launch, uninstall).
@@ -69,7 +99,7 @@ pub(crate) fn java_binary() -> &'static str {
 /// Run an external command and return (stdout, stderr).
 /// Returns Err if the process fails to start or exits with non-zero status.
 pub(crate) fn run_cmd(program: &str, args: &[&str]) -> Result<(String, String), String> {
-    let output = std::process::Command::new(program)
+    let output = no_window_cmd(&mut std::process::Command::new(program))
         .args(args)
         .output()
         .map_err(|e| format!("Failed to run '{}': {}", program, e))?;
@@ -93,7 +123,7 @@ pub(crate) fn run_cmd(program: &str, args: &[&str]) -> Result<(String, String), 
 /// Same as run_cmd but doesn't fail on non-zero exit (some tools like aapt2
 /// return non-zero but still produce useful output).
 pub(crate) fn run_cmd_lenient(program: &str, args: &[&str]) -> Result<(String, String, bool), String> {
-    let output = std::process::Command::new(program)
+    let output = no_window_cmd(&mut std::process::Command::new(program))
         .args(args)
         .output()
         .map_err(|e| format!("Failed to run '{}': {}", program, e))?;
@@ -148,7 +178,7 @@ pub(crate) async fn run_cmd_async_with_cancel(program: &str, args: &[&str], canc
         return Err("Operation cancelled by user.".to_string());
     }
 
-    let child = tokio::process::Command::new(program)
+    let child = no_window_async(&mut tokio::process::Command::new(program))
         .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -187,7 +217,7 @@ pub(crate) async fn run_cmd_async_lenient_with_cancel(program: &str, args: &[&st
         return Err("Operation cancelled by user.".to_string());
     }
 
-    let child = tokio::process::Command::new(program)
+    let child = no_window_async(&mut tokio::process::Command::new(program))
         .args(args)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

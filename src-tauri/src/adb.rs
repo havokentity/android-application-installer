@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Emitter;
 
-use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, run_cmd, run_cmd_async_lenient, run_cmd_async_with_cancel, run_cmd_lenient};
+use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, no_window_async, run_cmd, run_cmd_async_lenient, run_cmd_async_with_cancel, run_cmd_lenient};
 use crate::tools;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -337,7 +337,7 @@ pub(crate) async fn start_device_tracking(
 
     let handle = tokio::spawn(async move {
         // Ensure ADB server is running
-        let _ = tokio::process::Command::new(&adb)
+        let _ = no_window_async(&mut tokio::process::Command::new(&adb))
             .args(["start-server"])
             .output()
             .await;
@@ -348,7 +348,7 @@ pub(crate) async fn start_device_tracking(
             }
 
             // Spawn `adb track-devices -l`
-            let child = tokio::process::Command::new(&adb)
+            let child = no_window_async(&mut tokio::process::Command::new(&adb))
                 .args(["track-devices", "-l"])
                 .stdout(std::process::Stdio::piped())
                 .stderr(std::process::Stdio::null())

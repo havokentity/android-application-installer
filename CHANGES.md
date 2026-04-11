@@ -7,6 +7,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+### Fixed
+- **Windows: blank console windows appearing** — ADB and Java commands spawned visible `cmd.exe` windows on Windows, stealing focus and freezing the main app window; added `CREATE_NO_WINDOW` creation flag to all sync and async command runners so processes run silently in the background
+- **Windows: app freezing during ADB operations** — the visible console windows blocked the UI thread; closing them killed the ADB process, causing devices to appear disconnected; now all commands run windowless
+
+### Changed
+- Added `no_window_cmd()` and `no_window_async()` platform helpers in `cmd.rs` (`CREATE_NO_WINDOW` on Windows, no-op on macOS/Linux); applied to `run_cmd`, `run_cmd_lenient`, `run_cmd_async_with_cancel`, `run_cmd_async_lenient_with_cancel`, and both direct `tokio::process::Command` calls in the device tracker
+
+### Removed
+- Unused `run_cmd_async` function and its import — dead code superseded by `run_cmd_async_with_cancel`
 
 ---
 
