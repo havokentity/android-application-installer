@@ -257,7 +257,7 @@ jobs:
             [ -f "$exe" ] || continue
             NSIS_ZIP="${exe%-setup.exe}-setup.nsis.zip"
             echo "Creating ${NSIS_ZIP}"
-            zip -j "$NSIS_ZIP" "$exe"
+            zip -j -0 "$NSIS_ZIP" "$exe"
           done
 
           echo ""

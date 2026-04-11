@@ -7,6 +7,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+### Fixed
+- **Windows auto-updater fails with "Compression method not supported"** — the CI-generated `.nsis.zip` updater bundle used a compression method (Deflate64) that the Tauri updater's `zip` crate doesn't support; switched to store mode (`zip -0`) since the NSIS installer is already compressed internally
 
 ---
 
