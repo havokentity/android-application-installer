@@ -17,6 +17,7 @@ interface UseFileStateOptions {
 
 export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabToolPaths, onAutoProfileRestore }: UseFileStateOptions) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [packageName, setPackageName] = useState("");
@@ -31,6 +32,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
     if (!ft) { addLog("error", "Please select an APK or AAB file."); return; }
 
     setSelectedFile(path);
+    setSelectedFiles([path]);
     setFileType(ft);
     addLog("info", `Selected: ${getFileName(path)} (${ft.toUpperCase()})`);
     recordRecentFile(path, "packages");
@@ -89,24 +91,74 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
 
   handleFileSelectedRef.current = handleFileSelected;
 
+  /** Handle multiple files being selected (batch mode). */
+  const handleBatchFilesSelected = useCallback(async (paths: string[]) => {
+    const valid = paths.filter((p) => getFileType(p));
+    if (valid.length === 0) {
+      addLog("error", "No valid APK or AAB files found in selection.");
+      return;
+    }
+    if (valid.length === 1) {
+      return handleFileSelected(valid[0]);
+    }
+
+    // Batch mode: set the list but only fully process the first file
+    setSelectedFiles(valid);
+    addLog("info", `Selected ${valid.length} files for batch install`);
+
+    // Process the first file for metadata display
+    const first = valid[0];
+    const ft = getFileType(first);
+    setSelectedFile(first);
+    setFileType(ft);
+    setMetadata(null);
+
+    try {
+      const size = await api.getFileSize(first);
+      setFileSize(size);
+    } catch (e) {
+      setFileSize(null);
+    }
+
+    if (ft === "apk") {
+      try {
+        const pkg = await api.getPackageName(first);
+        setPackageName(pkg);
+      } catch (e) { console.warn("Failed to get package name:", e); }
+    }
+
+    for (const p of valid) {
+      recordRecentFile(p, "packages");
+    }
+  }, [addLog, handleFileSelected, recordRecentFile]);
+
   const browseFile = useCallback(async () => {
     try {
       const file = await open({
-        title: "Select APK or AAB file",
+        title: "Select APK or AAB file(s)",
+        multiple: true,
         filters: [
           { name: "Android Package", extensions: ["apk", "aab"] },
           { name: "APK Files", extensions: ["apk"] },
           { name: "AAB Files", extensions: ["aab"] },
         ],
       });
-      if (file) handleFileSelected(file as string);
+      if (file) {
+        const paths = Array.isArray(file) ? file : [file];
+        if (paths.length === 1) {
+          handleFileSelected(paths[0] as string);
+        } else if (paths.length > 1) {
+          handleBatchFilesSelected(paths as string[]);
+        }
+      }
     } catch (e) {
       addLog("error", `File dialog error: ${e}`);
     }
-  }, [handleFileSelected, addLog]);
+  }, [handleFileSelected, handleBatchFilesSelected, addLog]);
 
   const clearFile = useCallback(() => {
     setSelectedFile(null);
+    setSelectedFiles([]);
     setFileType(null);
     setFileSize(null);
     setMetadata(null);
@@ -121,7 +173,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
         setIsDragOver(true);
         // Check if the dragged file is supported
         const paths = (event.payload as any).paths;
-        if (paths && paths.length > 0 && !getFileType(paths[0])) {
+        if (paths && paths.length > 0 && !paths.some((p: string) => getFileType(p))) {
           setIsDragRejected(true);
         } else {
           setIsDragRejected(false);
@@ -134,11 +186,14 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
         setIsDragRejected(false);
         const paths = event.payload.paths;
         if (paths && paths.length > 0) {
-          const file = paths[0];
-          if (getFileType(file)) {
-            handleFileSelectedRef.current?.(file);
+          const valid = paths.filter((p: string) => getFileType(p));
+          if (valid.length === 0) {
+            addLog("error", "Unsupported file type. Please drop APK or AAB files.");
+          } else if (valid.length === 1) {
+            handleFileSelectedRef.current?.(valid[0]);
           } else {
-            addLog("error", "Unsupported file type. Please drop an APK or AAB file.");
+            // Batch drop
+            handleBatchFilesSelected(valid);
           }
         }
       }
@@ -150,13 +205,16 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
   useEffect(() => {
     const win = getCurrentWindow();
     const base = "Android Application Installer";
-    win.setTitle(selectedFile ? `${base} — ${getFileName(selectedFile)}` : base);
-  }, [selectedFile]);
+    if (selectedFiles.length > 1) {
+      win.setTitle(`${base} — ${selectedFiles.length} files selected`);
+    } else {
+      win.setTitle(selectedFile ? `${base} — ${getFileName(selectedFile)}` : base);
+    }
+  }, [selectedFile, selectedFiles]);
 
   return {
-    selectedFile, fileType, fileSize, packageName, setPackageName, metadata,
-    isDragOver, isDragRejected, browseFile, handleFileSelected, clearFile,
+    selectedFile, selectedFiles, fileType, fileSize, packageName, setPackageName, metadata,
+    isDragOver, isDragRejected, browseFile, handleFileSelected, handleBatchFilesSelected, clearFile,
   };
 }
-
 

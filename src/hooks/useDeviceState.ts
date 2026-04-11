@@ -1,7 +1,7 @@
 // ─── Device State Hook ────────────────────────────────────────────────────────
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
-import type { LogEntry, DeviceInfo, DetectionStatus } from "../types";
+import type { LogEntry, DeviceInfo, DeviceDetails, DetectionStatus } from "../types";
 import { deduplicateDevices } from "./useWirelessAdb";
 import type { DeduplicatedDevice } from "./useWirelessAdb";
 import * as api from "../api";
@@ -21,6 +21,7 @@ export function useDeviceState(
   const [installMode, setInstallMode] = useState<InstallMode>(
     () => (localStorage.getItem("installMode") as InstallMode) || "direct",
   );
+  const [deviceDetails, setDeviceDetails] = useState<Record<string, DeviceDetails>>({});
   const prevDeviceFingerprint = useRef("");
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
@@ -145,12 +146,33 @@ export function useDeviceState(
     else setDeviceExpanded(true);
   }, [selectedDevice, devices.length]);
 
+  // ── Fetch device details (Android version, API level, storage) ────
+  const fetchDeviceDetails = useCallback(async (serial: string) => {
+    if (!adbPath || deviceDetails[serial]) return;
+    try {
+      const details = await api.getDeviceDetails(adbPath, serial);
+      setDeviceDetails((prev) => ({ ...prev, [serial]: details }));
+    } catch (e) { console.warn(`Failed to get details for ${serial}:`, e); }
+  }, [adbPath, deviceDetails]);
+
+  // Auto-fetch details for selected device and all online devices
+  useEffect(() => {
+    if (!adbPath) return;
+    const online = devices.filter((d) => d.state === "device");
+    for (const d of online) {
+      if (!deviceDetails[d.serial]) {
+        fetchDeviceDetails(d.serial);
+      }
+    }
+  }, [devices, adbPath, deviceDetails, fetchDeviceDetails]);
+
   return {
     devices, selectedDevice, setSelectedDevice,
     loadingDevices, refreshDevices, refreshDevicesQuiet,
     deviceExpanded, setDeviceExpanded,
     installAllDevices, setInstallAllDevices,
     installMode, setInstallMode,
+    deviceDetails,
   };
 }
 

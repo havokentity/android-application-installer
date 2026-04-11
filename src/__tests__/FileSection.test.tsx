@@ -8,6 +8,7 @@ const emptyRecent: RecentFilesConfig = { packages: [], keystores: [] };
 
 const defaults = {
   selectedFile: null as string | null,
+  selectedFiles: [] as string[],
   fileType: null as "apk" | "aab" | null,
   fileSize: null as number | null,
   isDragOver: false,
@@ -30,7 +31,7 @@ describe("FileSection", () => {
   it("shows drop zone hint when no file is selected", () => {
     render(<FileSection {...defaults} />);
     expect(screen.getByText((_content, element) =>
-      element?.tagName === "P" && /Click or drop an apk or aab file/i.test(element.textContent ?? "")
+      element?.tagName === "P" && /Click or drop.*apk.*aab.*file/i.test(element.textContent ?? "")
     )).toBeInTheDocument();
   });
 
@@ -43,7 +44,7 @@ describe("FileSection", () => {
 
   it("shows drag-over text when isDragOver is true", () => {
     render(<FileSection {...defaults} isDragOver={true} />);
-    expect(screen.getByText("Drop to select file")).toBeInTheDocument();
+    expect(screen.getByText(/Drop to select file/)).toBeInTheDocument();
   });
 
   it("applies drag-over class", () => {
@@ -272,6 +273,30 @@ describe("FileSection", () => {
     render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" onAllowDowngradeChange={onChange} />);
     fireEvent.click(screen.getByText("Downgrade"));
     expect(onChange).toHaveBeenCalled();
+  });
+
+  // ── Batch file display ──────────────────────────────────────────────────────
+
+  it("shows batch file count badge when multiple files are selected", () => {
+    render(<FileSection {...defaults} selectedFile="/path/a.apk" fileType="apk"
+      selectedFiles={["/path/a.apk", "/path/b.apk", "/path/c.apk"]} />);
+    expect(screen.getByText("3 files")).toBeInTheDocument();
+  });
+
+  it("shows batch file list with file names", () => {
+    const { container } = render(<FileSection {...defaults} selectedFile="/path/a.apk" fileType="apk"
+      selectedFiles={["/path/a.apk", "/path/b.apk"]} />);
+    const batchList = container.querySelector(".batch-file-list");
+    expect(batchList).toBeInTheDocument();
+    expect(batchList?.textContent).toContain("a.apk");
+    expect(batchList?.textContent).toContain("b.apk");
+    expect(screen.getByText(/2 files queued for batch install/)).toBeInTheDocument();
+  });
+
+  it("does not show batch list when only one file is selected", () => {
+    render(<FileSection {...defaults} selectedFile="/path/a.apk" fileType="apk"
+      selectedFiles={["/path/a.apk"]} />);
+    expect(screen.queryByText(/files queued for batch install/)).not.toBeInTheDocument();
   });
 });
 

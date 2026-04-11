@@ -87,3 +87,18 @@ export interface PackageMetadata {
   fileSize: number;
 }
 
+// ─── Operation State Machine ──────────────────────────────────────────────────
+
+export type OperationState =
+  | { type: "idle" }
+  | { type: "installing"; progress: OperationProgress | null; cancelToken: string | null }
+  | { type: "extracting"; progress: OperationProgress | null; cancelToken: string | null };
+
+// ─── Device Details ───────────────────────────────────────────────────────────
+
+export interface DeviceDetails {
+  android_version: string;
+  api_level: string;
+  free_storage: string;
+}
+

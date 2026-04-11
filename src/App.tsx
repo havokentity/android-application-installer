@@ -5,7 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 import "./App.css";
-import type { LogEntry, OperationProgress, RecentFilesConfig, SigningProfile } from "./types";
+import type { LogEntry, OperationProgress, OperationState, RecentFilesConfig, SigningProfile } from "./types";
 import { nextLogId, getFileName, now } from "./helpers";
 import * as api from "./api";
 
@@ -48,11 +48,14 @@ function App() {
   }, []);
 
   // ── General state ─────────────────────────────────────────────────
-  const [isInstalling, setIsInstalling] = useState(false);
-  const [isExtracting, setIsExtracting] = useState(false);
+  const [operationState, setOperationState] = useState<OperationState>({ type: "idle" });
   const [allowDowngrade, setAllowDowngrade] = useState(false);
   const [appVersion, setAppVersion] = useState("");
-  const [operationProgress, setOperationProgress] = useState<OperationProgress | null>(null);
+
+  // ── Derived state from operation state machine ──────────────────────
+  const isInstalling = operationState.type === "installing";
+  const isExtracting = operationState.type === "extracting";
+  const operationProgress = operationState.type !== "idle" ? operationState.progress : null;
 
   useEffect(() => { getVersion().then(setAppVersion).catch((e) => console.warn("Failed to get app version:", e)); }, []);
 
@@ -67,13 +70,20 @@ function App() {
   useEffect(() => {
     const unlisten = listen<OperationProgress>("operation-progress", (event) => {
       const p = event.payload;
-      setOperationProgress(p);
+      setOperationState((prev) => {
+        if (prev.type === "idle") return prev;
+        return { ...prev, progress: p };
+      });
       if (p.status === "done") {
-        setTimeout(() => setOperationProgress((prev) => prev?.status === "done" ? null : prev), 1500);
+        setTimeout(() => setOperationState((prev) => {
+          if (prev.type !== "idle" && prev.progress?.status === "done") return { ...prev, progress: null };
+          return prev;
+        }), 1500);
       } else if (p.status === "error" || p.status === "cancelled") {
-        setTimeout(() => setOperationProgress((prev) =>
-          (prev?.status === "error" || prev?.status === "cancelled") ? null : prev
-        ), 500);
+        setTimeout(() => setOperationState((prev) => {
+          if (prev.type !== "idle" && (prev.progress?.status === "error" || prev.progress?.status === "cancelled")) return { ...prev, progress: null };
+          return prev;
+        }), 500);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -286,7 +296,8 @@ function App() {
   }, [dev.installMode, dev.devices]);
 
   const install = async (andRun = false) => {
-    if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
+    const filesToInstall = file.selectedFiles.length > 0 ? file.selectedFiles : file.selectedFile ? [file.selectedFile] : [];
+    if (filesToInstall.length === 0) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
 
     const targetDevices = dev.installAllDevices && enrichedDevices.length > 1
       ? deduplicateDevices(enrichedDevices.filter((d) => d.state === "device")).map((d) => ({
@@ -303,68 +314,83 @@ function App() {
 
     if (targetDevices.length === 0) { addLog("error", "Please select a device first."); addToast("No device selected", "error"); return; }
 
-    if (file.fileType === "aab") {
+    if (file.fileType === "aab" || filesToInstall.some((f) => f.toLowerCase().endsWith(".aab"))) {
       if (!aab.javaPath || aab.javaStatus !== "found") { addLog("error", "Java is required for AAB installation. Please install a JDK."); return; }
       if (!aab.bundletoolPath || aab.bundletoolStatus !== "found") { addLog("error", "bundletool is required for AAB installation. Download it in the Tools or AAB Settings section."); return; }
     }
 
-    setIsInstalling(true);
-    setOperationProgress(null);
-    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
+    // Create a per-operation cancellation token
+    let cancelToken: string | null = null;
+    try { cancelToken = await api.createCancelToken(); } catch (e) { console.warn("createCancelToken failed:", e); }
 
-    const fileName = getFileName(file.selectedFile);
-    const multi = targetDevices.length > 1;
+    setOperationState({ type: "installing", progress: null, cancelToken });
+
+    const isBatch = filesToInstall.length > 1;
+    let cancelled = false;
 
     try {
-      for (const target of targetDevices) {
-        const { serial: device, label: deviceLabel } = target;
-        const prefix = multi ? `[${deviceLabel}] ` : "";
+      for (let fi = 0; fi < filesToInstall.length; fi++) {
+        if (cancelled) break;
+        const currentFile = filesToInstall[fi];
+        const currentFileType = currentFile.toLowerCase().endsWith(".aab") ? "aab" : "apk";
+        const fileName = getFileName(currentFile);
+        const batchPrefix = isBatch ? `[${fi + 1}/${filesToInstall.length}] ` : "";
 
-        try {
-          if (file.fileType === "apk") {
-            addLog("info", `${prefix}Installing ${fileName}${allowDowngrade ? " (downgrade allowed)" : ""}...`);
-            addLog("success", prefix + await api.installApk(adbPath, device, file.selectedFile, allowDowngrade));
-            addToast(`${fileName} installed on ${deviceLabel}`, "success");
-          } else if (file.fileType === "aab") {
-            addLog("info", `${prefix}Installing ${fileName} via bundletool${allowDowngrade ? " (downgrade allowed)" : ""}...`);
-            addLog("success", prefix + await api.installAab({
-              adbPath, device, aabPath: file.selectedFile,
-              javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath,
-              keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
-              keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
-              allowDowngrade,
-            }));
-            addToast(`${fileName} installed on ${deviceLabel}`, "success");
-          }
+        for (const target of targetDevices) {
+          if (cancelled) break;
+          const { serial: device, label: deviceLabel } = target;
+          const multi = targetDevices.length > 1;
+          const prefix = `${batchPrefix}${multi ? `[${deviceLabel}] ` : ""}`;
 
-          // Record file-profile association on successful install
-          if (activeProfileName && file.selectedFile) {
-            api.setProfileForFile(file.selectedFile, activeProfileName).catch((e) =>
-              console.warn("Failed to save file-profile association:", e)
-            );
-          }
+          try {
+            if (currentFileType === "apk") {
+              addLog("info", `${prefix}Installing ${fileName}${allowDowngrade ? " (downgrade allowed)" : ""}...`);
+              addLog("success", prefix + await api.installApk(adbPath, device, currentFile, allowDowngrade, cancelToken ?? undefined));
+              addToast(`${fileName} installed on ${deviceLabel}`, "success");
+            } else if (currentFileType === "aab") {
+              addLog("info", `${prefix}Installing ${fileName} via bundletool${allowDowngrade ? " (downgrade allowed)" : ""}...`);
+              addLog("success", prefix + await api.installAab({
+                adbPath, device, aabPath: currentFile,
+                javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath,
+                keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
+                keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
+                allowDowngrade,
+                cancelToken: cancelToken ?? undefined,
+              }));
+              addToast(`${fileName} installed on ${deviceLabel}`, "success");
+            }
 
-          if (andRun && file.packageName) {
-            addLog("info", `${prefix}Launching ${file.packageName}...`);
-            addLog("success", prefix + await api.launchApp(adbPath, device, file.packageName));
-          } else if (andRun && !file.packageName) {
-            addLog("warning", `${prefix}Cannot launch — package name not set.`);
+            // Record file-profile association on successful install
+            if (activeProfileName && currentFile) {
+              api.setProfileForFile(currentFile, activeProfileName).catch((e) =>
+                console.warn("Failed to save file-profile association:", e)
+              );
+            }
+
+            if (andRun && file.packageName) {
+              addLog("info", `${prefix}Launching ${file.packageName}...`);
+              addLog("success", prefix + await api.launchApp(adbPath, device, file.packageName, cancelToken ?? undefined));
+            } else if (andRun && !file.packageName) {
+              addLog("warning", `${prefix}Cannot launch — package name not set.`);
+            }
+          } catch (e) {
+            const msg = String(e);
+            addLog("error", `${prefix}${msg}`);
+            if (msg.includes("cancelled")) {
+              addLog("warning", `${prefix}Operation cancelled by user.`);
+              addToast("Installation cancelled", "warning");
+              cancelled = true;
+              break;
+            }
+            addToast(`Install failed on ${deviceLabel}`, "error");
           }
-        } catch (e) {
-          const msg = String(e);
-          addLog("error", `${prefix}${msg}`);
-          if (msg.includes("cancelled")) {
-            addLog("warning", `${prefix}Operation cancelled by user.`);
-            addToast("Installation cancelled", "warning");
-            break;
-          }
-          addToast(`Install failed on ${deviceLabel}`, "error");
         }
       }
     } finally {
-      setIsInstalling(false);
-      setOperationProgress(null);
-      notify("Installation Complete", `${getFileName(file.selectedFile!)} has been installed.`);
+      setOperationState({ type: "idle" });
+      if (cancelToken) { api.releaseCancelToken(cancelToken).catch((e) => console.warn("releaseCancelToken failed:", e)); }
+      const summary = isBatch ? `${filesToInstall.length} files installed` : `${getFileName(filesToInstall[0])} has been installed.`;
+      notify("Installation Complete", summary);
     }
   };
 
@@ -372,7 +398,6 @@ function App() {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
-    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
     try {
       addLog("info", `Launching ${file.packageName}...`);
       addLog("success", await api.launchApp(adbPath, effectiveSerial, file.packageName));
@@ -384,7 +409,6 @@ function App() {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
-    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
     try {
       addLog("info", `Stopping ${file.packageName}...`);
       addLog("success", await api.stopApp(adbPath, effectiveSerial, file.packageName));
@@ -400,7 +424,6 @@ function App() {
       title: "Confirm Uninstall", kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel",
     });
     if (!confirmed) return;
-    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
     try {
       addLog("info", `Uninstalling ${file.packageName}...`);
       addLog("success", await api.uninstallApp(adbPath, effectiveSerial, file.packageName));
@@ -410,7 +433,12 @@ function App() {
 
   const cancelOperation = async () => {
     try {
-      await api.setCancelFlag(true);
+      // Cancel via per-operation token if available, otherwise fall back to global flag
+      if (operationState.type !== "idle" && operationState.cancelToken) {
+        await api.cancelOperation(operationState.cancelToken);
+      } else {
+        await api.setCancelFlag(true);
+      }
       addLog("warning", "Cancelling operation...");
       addToast("Cancelling operation…", "warning");
     } catch (e) {
@@ -433,9 +461,10 @@ function App() {
     });
     if (!outputPath) return;
 
-    setIsExtracting(true);
-    setOperationProgress(null);
-    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
+    let cancelToken: string | null = null;
+    try { cancelToken = await api.createCancelToken(); } catch (e) { console.warn("createCancelToken failed:", e); }
+
+    setOperationState({ type: "extracting", progress: null, cancelToken });
 
     try {
       addLog("info", `Extracting universal APK from ${getFileName(file.selectedFile)}...`);
@@ -444,6 +473,7 @@ function App() {
         javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath,
         keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
         keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
+        cancelToken: cancelToken ?? undefined,
       });
       addLog("success", result);
       addToast("APK extracted successfully", "success");
@@ -451,8 +481,8 @@ function App() {
       addLog("error", String(e));
       addToast("APK extraction failed", "error");
     } finally {
-      setIsExtracting(false);
-      setOperationProgress(null);
+      setOperationState({ type: "idle" });
+      if (cancelToken) { api.releaseCancelToken(cancelToken).catch((e) => console.warn("releaseCancelToken failed:", e)); }
       notify("Extraction Complete", `APK extracted from ${getFileName(file.selectedFile!)}`);
     }
   };
@@ -505,12 +535,13 @@ function App() {
       onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}
       wireless={wireless}
+      deviceDetails={dev.deviceDetails}
     />
   );
 
   const fileSectionEl = (
     <FileSection
-      selectedFile={file.selectedFile} fileType={file.fileType} fileSize={file.fileSize} isDragOver={file.isDragOver} isDragRejected={file.isDragRejected}
+      selectedFile={file.selectedFile} selectedFiles={file.selectedFiles} fileType={file.fileType} fileSize={file.fileSize} isDragOver={file.isDragOver} isDragRejected={file.isDragRejected}
       packageName={file.packageName} onPackageNameChange={file.setPackageName}
       onBrowseFile={file.browseFile} onClearFile={file.clearFile}
       onFileSelected={file.handleFileSelected}

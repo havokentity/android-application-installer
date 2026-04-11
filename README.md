@@ -58,7 +58,9 @@
 
 ### 🎨 Interface
 
-- **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app
+- **Drag & drop** — drag APK or AAB files from Finder / Explorer directly into the app; supports multiple files for batch install
+- **Batch file install** — select or drop multiple APK/AAB files and install them sequentially across all target devices with per-file progress
+- **Device info** — Android version, API level, and free storage shown below the device dropdown and in the device selector
 - **Keyboard shortcuts** — `Cmd/Ctrl+O` open file, `Cmd/Ctrl+I` install, `Cmd/Ctrl+Shift+I` install & run, `Cmd/Ctrl+L` launch, `Cmd/Ctrl+K` stop, `Cmd/Ctrl+U` uninstall, `Cmd/Ctrl+E` extract APK
 - **Toast notifications** — auto-dismissing success/error/warning/info toasts for key events (install, launch, stop, uninstall, ADB detection, extraction)
 - **Landscape & Portrait modes** — toggle between a wide two-panel layout and a compact vertical layout

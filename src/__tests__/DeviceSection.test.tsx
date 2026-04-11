@@ -96,6 +96,7 @@ const defaults = {
   operationProgress: null,
   onCancelOperation: vi.fn(),
   wireless: wirelessDefaults,
+  deviceDetails: {} as Record<string, any>,
 };
 
 describe("DeviceSection", () => {
@@ -689,6 +690,31 @@ describe("DeviceSection", () => {
     const option = screen.getByRole("option", { name: /PIXEL7/ });
     expect(option).toBeInTheDocument();
     expect(option.textContent).toContain("PIXEL7 (wireless)");
+  });
+
+  // ── Device details ───────────────────────────────────────────────────────
+
+  it("shows device details row when details are available", () => {
+    const details = { ABC123: { android_version: "14", api_level: "34", free_storage: "25.3 GB" } };
+    const { container } = render(<DeviceSection {...defaults} devices={[device1]} selectedDevice="ABC123" expanded={true} deviceDetails={details} />);
+    const detailsRow = container.querySelector(".device-details-row");
+    expect(detailsRow).toBeInTheDocument();
+    expect(detailsRow?.textContent).toContain("Android 14");
+    expect(detailsRow?.textContent).toContain("API 34");
+    expect(detailsRow?.textContent).toContain("25.3 GB free");
+  });
+
+  it("does not show device details row when details are missing", () => {
+    render(<DeviceSection {...defaults} devices={[device1]} selectedDevice="ABC123" expanded={true} deviceDetails={{}} />);
+    expect(screen.queryByText(/Android \d+/)).not.toBeInTheDocument();
+  });
+
+  it("includes Android version and API in dropdown text when details available", () => {
+    const details = { ABC123: { android_version: "13", api_level: "33", free_storage: "10.0 GB" } };
+    render(<DeviceSection {...defaults} devices={[device1]} selectedDevice="ABC123" expanded={true} deviceDetails={details} />);
+    const option = screen.getByRole("option", { name: /Android 13/ });
+    expect(option).toBeInTheDocument();
+    expect(option.textContent).toContain("API 33");
   });
 });
 

@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  DeviceInfo, ToolsStatus, StaleTool, RecentFilesConfig, MdnsService,
+  DeviceInfo, DeviceDetails, ToolsStatus, StaleTool, RecentFilesConfig, MdnsService,
   SigningProfile, PackageMetadata,
 } from "./types";
 
@@ -15,6 +15,9 @@ export const findAdb = () =>
 
 export const getDevices = (adbPath: string) =>
   invoke<DeviceInfo[]>("get_devices", { adbPath });
+
+export const getDeviceDetails = (adbPath: string, device: string) =>
+  invoke<DeviceDetails>("get_device_details", { adbPath, device });
 
 export const startDeviceTracking = (adbPath: string) =>
   invoke<void>("start_device_tracking", { adbPath });
@@ -39,8 +42,8 @@ export const adbMdnsCheck = (adbPath: string) =>
 export const adbMdnsServices = (adbPath: string) =>
   invoke<MdnsService[]>("adb_mdns_services", { adbPath });
 
-export const installApk = (adbPath: string, device: string, apkPath: string, allowDowngrade?: boolean) =>
-  invoke<string>("install_apk", { adbPath, device, apkPath, allowDowngrade: allowDowngrade ?? false });
+export const installApk = (adbPath: string, device: string, apkPath: string, allowDowngrade?: boolean, cancelToken?: string) =>
+  invoke<string>("install_apk", { adbPath, device, apkPath, allowDowngrade: allowDowngrade ?? false, cancelToken: cancelToken ?? null });
 
 export const installAab = (params: {
   adbPath: string; device: string; aabPath: string;
@@ -48,23 +51,25 @@ export const installAab = (params: {
   keystorePath: string | null; keystorePass: string | null;
   keyAlias: string | null; keyPass: string | null;
   allowDowngrade?: boolean;
-}) => invoke<string>("install_aab", params);
+  cancelToken?: string;
+}) => invoke<string>("install_aab", { ...params, cancelToken: params.cancelToken ?? null });
 
 export const extractApkFromAab = (params: {
   aabPath: string; outputPath: string;
   javaPath: string; bundletoolPath: string;
   keystorePath: string | null; keystorePass: string | null;
   keyAlias: string | null; keyPass: string | null;
-}) => invoke<string>("extract_apk_from_aab", params);
+  cancelToken?: string;
+}) => invoke<string>("extract_apk_from_aab", { ...params, cancelToken: params.cancelToken ?? null });
 
-export const launchApp = (adbPath: string, device: string, packageName: string) =>
-  invoke<string>("launch_app", { adbPath, device, packageName });
+export const launchApp = (adbPath: string, device: string, packageName: string, cancelToken?: string) =>
+  invoke<string>("launch_app", { adbPath, device, packageName, cancelToken: cancelToken ?? null });
 
-export const stopApp = (adbPath: string, device: string, packageName: string) =>
-  invoke<string>("stop_app", { adbPath, device, packageName });
+export const stopApp = (adbPath: string, device: string, packageName: string, cancelToken?: string) =>
+  invoke<string>("stop_app", { adbPath, device, packageName, cancelToken: cancelToken ?? null });
 
-export const uninstallApp = (adbPath: string, device: string, packageName: string) =>
-  invoke<string>("uninstall_app", { adbPath, device, packageName });
+export const uninstallApp = (adbPath: string, device: string, packageName: string, cancelToken?: string) =>
+  invoke<string>("uninstall_app", { adbPath, device, packageName, cancelToken: cancelToken ?? null });
 
 // ─── Package ──────────────────────────────────────────────────────────────────
 
@@ -143,6 +148,15 @@ export const setProfileForFile = (path: string, profileName: string) =>
 
 export const setCancelFlag = (cancel: boolean) =>
   invoke("set_cancel_flag", { cancel });
+
+export const createCancelToken = () =>
+  invoke<string>("create_cancel_token");
+
+export const cancelOperation = (token: string) =>
+  invoke("cancel_operation", { token });
+
+export const releaseCancelToken = (token: string) =>
+  invoke("release_cancel_token", { token });
 
 // ─── File I/O ─────────────────────────────────────────────────────────────────
 

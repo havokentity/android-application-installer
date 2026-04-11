@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type {
   DeviceInfo, LogEntry, ToolsStatus, DownloadProgress,
   StaleTool, DetectionStatus, RecentFile, RecentFilesConfig,
-  SigningProfile, PackageMetadata,
+  SigningProfile, PackageMetadata, OperationState, DeviceDetails,
 } from "../types";
 
 describe("Types", () => {
@@ -171,6 +171,47 @@ describe("Types", () => {
       };
       expect(meta.packageName).toBeNull();
       expect(meta.permissions).toEqual([]);
+    });
+  });
+
+  describe("OperationState", () => {
+    it("represents idle state", () => {
+      const state: OperationState = { type: "idle" };
+      expect(state.type).toBe("idle");
+    });
+
+    it("represents installing state with cancel token", () => {
+      const state: OperationState = { type: "installing", progress: null, cancelToken: "op-1" };
+      expect(state.type).toBe("installing");
+      expect(state.cancelToken).toBe("op-1");
+      expect(state.progress).toBeNull();
+    });
+
+    it("represents extracting state with progress", () => {
+      const progress = { operation: "extract_apk", device: "", status: "running", message: "Extracting...", step: 1, total_steps: 2, cancellable: true };
+      const state: OperationState = { type: "extracting", progress, cancelToken: "op-2" };
+      expect(state.type).toBe("extracting");
+      expect(state.progress?.operation).toBe("extract_apk");
+    });
+
+    it("derives isInstalling correctly", () => {
+      const idle: OperationState = { type: "idle" };
+      const installing: OperationState = { type: "installing", progress: null, cancelToken: null };
+      expect(idle.type === "installing").toBe(false);
+      expect(installing.type === "installing").toBe(true);
+    });
+  });
+
+  describe("DeviceDetails", () => {
+    it("has all required fields", () => {
+      const details: DeviceDetails = {
+        android_version: "14",
+        api_level: "34",
+        free_storage: "25.3 GB",
+      };
+      expect(details.android_version).toBe("14");
+      expect(details.api_level).toBe("34");
+      expect(details.free_storage).toBe("25.3 GB");
     });
   });
 });

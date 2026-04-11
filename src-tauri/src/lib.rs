@@ -16,6 +16,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             adb::find_adb,
             adb::get_devices,
+            adb::get_device_details,
             adb::start_device_tracking,
             adb::stop_device_tracking,
             adb::adb_pair,
@@ -39,6 +40,9 @@ pub fn run() {
             java::find_bundletool,
             java::list_key_aliases,
             cmd::set_cancel_flag,
+            cmd::create_cancel_token,
+            cmd::cancel_operation,
+            cmd::release_cancel_token,
             cmd::save_text_file,
             cmd::send_notification,
             tools::status::get_tools_status,

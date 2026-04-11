@@ -129,8 +129,8 @@ State is distributed across custom hooks, each owning a specific domain. `App.ts
 | Hook | Domain |
 |------|--------|
 | `useToolsState` | Tool download status, progress, staleness |
-| `useDeviceState` | Device list, selected device, polling |
-| `useFileState` | Selected file, type (APK/AAB), drag-drop, package name, auto-profile restore |
+| `useDeviceState` | Device list, selected device, polling, device details (version/API/storage) |
+| `useFileState` | Selected file(s), type (APK/AAB), drag-drop, batch files, package name, auto-profile restore |
 | `useAabSettings` | Java/bundletool paths, keystore config, AAB detection |
 | `useUpdater` | Auto-updater check, download progress, preferences |
 | `useLayout` | Portrait/landscape, theme, panel width |
@@ -141,11 +141,28 @@ State is distributed across custom hooks, each owning a specific domain. `App.ts
 
 All Tauri IPC calls go through `src/api.ts`, a typed wrapper that maps every `invoke()` call to a named function with full TypeScript types — no string-based command names in components.
 
-### 5. Progress Events
+### 5. Operation State Machine
+
+Operations use a discriminated union `OperationState` instead of independent boolean flags:
+
+```typescript
+type OperationState =
+  | { type: "idle" }
+  | { type: "installing"; progress: OperationProgress | null; cancelToken: string | null }
+  | { type: "extracting"; progress: OperationProgress | null; cancelToken: string | null };
+```
+
+Derived values (`isInstalling`, `isExtracting`, `operationProgress`) are computed from the state. This prevents impossible states like `isInstalling && isExtracting` simultaneously.
+
+### 5a. Per-Operation Cancellation
+
+Each install/extract operation creates a unique cancellation token on the backend (`create_cancel_token`). The token ID is stored in the `OperationState` and passed to every async backend command. When the user clicks Cancel, the token-specific flag is set via `cancel_operation(token)`. After the operation finishes, `release_cancel_token(token)` cleans up. The legacy global `set_cancel_flag` is retained for backward compatibility with wireless ADB commands.
+
+### 6. Progress Events
 
 Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, status). The frontend listens via `@tauri-apps/api/event` and routes to the correct progress state by `tool` field.
 
-### 6. Cross-Platform Handling
+### 7. Cross-Platform Handling
 
 - **ADB binary name**: `adb` vs `adb.exe` (via `adb_binary()`)
 - **Java binary name**: `java` vs `java.exe` (via `java_binary()`)
@@ -160,6 +177,7 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 |------------------------|-------------|-------------------------------------------------|
 | `find_adb`             | adb.rs      | Auto-detect ADB binary                          |
 | `get_devices`          | adb.rs      | List connected devices via `adb devices -l`     |
+| `get_device_details`   | adb.rs      | Android version, API level, free storage via `getprop` + `df` |
 | `start_device_tracking`| adb.rs      | Start push-based `adb track-devices -l` with event emission |
 | `stop_device_tracking` | adb.rs      | Stop the background device tracking task        |
 | `install_apk`          | adb.rs      | `adb install -r <apk>`                          |
@@ -177,7 +195,10 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `check_java`           | java.rs     | Detect Java path + version                      |
 | `find_bundletool`      | java.rs     | Locate bundletool.jar                           |
 | `list_key_aliases`     | java.rs     | List key aliases from a keystore via keytool    |
-| `set_cancel_flag`      | cmd.rs      | Set/clear cancellation flag for async ops       |
+| `set_cancel_flag`      | cmd.rs      | Set/clear global cancellation flag (legacy, backward compat) |
+| `create_cancel_token`  | cmd.rs      | Create a per-operation cancellation token (returns unique ID) |
+| `cancel_operation`     | cmd.rs      | Cancel a specific operation by its token         |
+| `release_cancel_token` | cmd.rs      | Release (cleanup) a cancellation token after operation ends |
 | `save_text_file`       | cmd.rs      | Write text content to a file (log export)       |
 | `get_tools_status`     | tools/status.rs  | Check which managed tools are installed     |
 | `setup_platform_tools` | tools/download.rs | Download + extract ADB platform-tools      |

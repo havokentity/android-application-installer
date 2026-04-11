@@ -10,9 +10,9 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 ### 🔥 High Impact
 
 - [x] **Wireless ADB (WiFi)** — `adb pair` / `adb connect` / `adb disconnect` support for Android 11+. Collapsible WiFi panel in DeviceSection with IP/port/pairing-code entry, auto-fill connect IP after pairing, disconnect button for wireless devices. Backed by `useWirelessAdb` hook. See [wireless-adb-guide.md](wireless-adb-guide.md).
-- [ ] **Batch file install** — Select or drop multiple APK/AAB files. Install sequentially with per-file progress.
+- [x] **Batch file install** — Select or drop multiple APK/AAB files. Install sequentially with per-file progress. Multi-select file dialog, batch drag-drop, numbered queue display, per-file × per-device progress prefixes.
 - [x] **APK/AAB metadata panel** — Show version name/code, min/target SDK, permissions, file size before installing. Metadata row displayed below file info. Backend: `get_apk_metadata` (binary manifest + aapt fallback) and `get_aab_metadata` (bundletool dump manifest). Auto-fetched on file selection.
-- [ ] **Device info enrichment** — Show Android version, API level, free storage next to each device.
+- [x] **Device info enrichment** — Show Android version, API level, free storage next to each device. Auto-fetched via `adb shell getprop` and `df /data`; displayed in device dropdown and details row below.
 - [x] **Signing profile presets** — Save named keystore + password + alias configs so you don't re-enter credentials. Profiles stored in `signing_profiles.json` with passwords encrypted (AES-256-GCM). File-to-profile auto-association remembers which profile was used with each file and auto-restores on re-selection. UI in AabSettingsSection with dropdown, save, and delete controls. Backend: `get_signing_profiles`, `save_signing_profile`, `delete_signing_profile`, `get_profile_for_file`, `set_profile_for_file` commands.
 
 ### ⚡ Medium Impact, Quick Wins
@@ -39,7 +39,7 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 - [x] **Extract keystore args builder** — Shared `build_keystore_args()` helper in `adb.rs`; used by `install_aab` and `extract_apk_from_aab`.
 - [x] **Replace swallowed errors** — All catch blocks now log via `console.warn` or `addLog`; no empty `.catch(() => {})` remaining.
 - [x] **Add React Error Boundary** — Wrap root in `<ErrorBoundary>` component.
-- [ ] **Concurrency-safe cancellation** — Per-operation cancellation tokens instead of global `AtomicBool`.
+- [x] **Concurrency-safe cancellation** — Per-operation cancellation tokens (`create_cancel_token`, `cancel_operation`, `release_cancel_token`) instead of global `AtomicBool`. Each install/extract gets a unique token; cancel targets specific operations. Global flag retained for backward compat.
 
 ---
 
@@ -67,7 +67,7 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 - [x] **Typed IPC layer** — Created `src/api.ts` wrapping all `invoke()` calls with typed functions. Zero string-based command names in App.tsx.
 - [ ] **Auto-generated TypeScript types** — Use `ts-rs` or `tauri-specta` to generate TS interfaces from Rust structs.
-- [ ] **State machine for operations** — Replace boolean flags with discriminated union state machine.
+- [x] **State machine for operations** — Replaced `isInstalling`/`isExtracting`/`operationProgress` boolean flags with discriminated union `OperationState` (`idle | installing | extracting`) carrying progress and cancel token. Derived booleans computed from state.
 - [x] **Keystore password security** — Signing profile passwords encrypted at rest using AES-256-GCM with a machine-local key (`signing_key.bin`). Legacy plaintext profiles migrated transparently on first load.
 
 ---
@@ -76,9 +76,9 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 | Category | Done | Remaining |
 |----------|------|-----------|
-| New Features (1) | 9 | 4 |
-| Code Quality (2) | 6 | 1 |
+| New Features (1) | 11 | 2 |
+| Code Quality (2) | 7 | 0 |
 | UX (3) | 6 | 0 |
 | Performance (4) | 4 | 0 |
-| Architecture (5) | 2 | 2 |
-| **Total** | **27** | **7** |
+| Architecture (5) | 3 | 1 |
+| **Total** | **31** | **3** |

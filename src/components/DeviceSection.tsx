@@ -10,7 +10,7 @@ import { isWirelessDevice, isIpPortDevice, isMdnsDevice, deduplicateDevices } fr
 import type { DeduplicatedDevice } from "../hooks/useWirelessAdb";
 import type { WirelessAdbState } from "../hooks/useWirelessAdb";
 import type { InstallMode } from "../hooks/useDeviceState";
-import type { DetectionStatus, MdnsService, OperationProgress } from "../types";
+import type { DetectionStatus, DeviceDetails, MdnsService, OperationProgress } from "../types";
 
 /** Extract a short display name from an mDNS service name (e.g. "adb-PIXEL7-abc" → "PIXEL7"). */
 function shortDeviceName(name: string): string {
@@ -90,6 +90,7 @@ interface DeviceSectionProps {
   operationProgress: OperationProgress | null;
   onCancelOperation: () => void;
   wireless: WirelessAdbState;
+  deviceDetails: Record<string, DeviceDetails>;
 }
 
 export function DeviceSection({
@@ -102,6 +103,7 @@ export function DeviceSection({
   onInstall, onLaunch, onStopApp, onUninstall,
   operationProgress, onCancelOperation,
   wireless,
+  deviceDetails,
 }: DeviceSectionProps) {
   const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
   const deviceConnected = selectedDevice && devices.length > 0;
@@ -195,9 +197,12 @@ export function DeviceSection({
                 {devices.length === 0 && <option value="">No devices connected</option>}
                 {devices.map((d) => {
                   const displaySerial = getDisplaySerial(d.serial, wireless.discoveredDevices);
+                  const details = deviceDetails[d.serial];
+                  const detailStr = details ? ` — Android ${details.android_version} (API ${details.api_level})` : "";
                   return (
                     <option key={d.serial} value={d.serial}>
                       {d.model ? `${d.model} (${displaySerial})` : displaySerial}
+                      {detailStr}
                       {d.state !== "device" ? ` — ${d.state}` : ""}
                     </option>
                   );
@@ -217,6 +222,13 @@ export function DeviceSection({
             </div>
             {selectedDeviceInfo?.state === "unauthorized" && (
               <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
+            )}
+            {selectedDeviceInfo?.state === "device" && deviceDetails[selectedDevice] && (
+              <div className="device-details-row">
+                <span className="device-detail"><Smartphone size={11} /> Android {deviceDetails[selectedDevice].android_version}</span>
+                <span className="device-detail">API {deviceDetails[selectedDevice].api_level}</span>
+                <span className="device-detail">{deviceDetails[selectedDevice].free_storage} free</span>
+              </div>
             )}
             {selectedIsWireless && (
               <div className="install-mode-toggle">

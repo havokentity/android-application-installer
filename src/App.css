@@ -569,6 +569,71 @@ body {
   color: var(--text-3);
 }
 
+/* ─── Batch File List ──────────────────────────────────────────────────────── */
+
+.batch-file-list {
+  padding: 8px 12px;
+  margin-top: 6px;
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.batch-file-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--blue);
+  margin-bottom: 6px;
+}
+
+.batch-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.batch-file-index {
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+  min-width: 20px;
+}
+
+.batch-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ─── Device Details Row ───────────────────────────────────────────────────── */
+
+.device-details-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.device-detail {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.device-detail + .device-detail::before {
+  content: "·";
+  margin-right: 4px;
+  color: var(--text-3);
+}
+
 /* ─── Device Header with Action Buttons ───────────────────────────────────── */
 
 .device-header {
@@ -1067,6 +1132,11 @@ body {
 .badge-yellow {
   background: var(--yellow-dim);
   color: var(--yellow);
+}
+
+.badge-blue {
+  background: var(--blue-dim);
+  color: var(--blue);
 }
 
 .tool-actions {

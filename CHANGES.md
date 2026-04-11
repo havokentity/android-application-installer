@@ -8,6 +8,27 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Batch file install** — select or drop multiple APK/AAB files; installs sequentially across all target devices with per-file progress prefixes (`[1/3]`, `[2/3]`, etc.); file dialog now supports multi-select; drag-drop accepts multiple files; batch file list displayed below the package section with numbered queue
+- **Device info enrichment** — Android version, API level, and free storage shown in a details row below the device dropdown and inline in the device selector; fetched automatically via `adb shell getprop` and `df /data` when devices connect
+- **Operation state machine** — replaced `isInstalling` / `isExtracting` / `operationProgress` boolean flags with a discriminated union `OperationState` type (`idle | installing | extracting`) that carries progress and cancel token in a single state value
+- **Per-operation cancellation tokens** — each install/extract operation creates a unique cancellation token via `create_cancel_token`; cancel button targets the specific operation instead of setting a global flag; tokens are released after operation completes
+- `getDeviceDetails` Tauri command with typed IPC wrapper in `api.ts`
+- `createCancelToken`, `cancelOperation`, `releaseCancelToken` typed IPC wrappers in `api.ts`
+- Cancel token parameter added to `installApk`, `installAab`, `extractApkFromAab`, `launchApp`, `stopApp`, `uninstallApp` API calls
+- `selectedFiles` (batch) state in `useFileState` hook with `handleBatchFilesSelected` handler
+- `deviceDetails` state in `useDeviceState` hook with auto-fetch on device connect
+- CSS for `.batch-file-list`, `.device-details-row`, `.badge-blue` styles
+- 11 new frontend tests (batch file display, device details row, OperationState type, DeviceDetails type) — total: 399
+
+### Changed
+- File dialog now uses `multiple: true` for multi-file selection
+- Drag-drop accepts multiple files and filters valid APK/AAB files
+- Drop zone text updated: "Click or drop apk or aab file(s)"
+- Window title shows file count when multiple files are selected
+- Updated `docs/feature-analysis.md` — marked 4 items as completed (31/34 done)
+- Updated `docs/architecture.md` — added OperationState, DeviceDetails, batch install, per-operation cancellation
+
 ---
 
 ## [1.7.4] — 2026-04-11

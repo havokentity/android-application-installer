@@ -4,6 +4,7 @@ import type { PackageMetadata, RecentFilesConfig } from "../types";
 
 interface FileSectionProps {
   selectedFile: string | null;
+  selectedFiles: string[];
   fileType: "apk" | "aab" | null;
   fileSize: number | null;
   isDragOver: boolean;
@@ -24,16 +25,17 @@ interface FileSectionProps {
 }
 
 export function FileSection({
-  selectedFile, fileType, fileSize, isDragOver, isDragRejected, packageName,
+  selectedFile, selectedFiles, fileType, fileSize, isDragOver, isDragRejected, packageName,
   onPackageNameChange, onBrowseFile, onClearFile, onFileSelected,
   recentFiles, onRemoveRecentFile,
   canExtract, isExtracting, onExtractApk,
   allowDowngrade, onAllowDowngradeChange,
   metadata,
 }: FileSectionProps) {
+  const isBatch = selectedFiles.length > 1;
   return (
     <section className="section">
-      <div className="section-header"><Package size={16} /><span>Package</span></div>
+      <div className="section-header"><Package size={16} /><span>Package</span>{isBatch && <span className="tool-badge badge-blue">{selectedFiles.length} files</span>}</div>
       <div className={`drop-zone ${selectedFile ? "has-file" : ""} ${isDragOver ? (isDragRejected ? "drag-rejected" : "drag-over") : ""}`} onClick={onBrowseFile}>
         {selectedFile ? (
           <div className="file-info">
@@ -57,8 +59,8 @@ export function FileSection({
           <div className="drop-zone-content">
             <FolderOpen size={40} className="drop-icon" />
             <p className="drop-text">
-              {isDragRejected ? "Unsupported file type" : isDragOver ? "Drop to select file" : (
-                <>Click or drop an <span className="smaller-text">apk</span> or <span className="smaller-text">aab</span> file</>
+              {isDragRejected ? "Unsupported file type" : isDragOver ? "Drop to select file(s)" : (
+                <>Click or drop <span className="smaller-text">apk</span> or <span className="smaller-text">aab</span> file(s)</>
               )}
             </p>
             {!isDragOver && (
@@ -80,6 +82,17 @@ export function FileSection({
           {metadata.versionName && <span>v{metadata.versionName}{metadata.versionCode ? ` (${metadata.versionCode})` : ""}</span>}
           {metadata.minSdk && <span>Min SDK {metadata.minSdk}</span>}
           {metadata.targetSdk && <span>Target SDK {metadata.targetSdk}</span>}
+        </div>
+      )}
+      {isBatch && (
+        <div className="batch-file-list">
+          <div className="batch-file-header"><Package size={12} /> {selectedFiles.length} files queued for batch install</div>
+          {selectedFiles.map((f, i) => (
+            <div key={f} className="batch-file-item">
+              <span className="batch-file-index">{i + 1}.</span>
+              <span className="batch-file-name">{getFileName(f)}</span>
+            </div>
+          ))}
         </div>
       )}
       {!selectedFile && recentFiles.packages.length > 0 && (

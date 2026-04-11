@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Emitter;
 
-use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_async_lenient, run_cmd_lenient};
+use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, run_cmd, run_cmd_async, run_cmd_async_lenient, run_cmd_async_with_cancel, run_cmd_lenient};
 use crate::tools;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -55,6 +55,42 @@ pub struct DeviceInfo {
     pub model: String,
     pub product: String,
     pub transport_id: String,
+}
+
+/// Enriched device information: Android version, API level, free storage.
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceDetails {
+    pub android_version: String,
+    pub api_level: String,
+    pub free_storage: String,
+}
+
+/// Format a size in kilobytes to a human-readable string.
+fn format_storage_kb(kb: u64) -> String {
+    let bytes = kb * 1024;
+    if bytes < 1024 * 1024 {
+        format!("{} KB", kb)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / 1024.0 / 1024.0)
+    } else {
+        format!("{:.1} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
+    }
+}
+
+/// Parse the "Available" column from `df` output.
+pub(crate) fn parse_df_available(output: &str) -> Option<String> {
+    output
+        .lines()
+        .skip(1) // skip header
+        .next()
+        .and_then(|line| {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                parts[3].parse::<u64>().ok().map(format_storage_kb)
+            } else {
+                None
+            }
+        })
 }
 
 // ─── Tauri Commands ──────────────────────────────────────────────────────────
@@ -185,6 +221,38 @@ pub(crate) fn get_devices(adb_path: String) -> Result<Vec<DeviceInfo>, String> {
     }
 
     Ok(devices)
+}
+
+/// Get enriched device details: Android version, API level, free storage.
+#[tauri::command]
+pub(crate) fn get_device_details(adb_path: String, device: String) -> Result<DeviceDetails, String> {
+    let android_version = run_cmd_lenient(
+        &adb_path,
+        &["-s", &device, "shell", "getprop", "ro.build.version.release"],
+    )
+    .map(|(out, _, _)| out.trim().to_string())
+    .unwrap_or_default();
+
+    let api_level = run_cmd_lenient(
+        &adb_path,
+        &["-s", &device, "shell", "getprop", "ro.build.version.sdk"],
+    )
+    .map(|(out, _, _)| out.trim().to_string())
+    .unwrap_or_default();
+
+    let free_storage = run_cmd_lenient(
+        &adb_path,
+        &["-s", &device, "shell", "df", "/data"],
+    )
+    .ok()
+    .and_then(|(out, _, _)| parse_df_available(&out))
+    .unwrap_or_else(|| "Unknown".to_string());
+
+    Ok(DeviceDetails {
+        android_version,
+        api_level,
+        free_storage,
+    })
 }
 
 // ─── Device Tracking (push-based) ────────────────────────────────────────────
@@ -556,7 +624,10 @@ pub(crate) async fn install_apk(
     device: String,
     apk_path: String,
     allow_downgrade: Option<bool>,
+    cancel_token: Option<String>,
 ) -> Result<String, String> {
+    let cancel = get_cancel_flag(&cancel_token);
+
     emit_op_progress(
         &app, "install_apk", &device, "running",
         "Installing APK...", Some(1), Some(1), true,
@@ -568,9 +639,10 @@ pub(crate) async fn install_apk(
     }
     args.push(&apk_path);
 
-    let (stdout, stderr) = match run_cmd_async(
+    let (stdout, stderr) = match run_cmd_async_with_cancel(
         &adb_path,
         &args,
+        &cancel,
     ).await {
         Ok(v) => v,
         Err(e) => {
@@ -612,7 +684,9 @@ pub(crate) async fn install_aab(
     key_alias: Option<String>,
     key_pass: Option<String>,
     allow_downgrade: Option<bool>,
+    cancel_token: Option<String>,
 ) -> Result<String, String> {
+    let cancel = get_cancel_flag(&cancel_token);
     // 1. Prepare temp .apks output path
     let stem = Path::new(&aab_path)
         .file_stem()
@@ -645,7 +719,7 @@ pub(crate) async fn install_aab(
     );
 
     let args_ref: Vec<&str> = build_args.iter().map(|s| s.as_str()).collect();
-    if let Err(e) = run_cmd_async(&java_path, &args_ref).await {
+    if let Err(e) = run_cmd_async_with_cancel(&java_path, &args_ref, &cancel).await {
         let status = if e.contains("cancelled") { "cancelled" } else { "error" };
         let msg = if e.contains("cancelled") {
             e.clone()
@@ -675,7 +749,7 @@ pub(crate) async fn install_aab(
     }
 
     let inst_ref: Vec<&str> = install_args.iter().map(|s| s.as_str()).collect();
-    let (inst_out, _) = match run_cmd_async(&java_path, &inst_ref).await {
+    let (inst_out, _) = match run_cmd_async_with_cancel(&java_path, &inst_ref, &cancel).await {
         Ok(v) => v,
         Err(e) => {
             let status = if e.contains("cancelled") { "cancelled" } else { "error" };
@@ -712,7 +786,9 @@ pub(crate) async fn extract_apk_from_aab(
     keystore_pass: Option<String>,
     key_alias: Option<String>,
     key_pass: Option<String>,
+    cancel_token: Option<String>,
 ) -> Result<String, String> {
+    let cancel = get_cancel_flag(&cancel_token);
     // 1. Prepare temp .apks output path
     let stem = Path::new(&aab_path)
         .file_stem()
@@ -743,7 +819,7 @@ pub(crate) async fn extract_apk_from_aab(
     );
 
     let args_ref: Vec<&str> = build_args.iter().map(|s| s.as_str()).collect();
-    if let Err(e) = run_cmd_async(&java_path, &args_ref).await {
+    if let Err(e) = run_cmd_async_with_cancel(&java_path, &args_ref, &cancel).await {
         let status = if e.contains("cancelled") { "cancelled" } else { "error" };
         let msg = if e.contains("cancelled") {
             e.clone()
@@ -801,15 +877,19 @@ pub(crate) async fn launch_app(
     adb_path: String,
     device: String,
     package_name: String,
+    cancel_token: Option<String>,
 ) -> Result<String, String> {
+    let cancel = get_cancel_flag(&cancel_token);
+
     emit_op_progress(
         &app, "launch", &device, "running",
         &format!("Launching {}...", package_name), Some(1), Some(1), true,
     );
 
-    let (stdout, stderr) = match run_cmd_async(
+    let (stdout, stderr) = match run_cmd_async_with_cancel(
         &adb_path,
         &["-s", &device, "shell", "monkey", "-p", &package_name, "1"],
+        &cancel,
     ).await {
         Ok(v) => v,
         Err(e) => {
@@ -843,15 +923,19 @@ pub(crate) async fn uninstall_app(
     adb_path: String,
     device: String,
     package_name: String,
+    cancel_token: Option<String>,
 ) -> Result<String, String> {
+    let cancel = get_cancel_flag(&cancel_token);
+
     emit_op_progress(
         &app, "uninstall", &device, "running",
         &format!("Uninstalling {}...", package_name), Some(1), Some(1), true,
     );
 
-    let (stdout, stderr) = match run_cmd_async(
+    let (stdout, stderr) = match run_cmd_async_with_cancel(
         &adb_path,
         &["-s", &device, "uninstall", &package_name],
+        &cancel,
     ).await {
         Ok(v) => v,
         Err(e) => {
@@ -885,15 +969,19 @@ pub(crate) async fn stop_app(
     adb_path: String,
     device: String,
     package_name: String,
+    cancel_token: Option<String>,
 ) -> Result<String, String> {
+    let cancel = get_cancel_flag(&cancel_token);
+
     emit_op_progress(
         &app, "stop", &device, "running",
         &format!("Stopping {}...", package_name), Some(1), Some(1), true,
     );
 
-    if let Err(e) = run_cmd_async(
+    if let Err(e) = run_cmd_async_with_cancel(
         &adb_path,
         &["-s", &device, "shell", "am", "force-stop", &package_name],
+        &cancel,
     ).await {
         let status = if e.contains("cancelled") { "cancelled" } else { "error" };
         emit_op_progress(&app, "stop", &device, status, &e, None, None, false);
@@ -1271,5 +1359,60 @@ mod tests {
         assert_eq!(args.len(), 2);
         assert_eq!(args[0], "--ks=/ks.jks");
         assert_eq!(args[1], "--ks-key-alias=alias");
+    }
+
+    // ── Device details tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_df_available_standard() {
+        let output = "Filesystem     1K-blocks    Used Available Use% Mounted on\n\
+                       /dev/block/dm-8 51562048 23456789 28105259  46% /data\n";
+        let result = parse_df_available(output);
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("GB"));
+    }
+
+    #[test]
+    fn parse_df_available_empty() {
+        let result = parse_df_available("");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_df_available_header_only() {
+        let output = "Filesystem     1K-blocks    Used Available Use% Mounted on\n";
+        let result = parse_df_available(output);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn format_storage_kb_bytes() {
+        assert_eq!(format_storage_kb(0), "0 KB");
+        assert_eq!(format_storage_kb(500), "500 KB");
+    }
+
+    #[test]
+    fn format_storage_kb_megabytes() {
+        let result = format_storage_kb(5120); // 5 MB
+        assert!(result.contains("MB"));
+    }
+
+    #[test]
+    fn format_storage_kb_gigabytes() {
+        let result = format_storage_kb(5242880); // 5 GB
+        assert!(result.contains("GB"));
+    }
+
+    #[test]
+    fn device_details_serializes() {
+        let details = DeviceDetails {
+            android_version: "14".to_string(),
+            api_level: "34".to_string(),
+            free_storage: "25.3 GB".to_string(),
+        };
+        let json = serde_json::to_string(&details).unwrap();
+        assert!(json.contains("\"android_version\":\"14\""));
+        assert!(json.contains("\"api_level\":\"34\""));
+        assert!(json.contains("\"free_storage\":\"25.3 GB\""));
     }
 }
