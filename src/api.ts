@@ -5,6 +5,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   DeviceInfo, ToolsStatus, StaleTool, RecentFilesConfig, MdnsService,
+  SigningProfile, PackageMetadata,
 } from "./types";
 
 // ─── ADB ──────────────────────────────────────────────────────────────────────
@@ -76,6 +77,12 @@ export const getPackageName = (apkPath: string) =>
 export const getAabPackageName = (aabPath: string, javaPath: string, bundletoolPath: string) =>
   invoke<string>("get_aab_package_name", { aabPath, javaPath, bundletoolPath });
 
+export const getApkMetadata = (apkPath: string) =>
+  invoke<PackageMetadata>("get_apk_metadata", { apkPath });
+
+export const getAabMetadata = (aabPath: string, javaPath: string, bundletoolPath: string) =>
+  invoke<PackageMetadata>("get_aab_metadata", { aabPath, javaPath, bundletoolPath });
+
 // ─── Java & Bundletool ────────────────────────────────────────────────────────
 
 export const checkJava = () =>
@@ -114,6 +121,17 @@ export const addRecentFile = (path: string, category: "packages" | "keystores") 
 
 export const removeRecentFile = (path: string, category: "packages" | "keystores") =>
   invoke<RecentFilesConfig>("remove_recent_file", { path, category });
+
+// ─── Signing Profiles ─────────────────────────────────────────────────────────
+
+export const getSigningProfiles = () =>
+  invoke<SigningProfile[]>("get_signing_profiles");
+
+export const saveSigningProfile = (profile: SigningProfile) =>
+  invoke<SigningProfile[]>("save_signing_profile", { profile });
+
+export const deleteSigningProfile = (name: string) =>
+  invoke<SigningProfile[]>("delete_signing_profile", { name });
 
 // ─── Cancellation ─────────────────────────────────────────────────────────────
 

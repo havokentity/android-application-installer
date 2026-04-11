@@ -69,3 +69,21 @@ export interface RecentFilesConfig {
   keystores: RecentFile[];
 }
 
+export interface SigningProfile {
+  name: string;
+  keystorePath: string;
+  keystorePass: string;
+  keyAlias: string;
+  keyPass: string;
+}
+
+export interface PackageMetadata {
+  packageName: string | null;
+  versionName: string | null;
+  versionCode: string | null;
+  minSdk: string | null;
+  targetSdk: string | null;
+  permissions: string[];
+  fileSize: number;
+}
+

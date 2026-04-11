@@ -4,6 +4,7 @@
 pub(crate) mod config;
 pub(crate) mod download;
 pub(crate) mod paths;
+pub(crate) mod profiles;
 pub(crate) mod recent;
 pub(crate) mod status;
 

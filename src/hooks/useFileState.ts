@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import type { LogEntry } from "../types";
+import type { LogEntry, PackageMetadata } from "../types";
 import { getFileName, getFileType } from "../helpers";
 import * as api from "../api";
 
@@ -10,13 +10,15 @@ interface UseFileStateOptions {
   addLog: (level: LogEntry["level"], message: string) => void;
   recordRecentFile: (path: string, category: "packages" | "keystores") => void;
   onAabSelected?: (path: string) => Promise<void>;
+  getAabToolPaths?: () => { javaPath: string; bundletoolPath: string } | null;
 }
 
-export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFileStateOptions) {
+export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabToolPaths }: UseFileStateOptions) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [packageName, setPackageName] = useState("");
+  const [metadata, setMetadata] = useState<PackageMetadata | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDragRejected, setIsDragRejected] = useState(false);
   const handleFileSelectedRef = useRef<((path: string) => Promise<void>) | undefined>(undefined);
@@ -49,10 +51,26 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
         console.warn("Failed to get package name:", e);
         addLog("info", "Could not auto-detect package name. You can enter it manually for the Launch feature.");
       }
+      // Fetch APK metadata
+      try {
+        const meta = await api.getApkMetadata(path);
+        setMetadata(meta);
+        if (meta.versionName) addLog("info", `Version: ${meta.versionName} (code ${meta.versionCode ?? "?"})`);
+      } catch (e) { console.warn("Failed to get APK metadata:", e); }
     }
 
     if (ft === "aab") {
       await onAabSelected?.(path);
+      // Fetch AAB metadata (needs java + bundletool)
+      try {
+        const tools = getAabToolPaths?.();
+        if (tools) {
+          const meta = await api.getAabMetadata(path, tools.javaPath, tools.bundletoolPath);
+          setMetadata(meta);
+          if (meta.packageName) { setPackageName(meta.packageName); addLog("info", `Package: ${meta.packageName}`); }
+          if (meta.versionName) addLog("info", `Version: ${meta.versionName} (code ${meta.versionCode ?? "?"})`);
+        }
+      } catch (e) { console.warn("Failed to get AAB metadata:", e); }
     }
   }, [addLog, recordRecentFile, onAabSelected]);
 
@@ -78,6 +96,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
     setSelectedFile(null);
     setFileType(null);
     setFileSize(null);
+    setMetadata(null);
     setPackageName("");
   }, []);
 
@@ -122,7 +141,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
   }, [selectedFile]);
 
   return {
-    selectedFile, fileType, fileSize, packageName, setPackageName,
+    selectedFile, fileType, fileSize, packageName, setPackageName, metadata,
     isDragOver, isDragRejected, browseFile, handleFileSelected, clearFile,
   };
 }

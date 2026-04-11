@@ -1,9 +1,10 @@
 import {
   FolderOpen, Download, Search, Check, X, Coffee, Loader2,
-  ChevronDown, ChevronRight, Key, Clock, RefreshCw,
+  ChevronDown, ChevronRight, Key, Clock, RefreshCw, Save, Trash2, User,
 } from "lucide-react";
+import { useState } from "react";
 import { StatusDot } from "./StatusIndicators";
-import type { DetectionStatus, RecentFile } from "../types";
+import type { DetectionStatus, RecentFile, SigningProfile } from "../types";
 
 interface AabSettingsSectionProps {
   show: boolean;
@@ -37,6 +38,11 @@ interface AabSettingsSectionProps {
   recentKeystores: RecentFile[];
   onSelectRecentKeystore: (path: string) => void;
   onRemoveRecentKeystore: (path: string) => void;
+  signingProfiles?: SigningProfile[];
+  activeProfileName?: string | null;
+  onSelectProfile?: (name: string | null) => void;
+  onSaveProfile?: (name: string) => void;
+  onDeleteProfile?: (name: string) => void;
 }
 
 export function AabSettingsSection({
@@ -49,7 +55,10 @@ export function AabSettingsSection({
   onKeystorePathChange, onKeystorePassChange, onKeyAliasChange, onKeyPassChange,
   onBrowseKeystore, onFetchKeyAliases,
   recentKeystores, onSelectRecentKeystore, onRemoveRecentKeystore,
+  signingProfiles, activeProfileName, onSelectProfile, onSaveProfile, onDeleteProfile,
 }: AabSettingsSectionProps) {
+  const [newProfileName, setNewProfileName] = useState("");
+  const [showSaveInput, setShowSaveInput] = useState(false);
   return (
     <section className="section collapsible">
       <button className="section-header clickable" onClick={onToggle}>
@@ -137,6 +146,35 @@ export function AabSettingsSection({
                 <label className="field-label">Key Password</label>
                 <input type="password" className="input" value={keyPass} onChange={(e) => onKeyPassChange(e.target.value)} placeholder="Key password" />
               </div>
+              {signingProfiles && onSaveProfile && onDeleteProfile && onSelectProfile && (
+                <div className="setting-row indent">
+                  <label className="field-label"><User size={14} /> Signing Profiles</label>
+                  <div className="input-group">
+                    <select className="select" value={activeProfileName ?? ""} onChange={(e) => onSelectProfile(e.target.value || null)}>
+                      <option value="">— No profile —</option>
+                      {signingProfiles.map((p) => (
+                        <option key={p.name} value={p.name}>{p.name}</option>
+                      ))}
+                    </select>
+                    {activeProfileName && (
+                      <button className="btn btn-icon btn-ghost" onClick={() => onDeleteProfile(activeProfileName)} title="Delete profile">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                    <button className="btn btn-small" onClick={() => setShowSaveInput(!showSaveInput)} title="Save current settings as profile">
+                      <Save size={14} /> Save
+                    </button>
+                  </div>
+                  {showSaveInput && (
+                    <div className="input-group" style={{ marginTop: 4 }}>
+                      <input type="text" className="input" value={newProfileName} onChange={(e) => setNewProfileName(e.target.value)} placeholder="Profile name..." onKeyDown={(e) => { if (e.key === "Enter" && newProfileName.trim()) { onSaveProfile(newProfileName.trim()); setNewProfileName(""); setShowSaveInput(false); } }} />
+                      <button className="btn btn-small" disabled={!newProfileName.trim()} onClick={() => { onSaveProfile(newProfileName.trim()); setNewProfileName(""); setShowSaveInput(false); }}>
+                        <Check size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

@@ -8,6 +8,19 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **APK/AAB metadata panel** — version name/code, min/target SDK levels displayed in a metadata row below the file info after selection; auto-detected from binary manifest (APK) or bundletool dump (AAB) with aapt/aapt2 fallback
+- **Signing profile presets** — save, load, and delete named keystore + password + alias configurations in AAB Settings; profiles persisted in `signing_profiles.json`; UI with dropdown selector, save input, and delete button
+- `get_apk_metadata` and `get_aab_metadata` Tauri commands with typed IPC wrappers in `api.ts`
+- `get_signing_profiles`, `save_signing_profile`, `delete_signing_profile` Tauri commands for profile management
+- `tools/profiles.rs` — Rust module for signing profile persistence with upsert, delete, and corruption-safe loading
+- 8 new metadata parsing Rust tests (aapt, XML attribute, permission parsing) — total: 102 Rust tests
+- 21 new frontend tests (metadata display, signing profiles, downgrade checkbox, type validation) — total: 388
+
+### Changed
+- Updated `docs/feature-analysis.md` — marked 2 items as completed (26/34 done)
+- Updated `docs/architecture.md` — added `profiles.rs`, `get_apk_metadata`, `get_aab_metadata`, signing profile commands, and updated component descriptions
+
 ---
 
 ## [1.7.2] — 2026-04-11

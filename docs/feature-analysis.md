@@ -11,9 +11,9 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 - [x] **Wireless ADB (WiFi)** — `adb pair` / `adb connect` / `adb disconnect` support for Android 11+. Collapsible WiFi panel in DeviceSection with IP/port/pairing-code entry, auto-fill connect IP after pairing, disconnect button for wireless devices. Backed by `useWirelessAdb` hook. See [wireless-adb-guide.md](wireless-adb-guide.md).
 - [ ] **Batch file install** — Select or drop multiple APK/AAB files. Install sequentially with per-file progress.
-- [ ] **APK/AAB metadata panel** — Show version name/code, min/target SDK, permissions, file size before installing.
+- [x] **APK/AAB metadata panel** — Show version name/code, min/target SDK, permissions, file size before installing. Metadata row displayed below file info. Backend: `get_apk_metadata` (binary manifest + aapt fallback) and `get_aab_metadata` (bundletool dump manifest). Auto-fetched on file selection.
 - [ ] **Device info enrichment** — Show Android version, API level, free storage next to each device.
-- [ ] **Signing profile presets** — Save named keystore + password + alias configs so you don't re-enter credentials.
+- [x] **Signing profile presets** — Save named keystore + password + alias configs so you don't re-enter credentials. Profiles stored in `signing_profiles.json`. UI in AabSettingsSection with dropdown, save, and delete controls. Backend: `get_signing_profiles`, `save_signing_profile`, `delete_signing_profile` commands.
 
 ### ⚡ Medium Impact, Quick Wins
 
@@ -76,10 +76,9 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 | Category | Done | Remaining |
 |----------|------|-----------|
-| New Features (1) | 7 | 6 |
+| New Features (1) | 9 | 4 |
 | Code Quality (2) | 6 | 1 |
 | UX (3) | 6 | 0 |
 | Performance (4) | 4 | 0 |
 | Architecture (5) | 1 | 3 |
-| **Total** | **24** | **10** |
-
+| **Total** | **26** | **8** |

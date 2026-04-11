@@ -1,6 +1,6 @@
-import { FolderOpen, Package, X, Clock, FileOutput, Loader2 } from "lucide-react";
+import { FolderOpen, Package, X, Clock, FileOutput, Loader2, Info } from "lucide-react";
 import { getFileName, shortcutLabel, formatBytes } from "../helpers";
-import type { RecentFilesConfig } from "../types";
+import type { PackageMetadata, RecentFilesConfig } from "../types";
 
 interface FileSectionProps {
   selectedFile: string | null;
@@ -20,6 +20,7 @@ interface FileSectionProps {
   onExtractApk: () => void;
   allowDowngrade: boolean;
   onAllowDowngradeChange: (value: boolean) => void;
+  metadata?: PackageMetadata | null;
 }
 
 export function FileSection({
@@ -28,6 +29,7 @@ export function FileSection({
   recentFiles, onRemoveRecentFile,
   canExtract, isExtracting, onExtractApk,
   allowDowngrade, onAllowDowngradeChange,
+  metadata,
 }: FileSectionProps) {
   return (
     <section className="section">
@@ -72,6 +74,14 @@ export function FileSection({
           </div>
         )}
       </div>
+      {selectedFile && metadata && (metadata.versionName || metadata.minSdk || metadata.targetSdk) && (
+        <div className="metadata-row">
+          <Info size={12} />
+          {metadata.versionName && <span>v{metadata.versionName}{metadata.versionCode ? ` (${metadata.versionCode})` : ""}</span>}
+          {metadata.minSdk && <span>Min SDK {metadata.minSdk}</span>}
+          {metadata.targetSdk && <span>Target SDK {metadata.targetSdk}</span>}
+        </div>
+      )}
       {!selectedFile && recentFiles.packages.length > 0 && (
         <div className="recent-list">
           <div className="recent-header"><Clock size={12} /> Recent Packages</div>

@@ -539,6 +539,36 @@ body {
   white-space: nowrap;
 }
 
+/* ─── Package Metadata Row ─────────────────────────────────────────────────── */
+
+.metadata-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--bg-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.metadata-row svg {
+  flex-shrink: 0;
+  color: var(--blue);
+}
+
+.metadata-row span {
+  white-space: nowrap;
+}
+
+.metadata-row span + span::before {
+  content: "·";
+  margin-right: 12px;
+  color: var(--text-3);
+}
+
 /* ─── Device Header with Action Buttons ───────────────────────────────────── */
 
 .device-header {

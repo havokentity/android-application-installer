@@ -144,5 +144,96 @@ describe("AabSettingsSection", () => {
     render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks" loadingAliases={true} />);
     expect(screen.getByPlaceholderText("Loading aliases...")).toBeInTheDocument();
   });
+
+  // ── Signing Profiles ──────────────────────────────────────────────────────
+
+  it("shows signing profiles section when keystorePath is set and profiles are provided", () => {
+    const profiles = [{ name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" }];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    expect(screen.getByText("Signing Profiles")).toBeInTheDocument();
+  });
+
+  it("hides signing profiles when keystorePath is empty", () => {
+    const profiles = [{ name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" }];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath=""
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    expect(screen.queryByText("Signing Profiles")).not.toBeInTheDocument();
+  });
+
+  it("hides signing profiles section when profile props are not provided", () => {
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks" />);
+    expect(screen.queryByText("Signing Profiles")).not.toBeInTheDocument();
+  });
+
+  it("lists profile names in dropdown", () => {
+    const profiles = [
+      { name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" },
+      { name: "Release", keystorePath: "/ks2", keystorePass: "pw2", keyAlias: "b", keyPass: "kp2" },
+    ];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    expect(screen.getByText("Debug")).toBeInTheDocument();
+    expect(screen.getByText("Release")).toBeInTheDocument();
+  });
+
+  it("calls onSelectProfile when a profile is selected from dropdown", () => {
+    const onSelect = vi.fn();
+    const profiles = [{ name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" }];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={onSelect} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    // Find the profile dropdown (second select after alias select)
+    const selects = screen.getAllByRole("combobox");
+    const profileSelect = selects[selects.length - 1];
+    fireEvent.change(profileSelect, { target: { value: "Debug" } });
+    expect(onSelect).toHaveBeenCalledWith("Debug");
+  });
+
+  it("shows delete button when activeProfileName is set", () => {
+    const profiles = [{ name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" }];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName="Debug"
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    expect(screen.getByTitle("Delete profile")).toBeInTheDocument();
+  });
+
+  it("hides delete button when no profile is active", () => {
+    const profiles = [{ name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" }];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    expect(screen.queryByTitle("Delete profile")).not.toBeInTheDocument();
+  });
+
+  it("calls onDeleteProfile when delete button is clicked", () => {
+    const onDelete = vi.fn();
+    const profiles = [{ name: "Debug", keystorePath: "/ks", keystorePass: "pw", keyAlias: "a", keyPass: "kp" }];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName="Debug"
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={onDelete} />);
+    fireEvent.click(screen.getByTitle("Delete profile"));
+    expect(onDelete).toHaveBeenCalledWith("Debug");
+  });
+
+  it("shows Save button for creating profiles", () => {
+    const profiles: { name: string; keystorePath: string; keystorePass: string; keyAlias: string; keyPass: string }[] = [];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    expect(screen.getByTitle("Save current settings as profile")).toBeInTheDocument();
+  });
+
+  it("shows profile name input when Save is clicked", () => {
+    const profiles: { name: string; keystorePath: string; keystorePass: string; keyAlias: string; keyPass: string }[] = [];
+    render(<AabSettingsSection {...defaults} show={true} keystorePath="/ks.jks"
+      signingProfiles={profiles} activeProfileName={null}
+      onSelectProfile={vi.fn()} onSaveProfile={vi.fn()} onDeleteProfile={vi.fn()} />);
+    fireEvent.click(screen.getByTitle("Save current settings as profile"));
+    expect(screen.getByPlaceholderText("Profile name...")).toBeInTheDocument();
+  });
 });
 

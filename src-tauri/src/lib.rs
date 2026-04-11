@@ -33,6 +33,8 @@ pub fn run() {
             package::get_package_name,
             package::get_aab_package_name,
             package::get_file_size,
+            package::get_apk_metadata,
+            package::get_aab_metadata,
             java::check_java,
             java::find_bundletool,
             java::list_key_aliases,
@@ -47,6 +49,9 @@ pub fn run() {
             tools::recent::get_recent_files,
             tools::recent::add_recent_file,
             tools::recent::remove_recent_file,
+            tools::profiles::get_signing_profiles,
+            tools::profiles::save_signing_profile,
+            tools::profiles::delete_signing_profile,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

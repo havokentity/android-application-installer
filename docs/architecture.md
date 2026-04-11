@@ -35,9 +35,9 @@ src/                          ← React frontend
 ├── components/
 │   ├── AppHeader.tsx         Header with title & version
 │   ├── ErrorBoundary.tsx     React error boundary (crash recovery)
-│   ├── FileSection.tsx       File selection, file size display & AAB extraction
+│   ├── FileSection.tsx       File selection, metadata display, file size & AAB extraction
 │   ├── DeviceSection.tsx     Device selection & actions
-│   ├── AabSettingsSection.tsx  AAB signing settings
+│   ├── AabSettingsSection.tsx  AAB signing settings & signing profiles
 │   ├── ToolsSection.tsx      Tools setup & stale banner
 │   ├── LogPanel.tsx          Activity log with auto-scroll, copy & export
 │   ├── Toolbar.tsx           Layout & theme toggles
@@ -62,12 +62,13 @@ src-tauri/src/                ← Rust backend
 │                             launch, uninstall, stop, list packages
 ├── cmd.rs                    Command execution utilities, cancellation
 ├── java.rs                   Java & bundletool detection, key alias listing
-├── package.rs                Package name extraction from APK & AAB
+├── package.rs                Package name & metadata extraction from APK & AAB
 └── tools/                    Managed tool downloads
     ├── mod.rs                Module root & shared helpers
     ├── config.rs             Tool config persistence (tools_config.json)
     ├── download.rs           Download & extract logic (ADB, bundletool, Java)
     ├── paths.rs              Platform-specific tool paths
+    ├── profiles.rs           Signing profile presets (save/load/delete)
     ├── recent.rs             Recent files tracking
     └── status.rs             Tool status & staleness checks
 
@@ -170,6 +171,8 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `get_package_name`     | package.rs  | Extract package name from APK (binary XML parser) |
 | `get_aab_package_name` | package.rs  | Extract package name from AAB via bundletool     |
 | `get_file_size`        | package.rs  | Return file size in bytes                         |
+| `get_apk_metadata`     | package.rs  | Extract metadata (version, SDK, perms) from APK   |
+| `get_aab_metadata`     | package.rs  | Extract metadata from AAB via bundletool           |
 | `check_java`           | java.rs     | Detect Java path + version                      |
 | `find_bundletool`      | java.rs     | Locate bundletool.jar                           |
 | `list_key_aliases`     | java.rs     | List key aliases from a keystore via keytool    |
@@ -183,6 +186,9 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `get_recent_files`     | tools/recent.rs  | Load recent packages & keystores            |
 | `add_recent_file`      | tools/recent.rs  | Add a file to recent list                   |
 | `remove_recent_file`   | tools/recent.rs  | Remove a file from recent list              |
+| `get_signing_profiles` | tools/profiles.rs | Load saved signing profiles                 |
+| `save_signing_profile` | tools/profiles.rs | Save/upsert a signing profile by name       |
+| `delete_signing_profile`| tools/profiles.rs | Delete a signing profile by name           |
 
 ## Auto-Updater
 
@@ -354,6 +360,8 @@ All managed tools + config live under the Tauri `app_local_data_dir`:
 ├── jre/                  ← extracted Adoptium JRE
 │   └── jdk-21.x.y-jre/
 │       └── Contents/Home/bin/java   (macOS)
-└── tools_config.json     ← last-updated timestamps
+├── tools_config.json     ← last-updated timestamps
+├── recent_files.json     ← recent packages & keystores
+└── signing_profiles.json ← saved signing profile presets
 ```
 

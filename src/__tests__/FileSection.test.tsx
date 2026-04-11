@@ -22,6 +22,8 @@ const defaults = {
   canExtract: false,
   isExtracting: false,
   onExtractApk: vi.fn(),
+  allowDowngrade: false,
+  onAllowDowngradeChange: vi.fn(),
 };
 
 describe("FileSection", () => {
@@ -216,6 +218,60 @@ describe("FileSection", () => {
     fireEvent.click(screen.getByText("Extract APK"));
     expect(onExtract).toHaveBeenCalledOnce();
     expect(onBrowse).not.toHaveBeenCalled();
+  });
+
+  // ── Metadata row ──────────────────────────────────────────────────────────
+
+  it("shows metadata row with version info when metadata is provided", () => {
+    const metadata = { packageName: "com.test", versionName: "2.1.0", versionCode: "42", minSdk: "21", targetSdk: "34", permissions: [], fileSize: 1024 };
+    render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" metadata={metadata} />);
+    expect(screen.getByText(/v2\.1\.0/)).toBeInTheDocument();
+    expect(screen.getByText(/42/)).toBeInTheDocument();
+    expect(screen.getByText(/Min SDK 21/)).toBeInTheDocument();
+    expect(screen.getByText(/Target SDK 34/)).toBeInTheDocument();
+  });
+
+  it("hides metadata row when no file is selected", () => {
+    const metadata = { packageName: "com.test", versionName: "1.0", versionCode: "1", minSdk: "21", targetSdk: "34", permissions: [], fileSize: 0 };
+    const { container } = render(<FileSection {...defaults} metadata={metadata} />);
+    expect(container.querySelector(".metadata-row")).not.toBeInTheDocument();
+  });
+
+  it("hides metadata row when metadata is null", () => {
+    const { container } = render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" metadata={null} />);
+    expect(container.querySelector(".metadata-row")).not.toBeInTheDocument();
+  });
+
+  it("hides metadata row when all metadata fields are null", () => {
+    const metadata = { packageName: null, versionName: null, versionCode: null, minSdk: null, targetSdk: null, permissions: [], fileSize: 0 };
+    const { container } = render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" metadata={metadata} />);
+    expect(container.querySelector(".metadata-row")).not.toBeInTheDocument();
+  });
+
+  it("shows partial metadata when only some fields are available", () => {
+    const metadata = { packageName: null, versionName: "3.0", versionCode: null, minSdk: null, targetSdk: null, permissions: [], fileSize: 0 };
+    render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" metadata={metadata} />);
+    expect(screen.getByText(/v3\.0/)).toBeInTheDocument();
+    expect(screen.queryByText(/Min SDK/)).not.toBeInTheDocument();
+  });
+
+  // ── Downgrade checkbox ────────────────────────────────────────────────────
+
+  it("shows downgrade checkbox when a file is selected", () => {
+    render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" />);
+    expect(screen.getByText("Downgrade")).toBeInTheDocument();
+  });
+
+  it("hides downgrade checkbox when no file is selected", () => {
+    render(<FileSection {...defaults} />);
+    expect(screen.queryByText("Downgrade")).not.toBeInTheDocument();
+  });
+
+  it("calls onAllowDowngradeChange when downgrade checkbox is toggled", () => {
+    const onChange = vi.fn();
+    render(<FileSection {...defaults} selectedFile="/path/app.apk" fileType="apk" onAllowDowngradeChange={onChange} />);
+    fireEvent.click(screen.getByText("Downgrade"));
+    expect(onChange).toHaveBeenCalled();
   });
 });
 

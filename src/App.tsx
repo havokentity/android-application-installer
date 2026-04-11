@@ -5,7 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { ask } from "@tauri-apps/plugin-dialog";
 
 import "./App.css";
-import type { LogEntry, OperationProgress, RecentFilesConfig } from "./types";
+import type { LogEntry, OperationProgress, RecentFilesConfig, SigningProfile } from "./types";
 import { nextLogId, getFileName, now } from "./helpers";
 import * as api from "./api";
 
@@ -95,6 +95,16 @@ function App() {
   const removeRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
     try { setRecentFiles(await api.removeRecentFile(path, category)); } catch (e) { console.warn("Failed to remove recent file:", e); }
   }, []);
+
+  // ── Signing profiles ──────────────────────────────────────────────
+  const [signingProfiles, setSigningProfiles] = useState<SigningProfile[]>([]);
+  const [activeProfileName, setActiveProfileName] = useState<string | null>(null);
+
+  const loadSigningProfiles = useCallback(async () => {
+    try { setSigningProfiles(await api.getSigningProfiles()); } catch (e) { console.warn("Failed to load signing profiles:", e); }
+  }, []);
+
+  useEffect(() => { loadSigningProfiles(); }, [loadSigningProfiles]);
 
   // ── Auto updater ──────────────────────────────────────────────────────
   const updater = useUpdater(addLog);
@@ -217,6 +227,10 @@ function App() {
   const file = useFileState({
     addLog,
     recordRecentFile,
+    getAabToolPaths: () => {
+      if (aab.javaPath && aab.bundletoolPath) return { javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath };
+      return null;
+    },
     onAabSelected: async (path) => {
       aab.setShowAabSettings(true);
       if (aab.javaStatus === "unknown") await aab.checkJava();
@@ -486,6 +500,7 @@ function App() {
       recentFiles={recentFiles} onRemoveRecentFile={(path) => removeRecentFile(path, "packages")}
       canExtract={!!canExtract} isExtracting={isExtracting} onExtractApk={extractApk}
       allowDowngrade={allowDowngrade} onAllowDowngradeChange={setAllowDowngrade}
+      metadata={file.metadata}
     />
   );
 
@@ -505,6 +520,37 @@ function App() {
       recentKeystores={recentFiles.keystores}
       onSelectRecentKeystore={(path) => { aab.setKeystorePath(path); aab.setKeyAlias(""); recordRecentFile(path, "keystores"); }}
       onRemoveRecentKeystore={(path) => removeRecentFile(path, "keystores")}
+      signingProfiles={signingProfiles}
+      activeProfileName={activeProfileName}
+      onSelectProfile={(name: string | null) => {
+        const profile = signingProfiles.find(p => p.name === name);
+        if (profile) {
+          aab.setKeystorePath(profile.keystorePath);
+          aab.setKeystorePass(profile.keystorePass);
+          aab.setKeyAlias(profile.keyAlias);
+          aab.setKeyPass(profile.keyPass);
+          setActiveProfileName(name);
+          addLog("info", `Loaded signing profile: ${name}`);
+        } else {
+          aab.setKeystorePath(""); aab.setKeystorePass(""); aab.setKeyAlias(""); aab.setKeyPass("");
+          setActiveProfileName(null);
+        }
+      }}
+      onSaveProfile={async (name: string) => {
+        const profile: SigningProfile = { name, keystorePath: aab.keystorePath, keystorePass: aab.keystorePass, keyAlias: aab.keyAlias, keyPass: aab.keyPass };
+        try {
+          setSigningProfiles(await api.saveSigningProfile(profile));
+          setActiveProfileName(name);
+          addToast(`Saved signing profile "${name}"`, "success");
+        } catch (e) { addToast(`Failed to save profile: ${e}`, "error"); }
+      }}
+      onDeleteProfile={async (name: string) => {
+        try {
+          setSigningProfiles(await api.deleteSigningProfile(name));
+          if (activeProfileName === name) setActiveProfileName(null);
+          addToast(`Deleted signing profile "${name}"`, "info");
+        } catch (e) { addToast(`Failed to delete profile: ${e}`, "error"); }
+      }}
     />
   );
 

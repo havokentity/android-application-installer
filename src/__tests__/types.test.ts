@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import type {
   DeviceInfo, LogEntry, ToolsStatus, DownloadProgress,
   StaleTool, DetectionStatus, RecentFile, RecentFilesConfig,
+  SigningProfile, PackageMetadata,
 } from "../types";
 
 describe("Types", () => {
@@ -118,6 +119,58 @@ describe("Types", () => {
       };
       expect(config.packages.length).toBe(2);
       expect(config.keystores.length).toBe(1);
+    });
+  });
+
+  describe("SigningProfile", () => {
+    it("has all required fields", () => {
+      const profile: SigningProfile = {
+        name: "Release",
+        keystorePath: "/path/to/release.jks",
+        keystorePass: "storepass",
+        keyAlias: "releaseKey",
+        keyPass: "keypass",
+      };
+      expect(profile.name).toBe("Release");
+      expect(profile.keystorePath).toBe("/path/to/release.jks");
+      expect(profile.keystorePass).toBe("storepass");
+      expect(profile.keyAlias).toBe("releaseKey");
+      expect(profile.keyPass).toBe("keypass");
+    });
+  });
+
+  describe("PackageMetadata", () => {
+    it("has all required fields with values", () => {
+      const meta: PackageMetadata = {
+        packageName: "com.example.app",
+        versionName: "2.1.0",
+        versionCode: "42",
+        minSdk: "21",
+        targetSdk: "34",
+        permissions: ["android.permission.INTERNET", "android.permission.CAMERA"],
+        fileSize: 44347801,
+      };
+      expect(meta.packageName).toBe("com.example.app");
+      expect(meta.versionName).toBe("2.1.0");
+      expect(meta.versionCode).toBe("42");
+      expect(meta.minSdk).toBe("21");
+      expect(meta.targetSdk).toBe("34");
+      expect(meta.permissions).toHaveLength(2);
+      expect(meta.fileSize).toBe(44347801);
+    });
+
+    it("accepts null values for optional fields", () => {
+      const meta: PackageMetadata = {
+        packageName: null,
+        versionName: null,
+        versionCode: null,
+        minSdk: null,
+        targetSdk: null,
+        permissions: [],
+        fileSize: 0,
+      };
+      expect(meta.packageName).toBeNull();
+      expect(meta.permissions).toEqual([]);
     });
   });
 });
