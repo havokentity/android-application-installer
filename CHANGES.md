@@ -7,6 +7,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+### Fixed
+- **ADB server persists after app exit** — the ADB daemon (`adb.exe` / `adb`) kept running as a ghost process after closing the app; added an exit handler that stops the device tracker and kills the managed ADB server on shutdown
+- **Can't update ADB platform-tools on Windows** — the ADB server daemon held file locks on `adb.exe`, preventing `remove_dir_all` from deleting the old tools directory during updates; now kills the server before removal, with a retry loop (5 × 500 ms) for Windows file-lock release delay
+
+### Changed
+- App lifecycle uses `.build().run()` with `RunEvent::Exit` handler instead of bare `.run()` for graceful cleanup on exit
+- Only the app's own managed ADB server is killed on exit — if the user is using a system ADB (from Android Studio or the Android SDK), the server is left running since another tool may depend on it
+- `DeviceTracker` fields (`stop_flag`, `handle`) changed to `pub(crate)` for access from the exit handler
+- `setup_platform_tools` now calls `adb kill-server` via the managed binary before removing the old `platform-tools/` directory
 
 ---
 

@@ -4,6 +4,8 @@ mod java;
 mod package;
 mod tools;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -59,6 +61,29 @@ pub fn run() {
             tools::profiles::get_profile_for_file,
             tools::profiles::set_profile_for_file,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Stop the device tracker (kills the adb track-devices child process)
+                let tracker = app_handle.state::<tokio::sync::Mutex<adb::DeviceTracker>>();
+                if let Ok(mut guard) = tracker.try_lock() {
+                    guard.stop_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+                    if let Some(handle) = guard.handle.take() {
+                        handle.abort();
+                    }
+                }
+
+                // Kill the ADB server only if we're using our own managed binary.
+                // If the app is using a system ADB (e.g. from Android Studio or
+                // the Android SDK), another tool likely started the server and
+                // may still need it — don't kill what we didn't start.
+                if let Ok(data_dir) = app_handle.path().app_local_data_dir() {
+                    let managed = tools::managed_adb_path(&data_dir);
+                    if managed.exists() {
+                        adb::kill_adb_server(&managed.to_string_lossy());
+                    }
+                }
+            }
+        });
 }

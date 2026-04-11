@@ -14,6 +14,12 @@ use crate::tools;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/// Kill the ADB server process. Call this before updating platform-tools
+/// (to release file locks on Windows) and on app exit (to avoid ghost processes).
+pub(crate) fn kill_adb_server(adb_path: &str) {
+    let _ = run_cmd_lenient(adb_path, &["kill-server"]);
+}
+
 /// Build keystore-related arguments for bundletool commands.
 /// Returns a Vec of `--ks=`, `--ks-pass=`, `--ks-key-alias=`, `--key-pass=` args.
 fn build_keystore_args(
@@ -259,8 +265,8 @@ pub(crate) fn get_device_details(adb_path: String, device: String) -> Result<Dev
 
 /// Managed state for the `adb track-devices` background task.
 pub struct DeviceTracker {
-    stop_flag: Arc<AtomicBool>,
-    handle: Option<tokio::task::JoinHandle<()>>,
+    pub(crate) stop_flag: Arc<AtomicBool>,
+    pub(crate) handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Default for DeviceTracker {

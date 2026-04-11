@@ -112,11 +112,34 @@ pub async fn setup_platform_tools(app: AppHandle) -> Result<String, String> {
     // ── Extract ───────────────────────────────────────────────────────────
     emit_progress(&app, "platform-tools", downloaded, total_size, 100, "extracting");
 
-    // Remove old install
+    // Kill the ADB server before removing old tools — on Windows the server
+    // daemon holds a file lock on adb.exe which prevents deletion.
     let pt_dir = data_dir.join("platform-tools");
+    let old_adb = managed_adb_path(&data_dir);
+    if old_adb.exists() {
+        crate::adb::kill_adb_server(&old_adb.to_string_lossy());
+    }
+
+    // Remove old install (retry on Windows for file lock release delay)
     if pt_dir.exists() {
-        fs::remove_dir_all(&pt_dir)
-            .map_err(|e| format!("Failed to remove old platform-tools: {}", e))?;
+        let mut last_err = None;
+        for attempt in 0..5 {
+            match fs::remove_dir_all(&pt_dir) {
+                Ok(_) => { last_err = None; break; }
+                Err(e) => {
+                    last_err = Some(e);
+                    if attempt < 4 {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                    }
+                }
+            }
+        }
+        if let Some(e) = last_err {
+            return Err(format!(
+                "Failed to remove old platform-tools (ADB may still be running): {}",
+                e
+            ));
+        }
     }
 
     let zip_clone = zip_path.clone();
