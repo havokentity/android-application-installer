@@ -56,10 +56,10 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 ## 4. Performance Improvements
 
-- [ ] **Virtualize the log panel** — Use `react-window` or cap visible entries after 200+.
-- [ ] **Memoize pure components** — Wrap `StatusDot`, `LogIcon`, `ToolRow`, `StaleBanner` in `React.memo()`.
-- [ ] **Use `adb track-devices`** — Replace 8-second polling with ADB's push-based device tracking.
-- [ ] **Debounce log auto-scroll** — Use `requestAnimationFrame` to avoid layout thrashing.
+- [x] **Virtualize the log panel** — Cap visible entries at 200; earlier entries hidden with indicator. Full log retained for copy/export.
+- [x] **Memoize pure components** — Wrapped `StatusDot`, `LogIcon`, `ToolRow`, `StaleBanner` in `React.memo()`.
+- [x] **Use `adb track-devices`** — Push-based device tracking via `adb track-devices -l` with automatic fallback to 8-second polling.
+- [x] **Debounce log auto-scroll** — Replaced direct `scrollIntoView` with `requestAnimationFrame`-guarded debounce.
 
 ---
 
@@ -79,7 +79,7 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 | New Features (1) | 1 | 12 |
 | Code Quality (2) | 2 | 5 |
 | UX (3) | 6 | 0 |
-| Performance (4) | 0 | 4 |
+| Performance (4) | 4 | 0 |
 | Architecture (5) | 1 | 3 |
-| **Total** | **10** | **24** |
+| **Total** | **14** | **20** |
 

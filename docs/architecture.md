@@ -157,6 +157,8 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 |------------------------|-------------|-------------------------------------------------|
 | `find_adb`             | adb.rs      | Auto-detect ADB binary                          |
 | `get_devices`          | adb.rs      | List connected devices via `adb devices -l`     |
+| `start_device_tracking`| adb.rs      | Start push-based `adb track-devices -l` with event emission |
+| `stop_device_tracking` | adb.rs      | Stop the background device tracking task        |
 | `install_apk`          | adb.rs      | `adb install -r <apk>`                          |
 | `install_aab`          | adb.rs      | bundletool build-apks + install-apks            |
 | `extract_apk_from_aab` | adb.rs      | Extract universal APK from AAB via bundletool   |

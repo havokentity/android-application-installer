@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import { Download, HardDriveDownload, Loader2, Wrench, Clock, X, ChevronDown, ChevronRight } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
 import { formatBytes } from "../helpers";
@@ -12,7 +12,7 @@ interface StaleBannerProps {
   onDismiss: () => void;
 }
 
-export function StaleBanner({ staleTools, dismissed, onDismiss }: StaleBannerProps) {
+export const StaleBanner = memo(function StaleBanner({ staleTools, dismissed, onDismiss }: StaleBannerProps) {
   if (staleTools.length === 0 || dismissed) return null;
 
   return (
@@ -38,7 +38,7 @@ export function StaleBanner({ staleTools, dismissed, onDismiss }: StaleBannerPro
       </button>
     </div>
   );
-}
+});
 
 // ─── Progress Bar ─────────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ interface ToolRowProps {
   onSetup: () => void;
 }
 
-function ToolRow({
+const ToolRow = memo(function ToolRow({
   installed,
   downloading,
   name,
@@ -116,7 +116,7 @@ function ToolRow({
       )}
     </>
   );
-}
+});
 
 // ─── Tools Section ────────────────────────────────────────────────────────────
 

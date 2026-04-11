@@ -11,9 +11,12 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .manage(tokio::sync::Mutex::new(adb::DeviceTracker::default()))
         .invoke_handler(tauri::generate_handler![
             adb::find_adb,
             adb::get_devices,
+            adb::start_device_tracking,
+            adb::stop_device_tracking,
             adb::install_apk,
             adb::install_aab,
             adb::extract_apk_from_aab,

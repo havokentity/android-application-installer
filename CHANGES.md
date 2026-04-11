@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **Push-based device tracking** — replaced 8-second polling with `adb track-devices -l` for instant device connect/disconnect detection; automatically falls back to polling if tracking fails
+- **Log panel virtualization** — only the most recent 200 log entries are rendered; earlier entries are retained for copy/export with a "N earlier entries hidden" indicator
+
+### Changed
+- **Memoized pure components** — wrapped `StatusDot`, `LogIcon`, `ToolRow`, and `StaleBanner` in `React.memo()` to prevent unnecessary re-renders
+- **Debounced log auto-scroll** — replaced direct `scrollIntoView` with `requestAnimationFrame`-guarded debounce to avoid layout thrashing
+- Added `start_device_tracking` and `stop_device_tracking` Tauri commands with managed `DeviceTracker` state
+- Added `parse_device_list` shared parser with 4 new Rust unit tests (total: 66 Rust tests)
+- Updated `docs/feature-analysis.md` — performance category now 4/4 complete
+
 ---
 
 ## [1.6.7] — 2026-04-10

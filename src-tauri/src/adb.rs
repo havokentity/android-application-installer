@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tauri::Emitter;
 
 use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_lenient};
 use crate::tools;
@@ -147,6 +151,193 @@ pub(crate) fn get_devices(adb_path: String) -> Result<Vec<DeviceInfo>, String> {
     }
 
     Ok(devices)
+}
+
+// ─── Device Tracking (push-based) ────────────────────────────────────────────
+
+/// Managed state for the `adb track-devices` background task.
+pub struct DeviceTracker {
+    stop_flag: Arc<AtomicBool>,
+    handle: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl Default for DeviceTracker {
+    fn default() -> Self {
+        Self {
+            stop_flag: Arc::new(AtomicBool::new(false)),
+            handle: None,
+        }
+    }
+}
+
+/// Parse `adb devices -l` style output (used by both `get_devices` and tracker).
+pub(crate) fn parse_device_list(output: &str) -> Vec<DeviceInfo> {
+    let mut devices = Vec::new();
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("List of") {
+            continue;
+        }
+
+        let parts: Vec<&str> = line.splitn(2, char::is_whitespace).collect();
+        if parts.len() < 2 {
+            continue;
+        }
+
+        let serial = parts[0].to_string();
+        let rest = parts[1].trim();
+        let state_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        let state = rest[..state_end].to_string();
+
+        let mut model = String::new();
+        let mut product = String::new();
+        let mut transport_id = String::new();
+
+        if state_end < rest.len() {
+            for part in rest[state_end..].split_whitespace() {
+                if let Some((key, value)) = part.split_once(':') {
+                    match key {
+                        "model" => model = value.replace('_', " "),
+                        "product" => product = value.to_string(),
+                        "transport_id" => transport_id = value.to_string(),
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        devices.push(DeviceInfo { serial, state, model, product, transport_id });
+    }
+    devices
+}
+
+/// Start push-based device tracking via `adb track-devices -l`.
+/// Emits `device-list-changed` events when the device list changes.
+#[tauri::command]
+pub(crate) async fn start_device_tracking(
+    app: tauri::AppHandle,
+    tracker: tauri::State<'_, Mutex<DeviceTracker>>,
+    adb_path: String,
+) -> Result<(), String> {
+    let mut guard = tracker.lock().await;
+
+    // Stop any existing tracker
+    if let Some(handle) = guard.handle.take() {
+        guard.stop_flag.store(true, Ordering::SeqCst);
+        handle.abort();
+    }
+
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    guard.stop_flag = stop_flag.clone();
+
+    let app_handle = app.clone();
+    let adb = adb_path.clone();
+
+    let handle = tokio::spawn(async move {
+        // Ensure ADB server is running
+        let _ = tokio::process::Command::new(&adb)
+            .args(["start-server"])
+            .output()
+            .await;
+
+        loop {
+            if stop_flag.load(Ordering::Relaxed) {
+                break;
+            }
+
+            // Spawn `adb track-devices -l`
+            let child = tokio::process::Command::new(&adb)
+                .args(["track-devices", "-l"])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .kill_on_drop(true)
+                .spawn();
+
+            let mut child = match child {
+                Ok(c) => c,
+                Err(_) => {
+                    // If we can't spawn, wait and retry
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+
+            let stdout = match child.stdout.take() {
+                Some(s) => s,
+                None => break,
+            };
+
+            let mut reader = tokio::io::BufReader::new(stdout);
+            let mut prev_serials = String::new();
+
+            loop {
+                if stop_flag.load(Ordering::Relaxed) {
+                    let _ = child.kill().await;
+                    return;
+                }
+
+                // Read the 4-byte hex length prefix
+                let mut len_buf = [0u8; 4];
+                match tokio::io::AsyncReadExt::read_exact(&mut reader, &mut len_buf).await {
+                    Ok(_) => {}
+                    Err(_) => break, // process died, restart
+                }
+
+                let len = match u32::from_str_radix(
+                    &String::from_utf8_lossy(&len_buf),
+                    16,
+                ) {
+                    Ok(l) => l as usize,
+                    Err(_) => break,
+                };
+
+                // Read the payload
+                let mut payload = vec![0u8; len];
+                if len > 0 {
+                    match tokio::io::AsyncReadExt::read_exact(&mut reader, &mut payload).await {
+                        Ok(_) => {}
+                        Err(_) => break,
+                    }
+                }
+
+                let output = String::from_utf8_lossy(&payload).to_string();
+                let devices = parse_device_list(&output);
+                let new_serials = {
+                    let mut s: Vec<String> = devices.iter().map(|d| d.serial.clone()).collect();
+                    s.sort();
+                    s.join(",")
+                };
+
+                // Only emit if the device list actually changed
+                if new_serials != prev_serials {
+                    prev_serials = new_serials;
+                    let _ = app_handle.emit("device-list-changed", &devices);
+                }
+            }
+
+            // Process exited — wait a bit and restart
+            if stop_flag.load(Ordering::Relaxed) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+    });
+
+    guard.handle = Some(handle);
+    Ok(())
+}
+
+/// Stop push-based device tracking.
+#[tauri::command]
+pub(crate) async fn stop_device_tracking(
+    tracker: tauri::State<'_, Mutex<DeviceTracker>>,
+) -> Result<(), String> {
+    let mut guard = tracker.lock().await;
+    guard.stop_flag.store(true, Ordering::SeqCst);
+    if let Some(handle) = guard.handle.take() {
+        handle.abort();
+    }
+    Ok(())
 }
 
 /// Install an APK onto the specified device (async with progress & cancellation).
@@ -667,5 +858,39 @@ mod tests {
         let stdout = "Performing Streamed Install\nSuccess";
         assert!(!stdout.contains("Failure"));
         assert!(stdout.contains("Success"));
+    }
+
+    #[test]
+    fn parse_device_list_standard() {
+        let output = "ABC123\tdevice usb:1234 product:panther model:Pixel_7 transport_id:1\n\
+                       DEF456\tunauthorized usb:5678 transport_id:2\n";
+        let devices = parse_device_list(output);
+        assert_eq!(devices.len(), 2);
+        assert_eq!(devices[0].serial, "ABC123");
+        assert_eq!(devices[0].state, "device");
+        assert_eq!(devices[0].model, "Pixel 7");
+        assert_eq!(devices[1].serial, "DEF456");
+        assert_eq!(devices[1].state, "unauthorized");
+    }
+
+    #[test]
+    fn parse_device_list_empty() {
+        let devices = parse_device_list("");
+        assert!(devices.is_empty());
+    }
+
+    #[test]
+    fn parse_device_list_skips_header() {
+        let output = "List of devices attached\nABC123\tdevice\n";
+        let devices = parse_device_list(output);
+        assert_eq!(devices.len(), 1);
+        assert_eq!(devices[0].serial, "ABC123");
+    }
+
+    #[test]
+    fn parse_device_list_blank_lines() {
+        let output = "\n\nABC123\tdevice\n\n";
+        let devices = parse_device_list(output);
+        assert_eq!(devices.len(), 1);
     }
 }

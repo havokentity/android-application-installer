@@ -15,6 +15,12 @@ export const findAdb = () =>
 export const getDevices = (adbPath: string) =>
   invoke<DeviceInfo[]>("get_devices", { adbPath });
 
+export const startDeviceTracking = (adbPath: string) =>
+  invoke<void>("start_device_tracking", { adbPath });
+
+export const stopDeviceTracking = () =>
+  invoke<void>("stop_device_tracking");
+
 export const installApk = (adbPath: string, device: string, apkPath: string) =>
   invoke<string>("install_apk", { adbPath, device, apkPath });
 

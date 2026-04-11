@@ -1,7 +1,9 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, useCallback } from "react";
 import { Info, Copy, Check } from "lucide-react";
 import { LogIcon } from "./StatusIndicators";
 import type { LogEntry } from "../types";
+
+const MAX_VISIBLE_LOGS = 200;
 
 interface LogPanelProps {
   logs: LogEntry[];
@@ -10,20 +12,32 @@ interface LogPanelProps {
 
 export function LogPanel({ logs, onClear }: LogPanelProps) {
   const logEndRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
   const [copied, setCopied] = useState(false);
 
+  // Debounced auto-scroll using requestAnimationFrame
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      rafRef.current = null;
+    });
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
   }, [logs]);
 
-  const copyLogs = async () => {
+  const copyLogs = useCallback(async () => {
     const text = logs.map(e => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}`).join("\n");
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch { /* clipboard not available */ }
-  };
+  }, [logs]);
+
+  const hiddenCount = Math.max(0, logs.length - MAX_VISIBLE_LOGS);
+  const visibleLogs = hiddenCount > 0 ? logs.slice(-MAX_VISIBLE_LOGS) : logs;
 
   return (
     <section className="section log-section">
@@ -47,7 +61,12 @@ export function LogPanel({ logs, onClear }: LogPanelProps) {
             No activity yet. Download ADB above, then select a file and install.
           </p>
         )}
-        {logs.map((entry) => (
+        {hiddenCount > 0 && (
+          <div className="log-hidden-indicator">
+            {hiddenCount} earlier {hiddenCount === 1 ? "entry" : "entries"} hidden
+          </div>
+        )}
+        {visibleLogs.map((entry) => (
           <div key={entry.id} className={`log-entry log-${entry.level}`}>
             <span className="log-time">{entry.time}</span>
             <LogIcon level={entry.level} />

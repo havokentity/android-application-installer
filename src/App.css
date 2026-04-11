@@ -668,6 +668,16 @@ body {
   font-family: inherit;
 }
 
+.log-hidden-indicator {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-3);
+  padding: 4px 0 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+  font-style: italic;
+}
+
 .log-entry {
   display: flex;
   align-items: flex-start;
