@@ -9,12 +9,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ## [Unreleased]
 
 ### Added
+- **APK/AAB downgrade support** — "Downgrade" checkbox inline next to the package name field; passes `-d` to `adb install` for APKs and `--allow-downgrade` to `bundletool install-apks` for AABs
+- **Native OS notifications** — desktop notifications via `notify-rust` when install or extract operations complete; shows app icon in release builds, Terminal icon in dev mode; cross-platform (macOS, Linux, Windows)
+- **Log filtering & search** — filter bar in the Log panel with text search input, per-level toggle buttons (info, success, warning, error), and filtered/total count display
+- `send_notification` Tauri command with typed IPC wrapper in `api.ts`
+- `notify-rust` direct dependency for reliable cross-platform notifications
 - 5 new Rust unit tests for `build_keystore_args()` helper — total: 89 Rust tests
 
 ### Changed
 - **Refactored keystore arg construction** — `install_aab` and `extract_apk_from_aab` now use the shared `build_keystore_args()` helper, eliminating duplicated keystore argument building
-- **Replaced swallowed error** — empty `.catch(() => {})` in `useDeviceState` now logs via `console.warn`
-- Updated `docs/feature-analysis.md` — marked 5 items as completed (24/34 done): native OS notifications, log filtering/search, APK downgrade support, keystore args builder, swallowed errors
+- **Replaced swallowed errors** — all empty `.catch(() => {})` blocks across hooks and components now log via `console.warn`
+- **Package name field layout** — input fills available width with downgrade checkbox placed inline to the right, saving a line
+- Updated `docs/feature-analysis.md` — marked 5 items as completed (24/34 done)
 
 ---
 

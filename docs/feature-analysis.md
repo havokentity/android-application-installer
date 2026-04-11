@@ -18,11 +18,11 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 ### ⚡ Medium Impact, Quick Wins
 
 - [x] **Uninstall confirmation dialog** — `ask()` confirmation before destructive uninstall.
-- [x] **Native OS notifications** — Non-blocking native OS notifications via `@tauri-apps/plugin-notification` when long operations (install, extract) complete in the background. Permission requested on first use.
+- [x] **Native OS notifications** — Desktop notifications via `notify-rust` when install/extract operations complete. Uses app bundle ID for proper icon in release builds; falls back to Terminal in dev mode. Cross-platform (macOS, Linux, Windows).
 - [x] **Log export to file** — "Save log" button in LogPanel using `save()` dialog.
 - [x] **Log filtering/search** — Filter input with text search and per-level toggle buttons (info, success, warning, error) in the log panel. Shows filtered/total count when active.
 - [x] **File size display** — Show the selected file's size (e.g. "42.3 MB") in FileSection.
-- [x] **APK downgrade support** — Opt-in "Allow downgrade" checkbox in `FileSection` when an APK is selected; passes `-d` flag to `adb install`.
+- [x] **APK downgrade support** — "Downgrade" checkbox inline next to the package name field; passes `-d` to `adb install` for APKs and `--allow-downgrade` to `bundletool install-apks` for AABs.
 
 ### 🔮 Future Roadmap
 
