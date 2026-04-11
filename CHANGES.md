@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.8.1] — 2026-04-11
 ### Fixed
 - **Windows: blank console windows appearing** — ADB and Java commands spawned visible `cmd.exe` windows on Windows, stealing focus and freezing the main app window; added `CREATE_NO_WINDOW` creation flag to all sync and async command runners so processes run silently in the background
 - **Windows: app freezing during ADB operations** — the visible console windows blocked the UI thread; closing them killed the ADB process, causing devices to appear disconnected; now all commands run windowless
