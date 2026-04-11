@@ -52,7 +52,7 @@ export function useToolsState(
         const names = stale.map((s) => `${s.label} (${s.age_days}d ago)`).join(", ");
         addLog("warning", `Some managed tools haven't been updated in 30+ days: ${names}`);
       }
-    } catch { /* non-critical */ }
+    } catch (e) { console.warn("Stale tools check failed:", e); }
   }, [addLog]);
 
   useEffect(() => { checkToolsStatus(); }, [checkToolsStatus]);

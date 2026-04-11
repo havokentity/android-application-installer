@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- 5 new Rust unit tests for `build_keystore_args()` helper — total: 89 Rust tests
+
+### Changed
+- **Refactored keystore arg construction** — `install_aab` and `extract_apk_from_aab` now use the shared `build_keystore_args()` helper, eliminating duplicated keystore argument building
+- **Replaced swallowed error** — empty `.catch(() => {})` in `useDeviceState` now logs via `console.warn`
+- Updated `docs/feature-analysis.md` — marked 5 items as completed (24/34 done): native OS notifications, log filtering/search, APK downgrade support, keystore args builder, swallowed errors
+
 ---
 
 ## [1.7.1] — 2026-04-11

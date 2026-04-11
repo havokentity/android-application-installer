@@ -45,7 +45,8 @@ export function useAabSettings({ addLog, recordRecentFile }: UseAabSettingsOptio
       setBundletoolPath(path);
       setBundletoolStatus("found");
       addLog("success", `bundletool found: ${path}`);
-    } catch {
+    } catch (e) {
+      console.warn("bundletool detection failed:", e);
       setBundletoolStatus("not-found");
       addLog("info", "bundletool not found — use the Download button in AAB Settings or in the Tools section above.");
     }
@@ -106,7 +107,7 @@ export function useAabSettings({ addLog, recordRecentFile }: UseAabSettingsOptio
       if (jp && bt) {
         return await api.getAabPackageName(aabPath, jp, bt);
       }
-    } catch { /* best effort */ }
+    } catch (e) { console.warn("AAB package name detection failed:", e); }
     return null;
   }, [javaPath, bundletoolPath]);
 

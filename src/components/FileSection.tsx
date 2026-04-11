@@ -18,6 +18,8 @@ interface FileSectionProps {
   canExtract: boolean;
   isExtracting: boolean;
   onExtractApk: () => void;
+  allowDowngrade: boolean;
+  onAllowDowngradeChange: (value: boolean) => void;
 }
 
 export function FileSection({
@@ -25,6 +27,7 @@ export function FileSection({
   onPackageNameChange, onBrowseFile, onClearFile, onFileSelected,
   recentFiles, onRemoveRecentFile,
   canExtract, isExtracting, onExtractApk,
+  allowDowngrade, onAllowDowngradeChange,
 }: FileSectionProps) {
   return (
     <section className="section">
@@ -86,7 +89,15 @@ export function FileSection({
       )}
       <div className="package-row">
         <label className="field-label">Package Name (for Launch / Uninstall)</label>
-        <input type="text" className="input" value={packageName} onChange={(e) => onPackageNameChange(e.target.value)} placeholder="com.example.myapp" />
+        <div className="package-input-row">
+          <input type="text" className="input" value={packageName} onChange={(e) => onPackageNameChange(e.target.value)} placeholder="com.example.myapp" />
+          {selectedFile && (fileType === "apk" || fileType === "aab") && (
+            <label className="checkbox-inline" title={fileType === "apk" ? "Pass -d flag to adb install" : "Pass --allow-downgrade to bundletool"}>
+              <input type="checkbox" checked={allowDowngrade} onChange={(e) => onAllowDowngradeChange(e.target.checked)} />
+              <span>Downgrade</span>
+            </label>
+          )}
+        </div>
       </div>
     </section>
   );

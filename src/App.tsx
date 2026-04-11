@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { ask } from "@tauri-apps/plugin-dialog";
+import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
 import "./App.css";
 import type { LogEntry, OperationProgress, RecentFilesConfig } from "./types";
@@ -50,10 +51,27 @@ function App() {
   // ── General state ─────────────────────────────────────────────────
   const [isInstalling, setIsInstalling] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [allowDowngrade, setAllowDowngrade] = useState(false);
   const [appVersion, setAppVersion] = useState("");
   const [operationProgress, setOperationProgress] = useState<OperationProgress | null>(null);
 
-  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+  useEffect(() => { getVersion().then(setAppVersion).catch((e) => console.warn("Failed to get app version:", e)); }, []);
+
+  /** Send a native OS notification (non-blocking, best-effort). */
+  const notify = useCallback(async (title: string, body: string) => {
+    try {
+      let granted = await isPermissionGranted();
+      if (!granted) {
+        const perm = await requestPermission();
+        granted = perm === "granted";
+      }
+      if (granted) {
+        await sendNotification({ title, body });
+      } else {
+        console.warn("Notification permission not granted");
+      }
+    } catch (e) { console.warn("Notification failed:", e); }
+  }, []);
 
   // ── Operation progress listener ────────────────────────────────────
   useEffect(() => {
@@ -75,17 +93,17 @@ function App() {
   const [recentFiles, setRecentFiles] = useState<RecentFilesConfig>({ packages: [], keystores: [] });
 
   const loadRecentFiles = useCallback(async () => {
-    try { setRecentFiles(await api.getRecentFiles()); } catch { /* non-critical */ }
+    try { setRecentFiles(await api.getRecentFiles()); } catch (e) { console.warn("Failed to load recent files:", e); }
   }, []);
 
   useEffect(() => { loadRecentFiles(); }, [loadRecentFiles]);
 
   const recordRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
-    try { setRecentFiles(await api.addRecentFile(path, category)); } catch { /* non-critical */ }
+    try { setRecentFiles(await api.addRecentFile(path, category)); } catch (e) { console.warn("Failed to record recent file:", e); }
   }, []);
 
   const removeRecentFile = useCallback(async (path: string, category: "packages" | "keystores") => {
-    try { setRecentFiles(await api.removeRecentFile(path, category)); } catch { /* non-critical */ }
+    try { setRecentFiles(await api.removeRecentFile(path, category)); } catch (e) { console.warn("Failed to remove recent file:", e); }
   }, []);
 
   // ── Auto updater ──────────────────────────────────────────────────────
@@ -219,7 +237,8 @@ function App() {
           file.setPackageName(pkg);
           addLog("info", `Package: ${pkg}`);
         }
-      } catch {
+      } catch (e) {
+        console.warn("AAB package name detection failed:", e);
         addLog("info", "Could not auto-detect package name from AAB. You can enter it manually.");
       }
     },
@@ -277,7 +296,7 @@ function App() {
 
     setIsInstalling(true);
     setOperationProgress(null);
-    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
 
     const fileName = getFileName(file.selectedFile);
     const multi = targetDevices.length > 1;
@@ -289,16 +308,17 @@ function App() {
 
         try {
           if (file.fileType === "apk") {
-            addLog("info", `${prefix}Installing ${fileName}...`);
-            addLog("success", prefix + await api.installApk(adbPath, device, file.selectedFile));
+            addLog("info", `${prefix}Installing ${fileName}${allowDowngrade ? " (downgrade allowed)" : ""}...`);
+            addLog("success", prefix + await api.installApk(adbPath, device, file.selectedFile, allowDowngrade));
             addToast(`${fileName} installed on ${deviceLabel}`, "success");
           } else if (file.fileType === "aab") {
-            addLog("info", `${prefix}Installing ${fileName} via bundletool...`);
+            addLog("info", `${prefix}Installing ${fileName} via bundletool${allowDowngrade ? " (downgrade allowed)" : ""}...`);
             addLog("success", prefix + await api.installAab({
               adbPath, device, aabPath: file.selectedFile,
               javaPath: aab.javaPath, bundletoolPath: aab.bundletoolPath,
               keystorePath: aab.keystorePath || null, keystorePass: aab.keystorePass || null,
               keyAlias: aab.keyAlias || null, keyPass: aab.keyPass || null,
+              allowDowngrade,
             }));
             addToast(`${fileName} installed on ${deviceLabel}`, "success");
           }
@@ -323,6 +343,7 @@ function App() {
     } finally {
       setIsInstalling(false);
       setOperationProgress(null);
+      notify("Installation Complete", `${getFileName(file.selectedFile!)} has been installed.`);
     }
   };
 
@@ -330,7 +351,7 @@ function App() {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
-    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
     try {
       addLog("info", `Launching ${file.packageName}...`);
       addLog("success", await api.launchApp(adbPath, effectiveSerial, file.packageName));
@@ -342,7 +363,7 @@ function App() {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
-    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
     try {
       addLog("info", `Stopping ${file.packageName}...`);
       addLog("success", await api.stopApp(adbPath, effectiveSerial, file.packageName));
@@ -358,7 +379,7 @@ function App() {
       title: "Confirm Uninstall", kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel",
     });
     if (!confirmed) return;
-    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
     try {
       addLog("info", `Uninstalling ${file.packageName}...`);
       addLog("success", await api.uninstallApp(adbPath, effectiveSerial, file.packageName));
@@ -393,7 +414,7 @@ function App() {
 
     setIsExtracting(true);
     setOperationProgress(null);
-    try { await api.setCancelFlag(false); } catch { /* non-critical */ }
+    try { await api.setCancelFlag(false); } catch (e) { console.warn("setCancelFlag failed:", e); }
 
     try {
       addLog("info", `Extracting universal APK from ${getFileName(file.selectedFile)}...`);
@@ -411,6 +432,7 @@ function App() {
     } finally {
       setIsExtracting(false);
       setOperationProgress(null);
+      notify("Extraction Complete", `APK extracted from ${getFileName(file.selectedFile!)}`);
     }
   };
 
@@ -473,6 +495,7 @@ function App() {
       onFileSelected={file.handleFileSelected}
       recentFiles={recentFiles} onRemoveRecentFile={(path) => removeRecentFile(path, "packages")}
       canExtract={!!canExtract} isExtracting={isExtracting} onExtractApk={extractApk}
+      allowDowngrade={allowDowngrade} onAllowDowngradeChange={setAllowDowngrade}
     />
   );
 

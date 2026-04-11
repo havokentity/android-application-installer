@@ -35,7 +35,8 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
     try {
       const size = await api.getFileSize(path);
       setFileSize(size);
-    } catch {
+    } catch (e) {
+      console.warn("Failed to get file size:", e);
       setFileSize(null);
     }
 
@@ -44,7 +45,8 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
         const pkg = await api.getPackageName(path);
         setPackageName(pkg);
         addLog("info", `Package: ${pkg}`);
-      } catch {
+      } catch (e) {
+        console.warn("Failed to get package name:", e);
         addLog("info", "Could not auto-detect package name. You can enter it manually for the Launch feature.");
       }
     }

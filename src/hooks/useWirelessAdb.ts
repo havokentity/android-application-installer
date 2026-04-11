@@ -282,7 +282,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
         try {
           await api.adbDisconnect(adbPath, alsoDisconnect);
           addLog("info", `Also disconnected alternate transport.`);
-        } catch { /* alternate may not be connected — that's fine */ }
+        } catch (e) { console.warn("Alternate transport disconnect failed (non-critical):", e); }
       }
       addToast("Device disconnected", "info");
       onDeviceChange?.();
@@ -312,7 +312,8 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
       await api.adbConnect(adbPath, target);
       onDeviceChange?.();
       return true;
-    } catch {
+    } catch (e) {
+      console.warn("Direct connect failed:", e);
       return false;
     }
   }, [adbPath, onDeviceChange]);

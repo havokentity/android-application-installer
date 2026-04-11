@@ -369,6 +369,35 @@ body {
   margin-bottom: 12px;
 }
 
+.package-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.package-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.checkbox-inline input[type="checkbox"] {
+  accent-color: var(--green);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
 .adb-row:last-child,
 .device-row:last-child,
 .package-row:last-child,
@@ -643,8 +672,97 @@ body {
 
 /* ─── Log Panel ────────────────────────────────────────────────────────────── */
 
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.checkbox-row input[type="checkbox"] {
+  accent-color: var(--green);
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+}
+
+.checkbox-row code {
+  font-size: 11px;
+  background: var(--bg-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: var(--text-1);
+}
+
 .log-section .section-header {
   margin-bottom: 10px;
+}
+
+.log-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+
+.log-filter-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  flex: 1;
+  min-width: 120px;
+  color: var(--text-2);
+}
+
+.log-filter-input {
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-1);
+  font-size: 12px;
+  width: 100%;
+  font-family: inherit;
+}
+
+.log-filter-input::placeholder {
+  color: var(--text-3);
+}
+
+.log-filter-clear {
+  padding: 0 !important;
+  min-width: auto !important;
+}
+
+.log-level-toggles {
+  display: flex;
+  gap: 2px;
+}
+
+.log-level-btn {
+  font-size: 11px !important;
+  text-transform: capitalize;
+  padding: 3px 6px !important;
+  gap: 3px !important;
+  opacity: 1;
+  transition: opacity var(--transition);
+}
+
+.log-level-off {
+  opacity: 0.35;
+}
+
+.log-filter-count {
+  font-size: 11px;
+  color: var(--text-3);
+  white-space: nowrap;
 }
 
 .log-panel {

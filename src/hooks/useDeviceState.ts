@@ -89,7 +89,7 @@ export function useDeviceState(
     try {
       const devs = await api.getDevices(adbPath);
       applyDeviceUpdate(devs, true);
-    } catch { /* silent */ }
+    } catch (e) { console.warn("Quiet device refresh failed:", e); }
   }, [adbPath, applyDeviceUpdate]);
 
   // Sync ref
@@ -114,7 +114,8 @@ export function useDeviceState(
       try {
         await api.startDeviceTracking(adbPath);
         trackingActive.current = true;
-      } catch {
+      } catch (e) {
+        console.warn("Device tracking failed, falling back to polling:", e);
         // Tracking failed — fall back to polling
         trackingActive.current = false;
         intervalId = setInterval(refreshDevicesQuiet, 8000);
@@ -132,7 +133,7 @@ export function useDeviceState(
       if (intervalId) clearInterval(intervalId);
       if (unlistenFn) unlistenFn();
       if (trackingActive.current) {
-        api.stopDeviceTracking().catch(() => {});
+        api.stopDeviceTracking().catch((e) => console.warn("stopDeviceTracking cleanup failed:", e));
         trackingActive.current = false;
       }
     };

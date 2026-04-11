@@ -18,11 +18,11 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 ### ⚡ Medium Impact, Quick Wins
 
 - [x] **Uninstall confirmation dialog** — `ask()` confirmation before destructive uninstall.
-- [ ] **Native OS notifications** — Notify when long operations complete in the background.
+- [x] **Native OS notifications** — Non-blocking native OS notifications via `@tauri-apps/plugin-notification` when long operations (install, extract) complete in the background. Permission requested on first use.
 - [x] **Log export to file** — "Save log" button in LogPanel using `save()` dialog.
-- [ ] **Log filtering/search** — Filter input + level toggle buttons in the log panel.
+- [x] **Log filtering/search** — Filter input with text search and per-level toggle buttons (info, success, warning, error) in the log panel. Shows filtered/total count when active.
 - [x] **File size display** — Show the selected file's size (e.g. "42.3 MB") in FileSection.
-- [ ] **APK downgrade support** — Opt-in checkbox to pass `-d` flag to `adb install`.
+- [x] **APK downgrade support** — Opt-in "Allow downgrade" checkbox in `FileSection` when an APK is selected; passes `-d` flag to `adb install`.
 
 ### 🔮 Future Roadmap
 
@@ -36,8 +36,8 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 - [x] **Extract state from `App.tsx` into custom hooks** — Created `useUpdater`, `useToolsState`, `useDeviceState`, `useFileState`, `useAabSettings`. App.tsx reduced from ~830 to ~320 lines.
 - [x] **Remove duplicate `formatBytes`** — Deleted from `Toolbar.tsx`, importing from `helpers.ts`.
 - [x] **Tighten `canInstall` type** — Cast to boolean at the call site.
-- [ ] **Extract keystore args builder** — Share identical keystore argument construction in `adb.rs`.
-- [ ] **Replace swallowed errors** — Add `console.warn` to ~8 empty catch blocks.
+- [x] **Extract keystore args builder** — Shared `build_keystore_args()` helper in `adb.rs`; used by `install_aab` and `extract_apk_from_aab`.
+- [x] **Replace swallowed errors** — All catch blocks now log via `console.warn` or `addLog`; no empty `.catch(() => {})` remaining.
 - [x] **Add React Error Boundary** — Wrap root in `<ErrorBoundary>` component.
 - [ ] **Concurrency-safe cancellation** — Per-operation cancellation tokens instead of global `AtomicBool`.
 
@@ -76,10 +76,10 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 | Category | Done | Remaining |
 |----------|------|-----------|
-| New Features (1) | 4 | 9 |
-| Code Quality (2) | 4 | 3 |
+| New Features (1) | 7 | 6 |
+| Code Quality (2) | 6 | 1 |
 | UX (3) | 6 | 0 |
 | Performance (4) | 4 | 0 |
 | Architecture (5) | 1 | 3 |
-| **Total** | **19** | **15** |
+| **Total** | **24** | **10** |
 

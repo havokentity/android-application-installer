@@ -12,6 +12,40 @@ use tauri::Emitter;
 use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_async_lenient, run_cmd_lenient};
 use crate::tools;
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Build keystore-related arguments for bundletool commands.
+/// Returns a Vec of `--ks=`, `--ks-pass=`, `--ks-key-alias=`, `--key-pass=` args.
+fn build_keystore_args(
+    keystore_path: &Option<String>,
+    keystore_pass: &Option<String>,
+    key_alias: &Option<String>,
+    key_pass: &Option<String>,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    if let Some(ref ks) = keystore_path {
+        if !ks.is_empty() {
+            args.push(format!("--ks={}", ks));
+            if let Some(ref pass) = keystore_pass {
+                if !pass.is_empty() {
+                    args.push(format!("--ks-pass=pass:{}", pass));
+                }
+            }
+            if let Some(ref alias) = key_alias {
+                if !alias.is_empty() {
+                    args.push(format!("--ks-key-alias={}", alias));
+                }
+            }
+            if let Some(ref pass) = key_pass {
+                if !pass.is_empty() {
+                    args.push(format!("--key-pass=pass:{}", pass));
+                }
+            }
+        }
+    }
+    args
+}
+
 // ─── Data Types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -521,15 +555,22 @@ pub(crate) async fn install_apk(
     adb_path: String,
     device: String,
     apk_path: String,
+    allow_downgrade: Option<bool>,
 ) -> Result<String, String> {
     emit_op_progress(
         &app, "install_apk", &device, "running",
         "Installing APK...", Some(1), Some(1), true,
     );
 
+    let mut args = vec!["-s", &device, "install", "-r"];
+    if allow_downgrade.unwrap_or(false) {
+        args.push("-d");
+    }
+    args.push(&apk_path);
+
     let (stdout, stderr) = match run_cmd_async(
         &adb_path,
-        &["-s", &device, "install", "-r", &apk_path],
+        &args,
     ).await {
         Ok(v) => v,
         Err(e) => {
@@ -570,6 +611,7 @@ pub(crate) async fn install_aab(
     keystore_pass: Option<String>,
     key_alias: Option<String>,
     key_pass: Option<String>,
+    allow_downgrade: Option<bool>,
 ) -> Result<String, String> {
     // 1. Prepare temp .apks output path
     let stem = Path::new(&aab_path)
@@ -594,26 +636,7 @@ pub(crate) async fn install_aab(
     ];
 
     // Add keystore args if provided
-    if let Some(ref ks) = keystore_path {
-        if !ks.is_empty() {
-            build_args.push(format!("--ks={}", ks));
-            if let Some(ref pass) = keystore_pass {
-                if !pass.is_empty() {
-                    build_args.push(format!("--ks-pass=pass:{}", pass));
-                }
-            }
-            if let Some(ref alias) = key_alias {
-                if !alias.is_empty() {
-                    build_args.push(format!("--ks-key-alias={}", alias));
-                }
-            }
-            if let Some(ref pass) = key_pass {
-                if !pass.is_empty() {
-                    build_args.push(format!("--key-pass=pass:{}", pass));
-                }
-            }
-        }
-    }
+    build_args.extend(build_keystore_args(&keystore_path, &keystore_pass, &key_alias, &key_pass));
 
     // ── Step 1/2: Build APKs ──────────────────────────────────────────────
     emit_op_progress(
@@ -639,7 +662,7 @@ pub(crate) async fn install_aab(
         "Installing APKs to device...", Some(2), Some(2), true,
     );
 
-    let install_args: Vec<String> = vec![
+    let mut install_args: Vec<String> = vec![
         "-jar".into(),
         bundletool_path,
         "install-apks".into(),
@@ -647,6 +670,9 @@ pub(crate) async fn install_aab(
         format!("--device-id={}", device),
         format!("--adb={}", adb_path),
     ];
+    if allow_downgrade.unwrap_or(false) {
+        install_args.push("--allow-downgrade".into());
+    }
 
     let inst_ref: Vec<&str> = install_args.iter().map(|s| s.as_str()).collect();
     let (inst_out, _) = match run_cmd_async(&java_path, &inst_ref).await {
@@ -708,26 +734,7 @@ pub(crate) async fn extract_apk_from_aab(
     ];
 
     // Add keystore args if provided
-    if let Some(ref ks) = keystore_path {
-        if !ks.is_empty() {
-            build_args.push(format!("--ks={}", ks));
-            if let Some(ref pass) = keystore_pass {
-                if !pass.is_empty() {
-                    build_args.push(format!("--ks-pass=pass:{}", pass));
-                }
-            }
-            if let Some(ref alias) = key_alias {
-                if !alias.is_empty() {
-                    build_args.push(format!("--ks-key-alias={}", alias));
-                }
-            }
-            if let Some(ref pass) = key_pass {
-                if !pass.is_empty() {
-                    build_args.push(format!("--key-pass=pass:{}", pass));
-                }
-            }
-        }
-    }
+    build_args.extend(build_keystore_args(&keystore_path, &keystore_pass, &key_alias, &key_pass));
 
     // ── Step 1/2: Build universal APKs from AAB ─────────────────────────
     emit_op_progress(
@@ -1205,5 +1212,64 @@ mod tests {
         assert_eq!(services.len(), 1);
         assert_eq!(services[0].name, "adb-PIXEL7");
         assert_eq!(services[0].ip_port, "192.168.0.42:5555");
+    }
+
+    // ── build_keystore_args tests ─────────────────────────────────────────
+
+    #[test]
+    fn keystore_args_all_none() {
+        let args = build_keystore_args(&None, &None, &None, &None);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn keystore_args_all_populated() {
+        let args = build_keystore_args(
+            &Some("/path/to/keystore.jks".into()),
+            &Some("storepass".into()),
+            &Some("myalias".into()),
+            &Some("keypass".into()),
+        );
+        assert_eq!(args.len(), 4);
+        assert_eq!(args[0], "--ks=/path/to/keystore.jks");
+        assert_eq!(args[1], "--ks-pass=pass:storepass");
+        assert_eq!(args[2], "--ks-key-alias=myalias");
+        assert_eq!(args[3], "--key-pass=pass:keypass");
+    }
+
+    #[test]
+    fn keystore_args_path_only() {
+        let args = build_keystore_args(
+            &Some("/my/keystore.jks".into()),
+            &None,
+            &None,
+            &None,
+        );
+        assert_eq!(args.len(), 1);
+        assert_eq!(args[0], "--ks=/my/keystore.jks");
+    }
+
+    #[test]
+    fn keystore_args_empty_path_skips_all() {
+        let args = build_keystore_args(
+            &Some("".into()),
+            &Some("pass".into()),
+            &Some("alias".into()),
+            &Some("keypass".into()),
+        );
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn keystore_args_empty_pass_skipped() {
+        let args = build_keystore_args(
+            &Some("/ks.jks".into()),
+            &Some("".into()),
+            &Some("alias".into()),
+            &None,
+        );
+        assert_eq!(args.len(), 2);
+        assert_eq!(args[0], "--ks=/ks.jks");
+        assert_eq!(args[1], "--ks-key-alias=alias");
     }
 }

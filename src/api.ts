@@ -38,14 +38,15 @@ export const adbMdnsCheck = (adbPath: string) =>
 export const adbMdnsServices = (adbPath: string) =>
   invoke<MdnsService[]>("adb_mdns_services", { adbPath });
 
-export const installApk = (adbPath: string, device: string, apkPath: string) =>
-  invoke<string>("install_apk", { adbPath, device, apkPath });
+export const installApk = (adbPath: string, device: string, apkPath: string, allowDowngrade?: boolean) =>
+  invoke<string>("install_apk", { adbPath, device, apkPath, allowDowngrade: allowDowngrade ?? false });
 
 export const installAab = (params: {
   adbPath: string; device: string; aabPath: string;
   javaPath: string; bundletoolPath: string;
   keystorePath: string | null; keystorePass: string | null;
   keyAlias: string | null; keyPass: string | null;
+  allowDowngrade?: boolean;
 }) => invoke<string>("install_aab", params);
 
 export const extractApkFromAab = (params: {
