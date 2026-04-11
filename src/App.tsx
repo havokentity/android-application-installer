@@ -246,6 +246,16 @@ function App() {
         addLog("info", "Could not auto-detect package name from AAB. You can enter it manually.");
       }
     },
+    onAutoProfileRestore: (profileName) => {
+      const profile = signingProfiles.find(p => p.name === profileName);
+      if (profile) {
+        aab.setKeystorePath(profile.keystorePath);
+        aab.setKeystorePass(profile.keystorePass);
+        aab.setKeyAlias(profile.keyAlias);
+        aab.setKeyPass(profile.keyPass);
+        setActiveProfileName(profileName);
+      }
+    },
   });
 
   // ─── Installation ─────────────────────────────────────────────────────
@@ -325,6 +335,13 @@ function App() {
               allowDowngrade,
             }));
             addToast(`${fileName} installed on ${deviceLabel}`, "success");
+          }
+
+          // Record file-profile association on successful install
+          if (activeProfileName && file.selectedFile) {
+            api.setProfileForFile(file.selectedFile, activeProfileName).catch((e) =>
+              console.warn("Failed to save file-profile association:", e)
+            );
           }
 
           if (andRun && file.packageName) {

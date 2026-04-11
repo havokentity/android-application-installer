@@ -11,9 +11,11 @@ interface UseFileStateOptions {
   recordRecentFile: (path: string, category: "packages" | "keystores") => void;
   onAabSelected?: (path: string) => Promise<void>;
   getAabToolPaths?: () => { javaPath: string; bundletoolPath: string } | null;
+  /** Called when a file has an associated signing profile that should be auto-restored. */
+  onAutoProfileRestore?: (profileName: string) => void;
 }
 
-export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabToolPaths }: UseFileStateOptions) {
+export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabToolPaths, onAutoProfileRestore }: UseFileStateOptions) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
@@ -72,7 +74,18 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
         }
       } catch (e) { console.warn("Failed to get AAB metadata:", e); }
     }
-  }, [addLog, recordRecentFile, onAabSelected]);
+
+    // Auto-restore signing profile associated with this file
+    if (onAutoProfileRestore) {
+      try {
+        const profileName = await api.getProfileForFile(path);
+        if (profileName) {
+          onAutoProfileRestore(profileName);
+          addLog("info", `Auto-restored signing profile: ${profileName}`);
+        }
+      } catch (e) { console.warn("Failed to get profile for file:", e); }
+    }
+  }, [addLog, recordRecentFile, onAabSelected, onAutoProfileRestore]);
 
   handleFileSelectedRef.current = handleFileSelected;
 

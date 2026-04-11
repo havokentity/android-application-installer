@@ -256,7 +256,25 @@ struct ManifestInfo {
     permissions: Vec<String>,
 }
 
+/// Look up an attribute by local name, handling optional namespace prefixes.
+/// e.g. `find_attr(attrs, "versionName")` matches `"versionName"` or `"android:versionName"`.
+fn find_attr(attrs: &indexmap::IndexMap<String, String>, name: &str) -> Option<String> {
+    // Exact match first
+    if let Some(v) = attrs.get(name) {
+        if !v.is_empty() { return Some(v.clone()); }
+    }
+    // Then check for namespace-prefixed key (e.g. "android:versionName")
+    let suffix = format!(":{}", name);
+    for (k, v) in attrs.iter() {
+        if k.ends_with(&suffix) && !v.is_empty() {
+            return Some(v.clone());
+        }
+    }
+    None
+}
+
 /// Parse binary AndroidManifest.xml from an APK and extract all metadata fields.
+/// Uses the axmldecoder structured DOM API to traverse elements and attributes.
 fn extract_manifest_from_apk(apk_path: &str) -> Result<ManifestInfo, String> {
     let file = fs::File::open(apk_path).map_err(|e| e.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
@@ -265,28 +283,45 @@ fn extract_manifest_from_apk(apk_path: &str) -> Result<ManifestInfo, String> {
     manifest.read_to_end(&mut buf).map_err(|e| e.to_string())?;
 
     let doc = axmldecoder::parse(&buf).map_err(|e| e.to_string())?;
-    let xml_str = format!("{:?}", doc);
 
     let mut info = ManifestInfo {
-        package_name: parse_package_from_xml(&xml_str),
-        version_name: parse_xml_attr(&xml_str, "versionName"),
-        version_code: parse_xml_attr(&xml_str, "versionCode"),
-        min_sdk: parse_xml_attr(&xml_str, "minSdkVersion"),
-        target_sdk: parse_xml_attr(&xml_str, "targetSdkVersion"),
-        permissions: parse_xml_permissions(&xml_str),
+        package_name: None,
+        version_name: None,
+        version_code: None,
+        min_sdk: None,
+        target_sdk: None,
+        permissions: Vec::new(),
     };
 
-    // Also try root element attributes (axmldecoder exposes them)
     if let Some(axmldecoder::Node::Element(root)) = doc.get_root() {
         let attrs = root.get_attributes();
-        if info.package_name.is_none() {
-            info.package_name = attrs.get("package").cloned().filter(|s| !s.is_empty());
-        }
-        if info.version_name.is_none() {
-            info.version_name = attrs.get("versionName").cloned().filter(|s| !s.is_empty());
-        }
-        if info.version_code.is_none() {
-            info.version_code = attrs.get("versionCode").cloned().filter(|s| !s.is_empty());
+
+        // Root <manifest> attributes
+        info.package_name = find_attr(attrs, "package");
+        info.version_name = find_attr(attrs, "versionName");
+        info.version_code = find_attr(attrs, "versionCode");
+
+        // Traverse children for <uses-sdk> and <uses-permission>
+        for child in root.get_children() {
+            if let axmldecoder::Node::Element(el) = child {
+                let tag = el.get_tag();
+                let child_attrs = el.get_attributes();
+
+                if tag == "uses-sdk" {
+                    if info.min_sdk.is_none() {
+                        info.min_sdk = find_attr(child_attrs, "minSdkVersion");
+                    }
+                    if info.target_sdk.is_none() {
+                        info.target_sdk = find_attr(child_attrs, "targetSdkVersion");
+                    }
+                } else if tag == "uses-permission" {
+                    if let Some(perm) = find_attr(child_attrs, "name") {
+                        if !info.permissions.contains(&perm) {
+                            info.permissions.push(perm);
+                        }
+                    }
+                }
+            }
         }
     }
 

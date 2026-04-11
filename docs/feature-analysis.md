@@ -13,7 +13,7 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 - [ ] **Batch file install** — Select or drop multiple APK/AAB files. Install sequentially with per-file progress.
 - [x] **APK/AAB metadata panel** — Show version name/code, min/target SDK, permissions, file size before installing. Metadata row displayed below file info. Backend: `get_apk_metadata` (binary manifest + aapt fallback) and `get_aab_metadata` (bundletool dump manifest). Auto-fetched on file selection.
 - [ ] **Device info enrichment** — Show Android version, API level, free storage next to each device.
-- [x] **Signing profile presets** — Save named keystore + password + alias configs so you don't re-enter credentials. Profiles stored in `signing_profiles.json`. UI in AabSettingsSection with dropdown, save, and delete controls. Backend: `get_signing_profiles`, `save_signing_profile`, `delete_signing_profile` commands.
+- [x] **Signing profile presets** — Save named keystore + password + alias configs so you don't re-enter credentials. Profiles stored in `signing_profiles.json` with passwords encrypted (AES-256-GCM). File-to-profile auto-association remembers which profile was used with each file and auto-restores on re-selection. UI in AabSettingsSection with dropdown, save, and delete controls. Backend: `get_signing_profiles`, `save_signing_profile`, `delete_signing_profile`, `get_profile_for_file`, `set_profile_for_file` commands.
 
 ### ⚡ Medium Impact, Quick Wins
 
@@ -68,7 +68,7 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 - [x] **Typed IPC layer** — Created `src/api.ts` wrapping all `invoke()` calls with typed functions. Zero string-based command names in App.tsx.
 - [ ] **Auto-generated TypeScript types** — Use `ts-rs` or `tauri-specta` to generate TS interfaces from Rust structs.
 - [ ] **State machine for operations** — Replace boolean flags with discriminated union state machine.
-- [ ] **Keystore password security** — Use `tauri-plugin-stronghold` or OS keychain for credential storage.
+- [x] **Keystore password security** — Signing profile passwords encrypted at rest using AES-256-GCM with a machine-local key (`signing_key.bin`). Legacy plaintext profiles migrated transparently on first load.
 
 ---
 
@@ -80,5 +80,5 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 | Code Quality (2) | 6 | 1 |
 | UX (3) | 6 | 0 |
 | Performance (4) | 4 | 0 |
-| Architecture (5) | 1 | 3 |
-| **Total** | **26** | **8** |
+| Architecture (5) | 2 | 2 |
+| **Total** | **27** | **7** |

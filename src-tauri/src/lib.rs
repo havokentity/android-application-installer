@@ -52,6 +52,8 @@ pub fn run() {
             tools::profiles::get_signing_profiles,
             tools::profiles::save_signing_profile,
             tools::profiles::delete_signing_profile,
+            tools::profiles::get_profile_for_file,
+            tools::profiles::set_profile_for_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

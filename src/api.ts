@@ -133,6 +133,12 @@ export const saveSigningProfile = (profile: SigningProfile) =>
 export const deleteSigningProfile = (name: string) =>
   invoke<SigningProfile[]>("delete_signing_profile", { name });
 
+export const getProfileForFile = (path: string) =>
+  invoke<string | null>("get_profile_for_file", { path });
+
+export const setProfileForFile = (path: string, profileName: string) =>
+  invoke<void>("set_profile_for_file", { path, profileName });
+
 // ─── Cancellation ─────────────────────────────────────────────────────────────
 
 export const setCancelFlag = (cancel: boolean) =>

@@ -130,11 +130,12 @@ State is distributed across custom hooks, each owning a specific domain. `App.ts
 |------|--------|
 | `useToolsState` | Tool download status, progress, staleness |
 | `useDeviceState` | Device list, selected device, polling |
-| `useFileState` | Selected file, type (APK/AAB), drag-drop, package name |
+| `useFileState` | Selected file, type (APK/AAB), drag-drop, package name, auto-profile restore |
 | `useAabSettings` | Java/bundletool paths, keystore config, AAB detection |
 | `useUpdater` | Auto-updater check, download progress, preferences |
 | `useLayout` | Portrait/landscape, theme, panel width |
 | `useToast` | Toast notifications (add/remove/auto-dismiss) |
+| `useWirelessAdb` | WiFi pairing, connection, mDNS discovery |
 | `useKeyboardShortcuts` | Global keyboard shortcut bindings |
 | `useEasterEgg` | Easter egg state |
 
@@ -186,9 +187,11 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `get_recent_files`     | tools/recent.rs  | Load recent packages & keystores            |
 | `add_recent_file`      | tools/recent.rs  | Add a file to recent list                   |
 | `remove_recent_file`   | tools/recent.rs  | Remove a file from recent list              |
-| `get_signing_profiles` | tools/profiles.rs | Load saved signing profiles                 |
-| `save_signing_profile` | tools/profiles.rs | Save/upsert a signing profile by name       |
-| `delete_signing_profile`| tools/profiles.rs | Delete a signing profile by name           |
+| `get_signing_profiles` | tools/profiles.rs | Load saved signing profiles (decrypted)       |
+| `save_signing_profile` | tools/profiles.rs | Save/upsert a signing profile by name (encrypted) |
+| `delete_signing_profile`| tools/profiles.rs | Delete a signing profile by name              |
+| `get_profile_for_file` | tools/profiles.rs | Get associated signing profile for a file path |
+| `set_profile_for_file` | tools/profiles.rs | Associate a file path with a signing profile   |
 
 ## Auto-Updater
 
@@ -362,6 +365,7 @@ All managed tools + config live under the Tauri `app_local_data_dir`:
 │       └── Contents/Home/bin/java   (macOS)
 ├── tools_config.json     ← last-updated timestamps
 ├── recent_files.json     ← recent packages & keystores
-└── signing_profiles.json ← saved signing profile presets
+├── signing_profiles.json ← saved signing profiles (passwords AES-256-GCM encrypted)
+└── signing_key.bin       ← machine-local 256-bit encryption key
 ```
 

@@ -11,15 +11,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 - **APK/AAB metadata panel** — version name/code, min/target SDK levels displayed in a metadata row below the file info after selection; auto-detected from binary manifest (APK) or bundletool dump (AAB) with aapt/aapt2 fallback
 - **Signing profile presets** — save, load, and delete named keystore + password + alias configurations in AAB Settings; profiles persisted in `signing_profiles.json`; UI with dropdown selector, save input, and delete button
+- **Signing profile encryption** — passwords encrypted at rest using AES-256-GCM with a machine-local key (`signing_key.bin`); legacy plaintext profiles migrated transparently on first load
+- **File-profile auto-association** — signing profiles are remembered per-file; when a previously used APK/AAB is re-selected, the associated profile is auto-restored; association saved on successful install
 - `get_apk_metadata` and `get_aab_metadata` Tauri commands with typed IPC wrappers in `api.ts`
 - `get_signing_profiles`, `save_signing_profile`, `delete_signing_profile` Tauri commands for profile management
-- `tools/profiles.rs` — Rust module for signing profile persistence with upsert, delete, and corruption-safe loading
-- 8 new metadata parsing Rust tests (aapt, XML attribute, permission parsing) — total: 102 Rust tests
+- `get_profile_for_file`, `set_profile_for_file` Tauri commands for file-to-profile mapping
+- `tools/profiles.rs` — Rust module for signing profile persistence with upsert, delete, encryption, file mapping, and corruption-safe loading
+- `aes-gcm` and `rand` crate dependencies for AES-256-GCM encryption
+- 8 new metadata parsing Rust tests (aapt, XML attribute, permission parsing) — total: 107 Rust tests
 - 21 new frontend tests (metadata display, signing profiles, downgrade checkbox, type validation) — total: 388
 
+### Fixed
+- **APK metadata extraction** — rewrote `extract_manifest_from_apk` to use structured DOM traversal instead of broken `format!("{:?}", doc)` + regex approach; now correctly reads `android:`-prefixed attributes and traverses child elements for `<uses-sdk>` and `<uses-permission>`
+
 ### Changed
-- Updated `docs/feature-analysis.md` — marked 2 items as completed (26/34 done)
-- Updated `docs/architecture.md` — added `profiles.rs`, `get_apk_metadata`, `get_aab_metadata`, signing profile commands, and updated component descriptions
+- Updated `docs/feature-analysis.md` — marked 3 items as completed (27/34 done)
+- Updated `docs/architecture.md` — added `profiles.rs`, encryption key, file mappings, `get_apk_metadata`, `get_aab_metadata`, signing profile commands, and updated component descriptions
 
 ---
 
