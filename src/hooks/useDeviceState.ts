@@ -33,7 +33,7 @@ export function useDeviceState(
   const applyDeviceUpdate = useCallback((devs: DeviceInfo[], logChange: boolean) => {
     // Include both serial AND state so offline→online transitions are detected
     const fingerprint = devs.map((d) => `${d.serial}:${d.state}`).sort().join(",");
-    if (fingerprint === prevDeviceFingerprint.current && devs.length > 0) return;
+    if (fingerprint === prevDeviceFingerprint.current) return;
     prevDeviceFingerprint.current = fingerprint;
     const deduped = deduplicateDevices(devs);
     setDevices(deduped);
