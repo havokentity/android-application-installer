@@ -18,7 +18,8 @@ import { useToolsState } from "./hooks/useToolsState";
 import { useDeviceState } from "./hooks/useDeviceState";
 import { useFileState } from "./hooks/useFileState";
 import { useAabSettings } from "./hooks/useAabSettings";
-import { useWirelessAdb, deduplicateDevices } from "./hooks/useWirelessAdb";
+import { useWirelessAdb, deduplicateDevices, isIpPortDevice } from "./hooks/useWirelessAdb";
+import type { DeduplicatedDevice } from "./hooks/useWirelessAdb";
 
 // ─── Components ──────────────────────────────────────────────────────────────
 import { Toolbar } from "./components/Toolbar";
@@ -137,9 +138,10 @@ function App() {
   const wireless = useWirelessAdb({
     adbPath, addLog, addToast,
     onDeviceChange: () => {
-      // Refresh immediately, and again after a delay to catch slow ADB server updates
-      dev.refreshDevices();
-      setTimeout(() => dev.refreshDevices(), 1500);
+      // Quiet refresh immediately, then again after a delay for mDNS twin discovery.
+      // Uses quiet (non-verbose) refresh to avoid log spam and UI churn.
+      dev.refreshDevicesQuiet();
+      setTimeout(() => dev.refreshDevicesQuiet(), 2000);
     },
   });
 
@@ -182,12 +184,40 @@ function App() {
 
   // ─── Installation ─────────────────────────────────────────────────────
 
+  /** Resolve the effective ADB serial for a device based on the current install mode.
+   *  In "verified" mode, use the mDNS alternate serial if available.
+   *  In "direct" mode (default), use the primary (IP:port) serial. */
+  const resolveSerial = useCallback((device: DeduplicatedDevice): string => {
+    if (dev.installMode === "verified" && device.alternateSerial) {
+      // alternateSerial is the mDNS serial when primary is IP:port, or vice versa
+      // We want the mDNS serial for verified mode
+      if (isIpPortDevice(device.serial)) return device.alternateSerial;
+      // If the primary is already mDNS, use it as-is
+      return device.serial;
+    }
+    if (dev.installMode === "direct" && device.alternateSerial) {
+      // We want the IP:port serial for direct mode
+      if (isIpPortDevice(device.serial)) return device.serial;
+      return device.alternateSerial;
+    }
+    return device.serial;
+  }, [dev.installMode]);
+
   const install = async (andRun = false) => {
     if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
 
     const targetDevices = dev.installAllDevices && dev.devices.length > 1
-      ? deduplicateDevices(dev.devices.filter((d) => d.state === "device")).map((d) => d.serial)
-      : dev.selectedDevice ? [dev.selectedDevice] : [];
+      ? deduplicateDevices(dev.devices.filter((d) => d.state === "device")).map((d) => ({
+          serial: resolveSerial(d),
+          label: d.model || d.serial,
+        }))
+      : dev.selectedDevice
+        ? (() => {
+            const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+            const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
+            return [{ serial: effectiveSerial, label: devInfo?.model || dev.selectedDevice }];
+          })()
+        : [];
 
     if (targetDevices.length === 0) { addLog("error", "Please select a device first."); addToast("No device selected", "error"); return; }
 
@@ -204,9 +234,8 @@ function App() {
     const multi = targetDevices.length > 1;
 
     try {
-      for (const device of targetDevices) {
-        const devInfo = dev.devices.find((d) => d.serial === device);
-        const deviceLabel = devInfo?.model || device;
+      for (const target of targetDevices) {
+        const { serial: device, label: deviceLabel } = target;
         const prefix = multi ? `[${deviceLabel}] ` : "";
 
         try {
@@ -250,26 +279,32 @@ function App() {
 
   const launchApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
+    const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+    const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Launching ${file.packageName}...`);
-      addLog("success", await api.launchApp(adbPath, dev.selectedDevice, file.packageName));
+      addLog("success", await api.launchApp(adbPath, effectiveSerial, file.packageName));
       addToast(`${file.packageName} launched`, "success");
     } catch (e) { addLog("error", String(e)); addToast("Failed to launch app", "error"); }
   };
 
   const stopApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
+    const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+    const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Stopping ${file.packageName}...`);
-      addLog("success", await api.stopApp(adbPath, dev.selectedDevice, file.packageName));
+      addLog("success", await api.stopApp(adbPath, effectiveSerial, file.packageName));
       addToast(`${file.packageName} stopped`, "info");
     } catch (e) { addLog("error", String(e)); addToast("Failed to stop app", "error"); }
   };
 
   const uninstallApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+    const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     const confirmed = await ask(`Are you sure you want to uninstall ${file.packageName}?\n\nThis will remove the app and all its data from the device.`, {
       title: "Confirm Uninstall", kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel",
     });
@@ -277,7 +312,7 @@ function App() {
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Uninstalling ${file.packageName}...`);
-      addLog("success", await api.uninstallApp(adbPath, dev.selectedDevice, file.packageName));
+      addLog("success", await api.uninstallApp(adbPath, effectiveSerial, file.packageName));
       addToast(`${file.packageName} uninstalled`, "success");
     } catch (e) { addLog("error", String(e)); addToast("Uninstall failed", "error"); }
   };
@@ -373,6 +408,7 @@ function App() {
       onDetectAdb={detectAdb}
       expanded={dev.deviceExpanded} onToggleExpanded={() => dev.setDeviceExpanded(!dev.deviceExpanded)}
       installAllDevices={dev.installAllDevices} onInstallAllDevicesChange={dev.setInstallAllDevices}
+      installMode={dev.installMode} onInstallModeChange={dev.setInstallMode}
       isInstalling={isInstalling} canInstall={canInstall} packageName={file.packageName}
       onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}

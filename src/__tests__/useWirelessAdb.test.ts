@@ -153,6 +153,46 @@ describe("deduplicateDevices", () => {
     expect(result.map((d) => d.serial)).toContain("USB123");
     expect(result.map((d) => d.serial)).toContain("192.168.0.23:38355");
   });
+
+  it("stores alternateSerial on deduplicated entry (IP:port preferred)", () => {
+    const devices = [
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+      makeDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+    expect(result[0].alternateSerial).toBe("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp");
+  });
+
+  it("stores alternateSerial when mDNS comes first", () => {
+    const devices = [
+      makeDevice("adb-SERIAL._adb-tls-connect._tcp", "I2401", "ossi"),
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+    expect(result[0].alternateSerial).toBe("adb-SERIAL._adb-tls-connect._tcp");
+  });
+
+  it("does not set alternateSerial when no twin exists", () => {
+    const devices = [
+      makeDevice("192.168.0.23:38355", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].alternateSerial).toBeUndefined();
+  });
+
+  it("does not set alternateSerial on USB devices", () => {
+    const devices = [
+      makeDevice("USB123", "Pixel 7", "panther"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].alternateSerial).toBeUndefined();
+  });
 });
 
 describe("isValidIp", () => {

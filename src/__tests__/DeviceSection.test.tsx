@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DeviceSection } from "../components/DeviceSection";
 import type { DeviceInfo } from "../types";
-import type { WirelessAdbState } from "../hooks/useWirelessAdb";
+import type { WirelessAdbState, DeduplicatedDevice } from "../hooks/useWirelessAdb";
 
 const device1: DeviceInfo = {
   serial: "ABC123",
@@ -59,6 +59,8 @@ const wirelessDefaults: WirelessAdbState = {
   connect: vi.fn(),
   disconnect: vi.fn(),
   cancelWirelessOp: vi.fn(),
+  needsPairing: false,
+  promptPairing: vi.fn(),
   discoveredDevices: [],
   isScanning: false,
   mdnsSupported: null,
@@ -81,6 +83,8 @@ const defaults = {
   onToggleExpanded: vi.fn(),
   installAllDevices: false,
   onInstallAllDevicesChange: vi.fn(),
+  installMode: "direct" as const,
+  onInstallModeChange: vi.fn(),
   isInstalling: false,
   canInstall: false as boolean | string | null,
   packageName: "",
@@ -507,6 +511,158 @@ describe("DeviceSection", () => {
     const wireless = { ...wirelessDefaults, wifiExpanded: true };
     render(<DeviceSection {...defaults} expanded={true} devices={[offlineWireless]} selectedDevice="192.168.1.100:5555" wireless={wireless} />);
     expect(screen.getByText("offline")).toBeInTheDocument();
+  });
+
+  // ── Install Mode Toggle ────────────────────────────────────────────────
+
+  it("shows install mode toggle when device has alternateSerial", () => {
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} />);
+    expect(screen.getByText("Install mode:")).toBeInTheDocument();
+    expect(screen.getByText("Direct")).toBeInTheDocument();
+    expect(screen.getByText("Verified")).toBeInTheDocument();
+  });
+
+  it("shows install mode toggle for wireless device without alternateSerial", () => {
+    render(<DeviceSection {...defaults} devices={[wirelessDevice]} selectedDevice="192.168.1.100:5555" expanded={true} />);
+    expect(screen.getByText("Install mode:")).toBeInTheDocument();
+    // Direct should be available (it's an IP:port device), Verified should be disabled (no mDNS twin)
+    expect(screen.getByText("Verified").closest("button")).toBeDisabled();
+  });
+
+  it("does not show install mode toggle for USB devices", () => {
+    render(<DeviceSection {...defaults} devices={[device1]} selectedDevice="ABC123" expanded={true} />);
+    expect(screen.queryByText("Install mode:")).not.toBeInTheDocument();
+  });
+
+  it("highlights Direct pill when installMode is 'direct'", () => {
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} installMode="direct" />);
+    const directBtn = screen.getByText("Direct").closest("button")!;
+    expect(directBtn.className).toContain("active");
+  });
+
+  it("highlights Verified pill when installMode is 'verified'", () => {
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} installMode="verified" />);
+    const verifiedBtn = screen.getByText("Verified").closest("button")!;
+    expect(verifiedBtn.className).toContain("active");
+  });
+
+  it("calls onInstallModeChange when Direct pill is clicked", () => {
+    const onInstallModeChange = vi.fn();
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} installMode="verified" onInstallModeChange={onInstallModeChange} />);
+    fireEvent.click(screen.getByText("Direct"));
+    expect(onInstallModeChange).toHaveBeenCalledWith("direct");
+  });
+
+  it("calls onInstallModeChange when Verified pill is clicked", () => {
+    const onInstallModeChange = vi.fn();
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} installMode="direct" onInstallModeChange={onInstallModeChange} />);
+    fireEvent.click(screen.getByText("Verified"));
+    expect(onInstallModeChange).toHaveBeenCalledWith("verified");
+  });
+
+  // ── Pairing Prompt ─────────────────────────────────────────────────────
+
+  it("shows pairing prompt when needsPairing is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, needsPairing: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText(/doesn't appear to be paired/)).toBeInTheDocument();
+  });
+
+  it("does not show pairing prompt when needsPairing is false", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, needsPairing: false };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.queryByText(/doesn't appear to be paired/)).not.toBeInTheDocument();
+  });
+
+  it("calls promptPairing when 'Pair this device' button is clicked", () => {
+    const promptPairing = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, needsPairing: true, promptPairing };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText("Pair this device"));
+    expect(promptPairing).toHaveBeenCalledOnce();
+  });
+
+  // ── mDNS Device Display ──────────────────────────────────────────────
+
+  it("shows install mode toggle for mDNS-only device with Direct disabled", () => {
+    const mdnsDevice: DeduplicatedDevice = {
+      serial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+      state: "device",
+      model: "Pixel 7",
+      product: "panther",
+      transport_id: "5",
+    };
+    render(<DeviceSection {...defaults} devices={[mdnsDevice]} selectedDevice="adb-PIXEL7-abc._adb-tls-connect._tcp" expanded={true} />);
+    expect(screen.getByText("Install mode:")).toBeInTheDocument();
+    // Direct should be disabled (no IP:port), Verified should be available
+    expect(screen.getByText("Direct").closest("button")).toBeDisabled();
+    expect(screen.getByText("Verified").closest("button")).not.toBeDisabled();
+  });
+
+  it("enables both modes when device has alternateSerial", () => {
+    const dedupedDevice: DeduplicatedDevice = {
+      ...wirelessDevice,
+      alternateSerial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+    };
+    render(<DeviceSection {...defaults} devices={[dedupedDevice]} selectedDevice="192.168.1.100:5555" expanded={true} />);
+    expect(screen.getByText("Direct").closest("button")).not.toBeDisabled();
+    expect(screen.getByText("Verified").closest("button")).not.toBeDisabled();
+  });
+
+  it("displays IP from discoveredDevices for mDNS serial in dropdown", () => {
+    const mdnsDevice: DeduplicatedDevice = {
+      serial: "adb-PIXEL7-abc._adb-tls-connect._tcp",
+      state: "device",
+      model: "Pixel 7",
+      product: "panther",
+      transport_id: "5",
+    };
+    const wireless = {
+      ...wirelessDefaults,
+      discoveredDevices: [
+        { name: "adb-PIXEL7-abc", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" },
+      ],
+    };
+    render(<DeviceSection {...defaults} devices={[mdnsDevice]} selectedDevice="adb-PIXEL7-abc._adb-tls-connect._tcp" expanded={true} wireless={wireless} />);
+    // Should show IP instead of mDNS serial in dropdown option
+    const option = screen.getByRole("option", { name: /192\.168\.1\.42:43567/ });
+    expect(option).toBeInTheDocument();
+    expect(option.textContent).toContain("Pixel 7 (192.168.1.42:43567)");
+  });
+
+  it("shows shortened name for mDNS serial when no discovery data", () => {
+    const mdnsDevice: DeduplicatedDevice = {
+      serial: "adb-PIXEL7-abcdef._adb-tls-connect._tcp",
+      state: "device",
+      model: "",
+      product: "",
+      transport_id: "5",
+    };
+    render(<DeviceSection {...defaults} devices={[mdnsDevice]} selectedDevice="adb-PIXEL7-abcdef._adb-tls-connect._tcp" expanded={true} />);
+    // Should show shortened name in dropdown option instead of full mDNS serial
+    const option = screen.getByRole("option", { name: /PIXEL7/ });
+    expect(option).toBeInTheDocument();
+    expect(option.textContent).toContain("PIXEL7 (wireless)");
   });
 });
 

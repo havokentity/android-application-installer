@@ -1429,6 +1429,63 @@ body {
   background: var(--green-dim) !important;
 }
 
+/* ─── Install Mode Toggle ──────────────────────────────────────────────────── */
+
+.install-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.install-mode-label {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.install-mode-pills {
+  display: flex;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.install-mode-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  background: var(--bg-1);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 120ms ease;
+  line-height: 1;
+}
+
+.install-mode-pill:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.install-mode-pill:hover:not(.active) {
+  background: var(--bg-2);
+  color: var(--text-2);
+}
+
+.install-mode-pill.active {
+  background: var(--green-dim);
+  color: var(--green);
+  font-weight: 600;
+}
+
+.install-mode-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 /* ─── WiFi Discovery List ──────────────────────────────────────────────────── */
 
 .wifi-discover-header {

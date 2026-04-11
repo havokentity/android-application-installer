@@ -19,14 +19,21 @@ export function isWirelessDevice(serial: string): boolean {
   return isIpPortDevice(serial) || isMdnsDevice(serial);
 }
 
+/** A device entry that may carry an alternate serial from deduplication. */
+export interface DeduplicatedDevice extends import("../types").DeviceInfo {
+  /** The alternate serial (mDNS or IP:port twin) if both transports are available. */
+  alternateSerial?: string;
+}
+
 /**
  * Deduplicate devices that represent the same physical device connected via
  * multiple wireless transports (e.g. IP:port AND mDNS service name).
  * Groups by model+product when both are non-empty and both entries are wireless.
  * Returns one representative per physical device (prefers IP:port over mDNS).
+ * The discarded twin's serial is stored as `alternateSerial` on the surviving entry.
  */
-export function deduplicateDevices(devices: import("../types").DeviceInfo[]): import("../types").DeviceInfo[] {
-  const result: import("../types").DeviceInfo[] = [];
+export function deduplicateDevices(devices: import("../types").DeviceInfo[]): DeduplicatedDevice[] {
+  const result: DeduplicatedDevice[] = [];
   const consumed = new Set<string>();
 
   for (const d of devices) {
@@ -45,15 +52,16 @@ export function deduplicateDevices(devices: import("../types").DeviceInfo[]): im
       if (twin) {
         // Prefer IP:port over mDNS — it installs without Play Protect scan
         const preferred = isIpPortDevice(d.serial) ? d : twin;
+        const discarded = isIpPortDevice(d.serial) ? twin : d;
         consumed.add(d.serial);
         consumed.add(twin.serial);
-        result.push(preferred);
+        result.push({ ...preferred, alternateSerial: discarded.serial });
         continue;
       }
     }
 
     consumed.add(d.serial);
-    result.push(d);
+    result.push({ ...d });
   }
 
   return result;
@@ -249,6 +257,8 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
       } else {
         addLog("info", `Found ${deviceCount} device${deviceCount === 1 ? "" : "s"} on the network (${services.length} service${services.length === 1 ? "" : "s"}).`);
       }
+      // Refresh devices so any mDNS-discovered entries become visible
+      onDeviceChange?.();
     } catch (e) {
       const msg = String(e);
       if (msg.includes("cancelled")) {
@@ -260,7 +270,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     } finally {
       setIsScanning(false);
     }
-  }, [adbPath, isScanning, mdnsSupported, addLog, addToast]);
+  }, [adbPath, isScanning, mdnsSupported, addLog, addToast, onDeviceChange]);
 
   /** Copy the connect IP into the pairing fields so the user only needs port + code. */
   const promptPairing = useCallback(() => {

@@ -1,14 +1,16 @@
 import {
   Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
-  Usb, Wifi, Unplug, Radio,
+  Usb, Wifi, Unplug, Radio, Zap, ShieldCheck,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
 import { shortcutLabel } from "../helpers";
 import { isWirelessDevice, isIpPortDevice, isMdnsDevice, deduplicateDevices } from "../hooks/useWirelessAdb";
+import type { DeduplicatedDevice } from "../hooks/useWirelessAdb";
 import type { WirelessAdbState } from "../hooks/useWirelessAdb";
-import type { DeviceInfo, DetectionStatus, MdnsService, OperationProgress } from "../types";
+import type { InstallMode } from "../hooks/useDeviceState";
+import type { DetectionStatus, MdnsService, OperationProgress } from "../types";
 
 /** Extract a short display name from an mDNS service name (e.g. "adb-PIXEL7-abc" → "PIXEL7"). */
 function shortDeviceName(name: string): string {
@@ -17,11 +19,23 @@ function shortDeviceName(name: string): string {
   return match ? match[1] : name;
 }
 
-/** Return a short suffix indicating the wireless install mode for a device serial. */
-function deviceModeLabel(serial: string): string {
-  if (isIpPortDevice(serial)) return " ⚡ Direct";
-  if (isMdnsDevice(serial)) return " 🛡️ Verified";
-  return "";
+/** Resolve a device serial to a display-friendly string.
+ *  For mDNS serials, looks up the IP:port from discovered mDNS services.
+ *  Falls back to a shortened device ID if no discovery data is available. */
+function getDisplaySerial(serial: string, discoveredDevices: MdnsService[]): string {
+  if (!isMdnsDevice(serial)) return serial;
+
+  // mDNS serial: "adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp"
+  // mDNS service name: "adb-10BF190RC9001UZ-jvFPtf"
+  const namePart = serial.split("._adb-tls")[0];
+  const svc = discoveredDevices.find(
+    (s) => s.name === namePart && s.service_type.includes("connect"),
+  );
+  if (svc) return svc.ip_port;
+
+  // Fallback: extract the device ID from the mDNS serial
+  const match = serial.match(/^adb-(.+?)(?:-[a-zA-Z0-9]{4,})?\._.*/);
+  return match ? `${match[1]} (wireless)` : serial;
 }
 
 /** Group raw mDNS services by device name, merging connect + pairing entries. */
@@ -50,7 +64,7 @@ function groupMdnsServices(services: MdnsService[]): GroupedDevice[] {
 }
 
 interface DeviceSectionProps {
-  devices: DeviceInfo[];
+  devices: DeduplicatedDevice[];
   selectedDevice: string;
   onSelectDevice: (serial: string) => void;
   loadingDevices: boolean;
@@ -64,6 +78,8 @@ interface DeviceSectionProps {
   onToggleExpanded: () => void;
   installAllDevices: boolean;
   onInstallAllDevicesChange: (checked: boolean) => void;
+  installMode: InstallMode;
+  onInstallModeChange: (mode: InstallMode) => void;
   isInstalling: boolean;
   canInstall: boolean | string | null;
   packageName: string;
@@ -81,6 +97,7 @@ export function DeviceSection({
   adbPath, adbStatus, adbManaged, onAdbPathChange, onDetectAdb,
   expanded, onToggleExpanded,
   installAllDevices, onInstallAllDevicesChange,
+  installMode, onInstallModeChange,
   isInstalling, canInstall, packageName,
   onInstall, onLaunch, onStopApp, onUninstall,
   operationProgress, onCancelOperation,
@@ -88,12 +105,26 @@ export function DeviceSection({
 }: DeviceSectionProps) {
   const selectedDeviceInfo = devices.find((d) => d.serial === selectedDevice);
   const deviceConnected = selectedDevice && devices.length > 0;
-  const deviceLabel = deviceConnected ? (selectedDeviceInfo?.model || selectedDevice) : null;
+  const deviceLabel = deviceConnected
+    ? (selectedDeviceInfo?.model || getDisplaySerial(selectedDevice, wireless.discoveredDevices))
+    : null;
   const canLaunchOrUninstall = !!packageName && !!selectedDevice && !isInstalling;
   const wirelessDevices = devices.filter((d) => isWirelessDevice(d.serial));
   const hasWirelessDevices = wirelessDevices.length > 0;
   const activeDevices = devices.filter((d) => d.state === "device");
   const uniqueActiveDevices = deduplicateDevices(activeDevices);
+  // Show mode toggle when the selected device is wireless
+  const selectedIsWireless = !!(selectedDeviceInfo && isWirelessDevice(selectedDeviceInfo.serial));
+  const selectedHasAlternate = !!(selectedDeviceInfo && selectedDeviceInfo.alternateSerial);
+  // Determine which modes are available
+  const hasDirectMode = selectedIsWireless && (
+    isIpPortDevice(selectedDeviceInfo!.serial) ||
+    (selectedDeviceInfo!.alternateSerial && isIpPortDevice(selectedDeviceInfo!.alternateSerial))
+  );
+  const hasVerifiedMode = selectedIsWireless && (
+    isMdnsDevice(selectedDeviceInfo!.serial) ||
+    (selectedDeviceInfo!.alternateSerial && isMdnsDevice(selectedDeviceInfo!.alternateSerial))
+  );
 
   return (
     <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
@@ -163,13 +194,15 @@ export function DeviceSection({
             <div className="input-group">
               <select className="select" value={selectedDevice} onChange={(e) => onSelectDevice(e.target.value)} disabled={devices.length === 0}>
                 {devices.length === 0 && <option value="">No devices connected</option>}
-                {devices.map((d) => (
-                  <option key={d.serial} value={d.serial}>
-                    {d.model ? `${d.model} (${d.serial})` : d.serial}
-                    {d.state !== "device" ? ` — ${d.state}` : ""}
-                    {d.state === "device" ? deviceModeLabel(d.serial) : ""}
-                  </option>
-                ))}
+                {devices.map((d) => {
+                  const displaySerial = getDisplaySerial(d.serial, wireless.discoveredDevices);
+                  return (
+                    <option key={d.serial} value={d.serial}>
+                      {d.model ? `${d.model} (${displaySerial})` : displaySerial}
+                      {d.state !== "device" ? ` — ${d.state}` : ""}
+                    </option>
+                  );
+                })}
               </select>
               <button className="btn btn-icon" onClick={onRefreshDevices} disabled={loadingDevices || !adbPath} title="Refresh devices">
                 <RefreshCw size={16} className={loadingDevices ? "spin" : ""} />
@@ -186,13 +219,40 @@ export function DeviceSection({
             {selectedDeviceInfo?.state === "unauthorized" && (
               <p className="hint hint-warning"><AlertTriangle size={12} /> Accept the USB debugging prompt on your device.</p>
             )}
+            {selectedIsWireless && (
+              <div className="install-mode-toggle">
+                <span className="install-mode-label">Install mode:</span>
+                <div className="install-mode-pills">
+                  <button
+                    className={`install-mode-pill ${installMode === "direct" || (!hasVerifiedMode && hasDirectMode) ? "active" : ""}`}
+                    onClick={() => onInstallModeChange("direct")}
+                    disabled={!hasDirectMode}
+                    title={hasDirectMode
+                      ? "Direct install via IP — bypasses Google Play Protect scanning"
+                      : "Connect via IP:port to enable direct mode"}
+                  >
+                    <Zap size={11} /> Direct
+                  </button>
+                  <button
+                    className={`install-mode-pill ${installMode === "verified" || (!hasDirectMode && hasVerifiedMode) ? "active" : ""}`}
+                    onClick={() => onInstallModeChange("verified")}
+                    disabled={!hasVerifiedMode}
+                    title={hasVerifiedMode
+                      ? "Verified install via mDNS — goes through Google Play Protect"
+                      : "Scan for devices to enable verified mode"}
+                  >
+                    <ShieldCheck size={11} /> Verified
+                  </button>
+                </div>
+              </div>
+            )}
             {hasWirelessDevices && selectedDevice && isWirelessDevice(selectedDevice) && (
               <button
                 className="btn btn-ghost btn-small wifi-disconnect-btn"
                 onClick={() => wireless.disconnect(selectedDevice)}
                 title="Disconnect wireless device"
               >
-                <Unplug size={12} /> Disconnect {selectedDevice}
+                <Unplug size={12} /> Disconnect {getDisplaySerial(selectedDevice, wireless.discoveredDevices)}
               </button>
             )}
             {devices.length === 0 && (
@@ -376,8 +436,8 @@ export function DeviceSection({
                       <li key={d.serial} className="wifi-discovered-item">
                         <div className="wifi-discovered-info">
                           <Wifi size={14} className="wifi-discovered-icon" />
-                          <span className="wifi-discovered-name">{d.model || d.serial}</span>
-                          {d.model && <span className="wifi-discovered-addr">{d.serial}</span>}
+                          <span className="wifi-discovered-name">{d.model || getDisplaySerial(d.serial, wireless.discoveredDevices)}</span>
+                          {d.model && <span className="wifi-discovered-addr">{getDisplaySerial(d.serial, wireless.discoveredDevices)}</span>}
                           <span className={`wifi-discovered-type ${d.state === "device" ? "badge-green" : "badge-yellow"}`}>
                             {d.state === "device" ? "Online" : d.state}
                           </span>
@@ -385,7 +445,7 @@ export function DeviceSection({
                         <button
                           className="btn btn-ghost btn-small wifi-disconnect-inline"
                           onClick={() => wireless.disconnect(d.serial)}
-                          title={`Disconnect ${d.serial}`}
+                          title={`Disconnect ${getDisplaySerial(d.serial, wireless.discoveredDevices)}`}
                         >
                           <Unplug size={12} />
                         </button>
