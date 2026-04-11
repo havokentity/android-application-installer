@@ -1396,6 +1396,16 @@ body {
   background: var(--red-dim) !important;
 }
 
+.wifi-cancel-btn {
+  color: var(--red) !important;
+  padding: 4px 6px !important;
+  flex-shrink: 0;
+}
+
+.wifi-cancel-btn:hover:not(:disabled) {
+  background: var(--red-dim) !important;
+}
+
 .btn-active {
   color: var(--green) !important;
   background: var(--green-dim) !important;

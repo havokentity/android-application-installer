@@ -52,11 +52,13 @@ const wirelessDefaults: WirelessAdbState = {
   setConnectPort: vi.fn(),
   isPairing: false,
   isConnecting: false,
+  isDisconnecting: false,
   canPair: false,
   canConnect: false,
   pair: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  cancelWirelessOp: vi.fn(),
   discoveredDevices: [],
   isScanning: false,
   mdnsSupported: null,
@@ -344,10 +346,28 @@ describe("DeviceSection", () => {
     expect(screen.getByText("Pairing...")).toBeInTheDocument();
   });
 
+  it("shows cancel button when pairing is in progress", () => {
+    const cancelWirelessOp = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, isPairing: true, cancelWirelessOp };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    const cancelBtn = screen.getByTitle("Cancel pairing");
+    fireEvent.click(cancelBtn);
+    expect(cancelWirelessOp).toHaveBeenCalledOnce();
+  });
+
   it("shows 'Connecting...' when isConnecting is true", () => {
     const wireless = { ...wirelessDefaults, wifiExpanded: true, isConnecting: true };
     render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
     expect(screen.getByText("Connecting...")).toBeInTheDocument();
+  });
+
+  it("shows cancel button when connecting is in progress", () => {
+    const cancelWirelessOp = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, isConnecting: true, cancelWirelessOp };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    const cancelBtn = screen.getByTitle("Cancel connection");
+    fireEvent.click(cancelBtn);
+    expect(cancelWirelessOp).toHaveBeenCalledOnce();
   });
 
   it("calls setWifiExpanded when WiFi toggle is clicked", () => {

@@ -246,6 +246,11 @@ export function DeviceSection({
                     {wireless.isPairing ? <Loader2 size={14} className="spin" /> : <Wifi size={14} />}
                     {wireless.isPairing ? "Pairing..." : "Pair"}
                   </button>
+                  {wireless.isPairing && (
+                    <button className="btn btn-ghost btn-small wifi-cancel-btn" onClick={wireless.cancelWirelessOp} title="Cancel pairing">
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
                 <p className="hint">Find pairing code in Settings → Developer Options → Wireless Debugging → Pair device</p>
               </div>
@@ -270,6 +275,11 @@ export function DeviceSection({
                     {wireless.isConnecting ? <Loader2 size={14} className="spin" /> : <Wifi size={14} />}
                     {wireless.isConnecting ? "Connecting..." : "Connect"}
                   </button>
+                  {wireless.isConnecting && (
+                    <button className="btn btn-ghost btn-small wifi-cancel-btn" onClick={wireless.cancelWirelessOp} title="Cancel connection">
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
                 <p className="hint">IP & port shown on the Wireless Debugging screen (different port from pairing)</p>
               </div>

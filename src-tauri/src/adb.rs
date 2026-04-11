@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Emitter;
 
-use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_lenient};
+use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_async_lenient, run_cmd_lenient};
 use crate::tools;
 
 // ─── Data Types ──────────────────────────────────────────────────────────────
@@ -446,33 +446,36 @@ pub(crate) fn parse_disconnect_result(stdout: &str, _stderr: &str) -> Result<Str
 
 /// Pair with a device over WiFi using `adb pair <ip:port> <pairing_code>`.
 /// Requires Android 11+ with wireless debugging enabled.
+/// Async with cancellation support — pairing can hang if the code is wrong.
 #[tauri::command]
-pub(crate) fn adb_pair(
+pub(crate) async fn adb_pair(
     adb_path: String,
     ip_port: String,
     pairing_code: String,
 ) -> Result<String, String> {
-    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["pair", &ip_port, &pairing_code])?;
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["pair", &ip_port, &pairing_code]).await?;
     parse_pair_result(&stdout, &stderr)
 }
 
 /// Connect to a device over WiFi using `adb connect <ip:port>`.
+/// Async with cancellation support.
 #[tauri::command]
-pub(crate) fn adb_connect(
+pub(crate) async fn adb_connect(
     adb_path: String,
     ip_port: String,
 ) -> Result<String, String> {
-    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["connect", &ip_port])?;
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["connect", &ip_port]).await?;
     parse_connect_result(&stdout, &stderr)
 }
 
 /// Disconnect a wireless device using `adb disconnect <ip:port>`.
+/// Async with cancellation support.
 #[tauri::command]
-pub(crate) fn adb_disconnect(
+pub(crate) async fn adb_disconnect(
     adb_path: String,
     ip_port: String,
 ) -> Result<String, String> {
-    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["disconnect", &ip_port])?;
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["disconnect", &ip_port]).await?;
     parse_disconnect_result(&stdout, &stderr)
 }
 

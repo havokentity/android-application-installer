@@ -45,11 +45,13 @@ export interface WirelessAdbState {
   setConnectPort: (v: string) => void;
   isPairing: boolean;
   isConnecting: boolean;
+  isDisconnecting: boolean;
   canPair: boolean;
   canConnect: boolean;
   pair: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: (serial: string) => Promise<void>;
+  cancelWirelessOp: () => Promise<void>;
   // mDNS discovery
   discoveredDevices: MdnsService[];
   isScanning: boolean;
@@ -73,6 +75,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
   const [connectPort, setConnectPort] = useState("");
   const [isPairing, setIsPairing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<MdnsService[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [mdnsSupported, setMdnsSupported] = useState<boolean | null>(null);
@@ -84,18 +87,23 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     if (!canPair) return;
     const ipPort = `${pairIp}:${pairPort}`;
     setIsPairing(true);
+    await api.setCancelFlag(false);
     addLog("info", `Pairing with ${ipPort}...`);
     try {
       const result = await api.adbPair(adbPath, ipPort, pairingCode);
       addLog("success", result);
       addToast("Device paired successfully", "success");
-      // Auto-fill connect IP from pair IP
       setConnectIp(pairIp);
-      // Clear pairing code after success
       setPairingCode("");
     } catch (e) {
-      addLog("error", `Pairing failed: ${e}`);
-      addToast(`Pairing failed: ${e}`, "error");
+      const msg = String(e);
+      if (msg.includes("cancelled")) {
+        addLog("warning", "Pairing cancelled.");
+        addToast("Pairing cancelled", "warning");
+      } else {
+        addLog("error", `Pairing failed: ${e}`);
+        addToast(`Pairing failed: ${e}`, "error");
+      }
     } finally {
       setIsPairing(false);
     }
@@ -105,30 +113,51 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     if (!canConnect) return;
     const ipPort = `${connectIp}:${connectPort}`;
     setIsConnecting(true);
+    await api.setCancelFlag(false);
     addLog("info", `Connecting to ${ipPort}...`);
     try {
       const result = await api.adbConnect(adbPath, ipPort);
       addLog("success", result);
       addToast("Connected wirelessly", "success");
     } catch (e) {
-      addLog("error", `Connection failed: ${e}`);
-      addToast(`Connection failed: ${e}`, "error");
+      const msg = String(e);
+      if (msg.includes("cancelled")) {
+        addLog("warning", "Connection cancelled.");
+        addToast("Connection cancelled", "warning");
+      } else {
+        addLog("error", `Connection failed: ${e}`);
+        addToast(`Connection failed: ${e}`, "error");
+      }
     } finally {
       setIsConnecting(false);
     }
   }, [canConnect, connectIp, connectPort, adbPath, addLog, addToast]);
 
   const disconnect = useCallback(async (serial: string) => {
+    setIsDisconnecting(true);
+    await api.setCancelFlag(false);
     addLog("info", `Disconnecting ${serial}...`);
     try {
       const result = await api.adbDisconnect(adbPath, serial);
       addLog("success", result);
       addToast("Device disconnected", "info");
     } catch (e) {
-      addLog("error", `Disconnect failed: ${e}`);
-      addToast(`Disconnect failed: ${e}`, "error");
+      const msg = String(e);
+      if (msg.includes("cancelled")) {
+        addLog("warning", "Disconnect cancelled.");
+      } else {
+        addLog("error", `Disconnect failed: ${e}`);
+        addToast(`Disconnect failed: ${e}`, "error");
+      }
+    } finally {
+      setIsDisconnecting(false);
     }
   }, [adbPath, addLog, addToast]);
+
+  const cancelWirelessOp = useCallback(async () => {
+    await api.setCancelFlag(true);
+    addLog("info", "Cancelling wireless operation...");
+  }, [addLog]);
 
   const scan = useCallback(async () => {
     if (!adbPath || isScanning) return;
@@ -177,9 +206,9 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     wifiExpanded, setWifiExpanded,
     pairIp, setPairIp, pairPort, setPairPort, pairingCode, setPairingCode,
     connectIp, setConnectIp, connectPort, setConnectPort,
-    isPairing, isConnecting,
+    isPairing, isConnecting, isDisconnecting,
     canPair, canConnect,
-    pair, connect, disconnect,
+    pair, connect, disconnect, cancelWirelessOp,
     discoveredDevices, isScanning, mdnsSupported, scan, selectDiscovered,
   };
 }
