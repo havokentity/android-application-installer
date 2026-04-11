@@ -9,7 +9,7 @@ import * as api from "../api";
 interface UseFileStateOptions {
   addLog: (level: LogEntry["level"], message: string) => void;
   recordRecentFile: (path: string, category: "packages" | "keystores") => void;
-  onAabSelected?: (path: string) => Promise<void>;
+  onAabSelected?: (path: string) => Promise<{ javaPath: string; bundletoolPath: string } | null | void>;
   getAabToolPaths?: () => { javaPath: string; bundletoolPath: string } | null;
   /** Called when a file has an associated signing profile that should be auto-restored. */
   onAutoProfileRestore?: (profileName: string) => void;
@@ -64,10 +64,12 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
     }
 
     if (ft === "aab") {
-      await onAabSelected?.(path);
+      const returnedTools = await onAabSelected?.(path);
+      // Use tool paths returned directly from onAabSelected (avoids stale React state on first selection),
+      // falling back to getAabToolPaths for cases where onAabSelected doesn't return them.
+      const tools = (returnedTools && 'javaPath' in returnedTools ? returnedTools : null) ?? getAabToolPaths?.();
       // Fetch AAB metadata (needs java + bundletool)
       try {
-        const tools = getAabToolPaths?.();
         if (tools) {
           const meta = await api.getAabMetadata(path, tools.javaPath, tools.bundletoolPath);
           setMetadata(meta);

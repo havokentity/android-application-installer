@@ -24,7 +24,7 @@ export function useAabSettings({ addLog, recordRecentFile }: UseAabSettingsOptio
   const [loadingAliases, setLoadingAliases] = useState(false);
 
   // ── Java detection ──────────────────────────────────────────────────
-  const checkJava = useCallback(async () => {
+  const checkJava = useCallback(async (): Promise<string | null> => {
     try {
       const result = await api.checkJava();
       const [path, version] = result.split("|", 2);
@@ -32,23 +32,27 @@ export function useAabSettings({ addLog, recordRecentFile }: UseAabSettingsOptio
       setJavaVersion(version);
       setJavaStatus("found");
       addLog("success", `Java found: ${version}`);
+      return path;
     } catch (e) {
       setJavaStatus("not-found");
       addLog("warning", String(e));
+      return null;
     }
   }, [addLog]);
 
   // ── Bundletool detection ────────────────────────────────────────────
-  const detectBundletool = useCallback(async () => {
+  const detectBundletool = useCallback(async (): Promise<string | null> => {
     try {
       const path = await api.findBundletool();
       setBundletoolPath(path);
       setBundletoolStatus("found");
       addLog("success", `bundletool found: ${path}`);
+      return path;
     } catch (e) {
       console.warn("bundletool detection failed:", e);
       setBundletoolStatus("not-found");
       addLog("info", "bundletool not found — use the Download button in AAB Settings or in the Tools section above.");
+      return null;
     }
   }, [addLog]);
 

@@ -243,8 +243,8 @@ function App() {
     },
     onAabSelected: async (path) => {
       aab.setShowAabSettings(true);
-      if (aab.javaStatus === "unknown") await aab.checkJava();
-      if (aab.bundletoolStatus === "unknown") await aab.detectBundletool();
+      const jp = aab.javaStatus === "unknown" ? (await aab.checkJava() ?? "") : aab.javaPath;
+      const bt = aab.bundletoolStatus === "unknown" ? (await aab.detectBundletool() ?? "") : aab.bundletoolPath;
       try {
         const pkg = await aab.detectAabPackageName(path);
         if (pkg) {
@@ -255,6 +255,7 @@ function App() {
         console.warn("AAB package name detection failed:", e);
         addLog("info", "Could not auto-detect package name from AAB. You can enter it manually.");
       }
+      return (jp && bt) ? { javaPath: jp, bundletoolPath: bt } : null;
     },
     onAutoProfileRestore: (profileName) => {
       const profile = signingProfiles.find(p => p.name === profileName);
