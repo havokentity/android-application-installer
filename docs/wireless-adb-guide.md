@@ -99,6 +99,7 @@ When a wireless device is selected, a **Disconnect** button appears below the de
 | **"Connection refused"** | Wireless Debugging may have been toggled off, or the port changed. Check the Wireless Debugging screen for the current port. |
 | **"Connection timed out"** | Devices are on different subnets or a firewall is blocking. Ensure both are on the same WiFi. |
 | **Pair succeeds but Connect fails** | You're using the *pairing* port for Connect. The *connection* port is different — it's shown on the main Wireless Debugging screen, not the pairing dialog. |
+| **Scan finds nothing after disconnect** | The app automatically restarts ADB's mDNS daemon when this happens (takes ~3 seconds). If it still doesn't show, ensure Wireless Debugging is still enabled on your phone. |
 | **Connection drops after a while** | Android may disable Wireless Debugging when the screen turns off. Keep the screen on, or re-connect when needed. |
 | **Only need to pair once** | After the initial pairing, you only need to **Connect** each session. The pairing is remembered. |
 
@@ -147,7 +148,7 @@ When a wireless device is selected, a **Disconnect** button appears below the de
 
 ### Test coverage
 
-- **42 tests** in `useWirelessAdb.test.ts` — validation functions, hook state, pair/connect/disconnect, discovery
-- **24 WiFi-specific tests** in `DeviceSection.test.tsx` — panel toggle, pair/connect buttons, disconnect, discovery list, scan
-- **18 Rust tests** in `adb.rs` — `parse_pair_result`, `parse_connect_result`, `parse_disconnect_result`, `parse_mdns_services` edge cases
+- **80 tests** in `useWirelessAdb.test.ts` — validation functions, hook state, pair/connect/disconnect, discovery, deduplication, enrichment
+- **75 WiFi-related tests** in `DeviceSection.test.tsx` — panel toggle, pair/connect buttons, disconnect, discovery list, scan, install mode toggle
+- **29 Rust tests** in `adb.rs` — `parse_pair_result`, `parse_connect_result`, `parse_disconnect_result`, `parse_mdns_services` edge cases, device list parsing
 

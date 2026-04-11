@@ -7,6 +7,26 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+### Added
+- **Wireless ADB (WiFi)** — pair, connect, and disconnect Android 11+ devices over WiFi without a USB cable; collapsible WiFi panel in the Device section with IP/port/pairing-code fields
+- **mDNS network discovery** — scan the local network for Android devices with Wireless Debugging enabled; auto-fill IP and port from discovered services; requires ADB platform-tools 31+
+- **Install mode toggle** — choose between *Direct* (IP:port, bypasses Play Protect) and *Verified* (mDNS, goes through Play Protect) install modes for wireless devices
+- **Device deduplication** — when the same physical device appears via both IP:port and mDNS transports, a single entry is shown with the preferred transport selected automatically
+- **Pairing prompt on connect failure** — if a wireless connect fails, the app suggests pairing first and pre-fills the IP address into the pairing fields
+- **Wireless disconnect button** — one-click disconnect for wireless devices, with alternate transport cleanup
+- **`useWirelessAdb` hook** — full state management for wireless ADB: pair, connect, disconnect, scan, validation, cancellation, and mDNS enrichment
+- **Wireless ADB guide** — new `docs/wireless-adb-guide.md` covering prerequisites, quick start, troubleshooting, and architecture
+- Unit tests for wireless ADB: 80 tests in `useWirelessAdb.test.ts`, 24 WiFi-specific tests in `DeviceSection.test.tsx`, 18 Rust parser tests in `adb.rs` (total: 84 Rust / 361 frontend)
+- `run_cmd_async_lenient` async command runner for tools that exit non-zero but produce useful output
+
+### Fixed
+- **mDNS scan after disconnect** — after disconnecting a wireless device, scanning now automatically restarts the ADB server (when no devices are connected) to clear the stale mDNS cache, so devices reappear without needing to toggle WiFi debugging on the phone
+
+### Changed
+- Device tracking now handles wireless mDNS serials alongside traditional USB/IP serials
+- Added `adb_pair`, `adb_connect`, `adb_disconnect`, `adb_mdns_check`, `adb_mdns_services` Tauri commands with typed IPC wrappers in `api.ts`
+- Updated `DeviceSection.tsx` with WiFi panel, discovery list, install mode pills, and grouped mDNS service display
+- Updated `docs/feature-analysis.md` — marked Wireless ADB as completed
 
 ---
 
