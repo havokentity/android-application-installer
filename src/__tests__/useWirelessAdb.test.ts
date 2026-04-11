@@ -6,6 +6,7 @@ import {
   isIpPortDevice,
   isMdnsDevice,
   deduplicateDevices,
+  enrichWithDiscoveredServices,
   isValidIp,
   isValidPort,
   isValidPairingCode,
@@ -240,6 +241,121 @@ describe("deduplicateDevices", () => {
     expect(result).toHaveLength(1);
     expect(result[0].serial).toBe("192.168.0.23:38355");
     expect(result[0].state).toBe("offline");
+  });
+});
+
+// ─── enrichWithDiscoveredServices ────────────────────────────────────────────
+
+describe("enrichWithDiscoveredServices", () => {
+  const makeDedupDevice = (
+    serial: string,
+    model = "",
+    product = "",
+    alternateSerial?: string,
+  ) => ({
+    serial,
+    state: "device" as const,
+    model,
+    product,
+    transport_id: "",
+    ...(alternateSerial ? { alternateSerial } : {}),
+  });
+
+  const connectService = (name: string, ip: string, port: string) => ({
+    name,
+    service_type: "_adb-tls-connect._tcp.",
+    ip_port: `${ip}:${port}`,
+  });
+
+  const pairingService = (name: string, ip: string, port: string) => ({
+    name,
+    service_type: "_adb-tls-pairing._tcp.",
+    ip_port: `${ip}:${port}`,
+  });
+
+  it("returns devices unchanged when no discovered services", () => {
+    const devices = [makeDedupDevice("192.168.0.23:38355", "I2401", "ossi")];
+    const result = enrichWithDiscoveredServices(devices, []);
+    expect(result).toBe(devices); // same reference — early return
+  });
+
+  it("enriches IP:port device with mDNS alternate from matching service", () => {
+    const devices = [makeDedupDevice("192.168.0.23:38355", "I2401", "ossi")];
+    const services = [connectService("adb-10BF190RC9001UZ-jvFPtf", "192.168.0.23", "38355")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+    expect(result[0].alternateSerial).toBe("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp");
+  });
+
+  it("enriches mDNS device with IP:port alternate from matching service", () => {
+    const devices = [makeDedupDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp", "I2401", "ossi")];
+    const services = [connectService("adb-10BF190RC9001UZ-jvFPtf", "192.168.0.23", "38355")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp");
+    expect(result[0].alternateSerial).toBe("192.168.0.23:38355");
+  });
+
+  it("does not overwrite existing alternateSerial", () => {
+    const devices = [makeDedupDevice("192.168.0.23:38355", "I2401", "ossi", "already-set")];
+    const services = [connectService("adb-10BF190RC9001UZ-jvFPtf", "192.168.0.23", "38355")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result[0].alternateSerial).toBe("already-set");
+  });
+
+  it("does not enrich USB devices", () => {
+    const devices = [makeDedupDevice("USB123", "Pixel 7", "panther")];
+    const services = [connectService("adb-USB123", "192.168.1.42", "5555")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result[0].alternateSerial).toBeUndefined();
+  });
+
+  it("matches IP:port device by IP address ignoring port differences", () => {
+    // The connect port in services may differ from device port
+    const devices = [makeDedupDevice("192.168.0.23:5555", "I2401", "ossi")];
+    const services = [connectService("adb-10BF-xyz", "192.168.0.23", "43567")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result[0].alternateSerial).toBe("adb-10BF-xyz._adb-tls-connect._tcp");
+  });
+
+  it("ignores pairing services for IP:port enrichment", () => {
+    const devices = [makeDedupDevice("192.168.0.23:38355", "I2401", "ossi")];
+    const services = [pairingService("adb-10BF-xyz", "192.168.0.23", "37215")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    // Pairing service doesn't have "connect" in service_type, so no match
+    expect(result[0].alternateSerial).toBeUndefined();
+  });
+
+  it("ignores pairing services for mDNS enrichment", () => {
+    const devices = [makeDedupDevice("adb-10BF-xyz._adb-tls-connect._tcp", "I2401", "ossi")];
+    // Only a pairing service exists for this name — should not match
+    const services = [pairingService("adb-10BF-xyz", "192.168.0.23", "37215")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result[0].alternateSerial).toBeUndefined();
+  });
+
+  it("does not match IP:port device to service with different IP", () => {
+    const devices = [makeDedupDevice("192.168.0.23:38355", "I2401", "ossi")];
+    const services = [connectService("adb-OTHER", "192.168.0.99", "38355")];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result[0].alternateSerial).toBeUndefined();
+  });
+
+  it("handles multiple devices, enriching only those without alternates", () => {
+    const devices = [
+      makeDedupDevice("192.168.0.23:38355", "I2401", "ossi"),
+      makeDedupDevice("USB123", "Pixel 7", "panther"),
+      makeDedupDevice("adb-PIXEL7-abc._adb-tls-connect._tcp", "Pixel 7", "panther"),
+    ];
+    const services = [
+      connectService("adb-10BF-xyz", "192.168.0.23", "38355"),
+      connectService("adb-PIXEL7-abc", "192.168.1.42", "5555"),
+    ];
+    const result = enrichWithDiscoveredServices(devices, services);
+    expect(result[0].alternateSerial).toBe("adb-10BF-xyz._adb-tls-connect._tcp");
+    expect(result[1].alternateSerial).toBeUndefined(); // USB
+    expect(result[2].alternateSerial).toBe("192.168.1.42:5555");
   });
 });
 

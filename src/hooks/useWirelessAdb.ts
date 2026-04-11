@@ -85,6 +85,51 @@ export function deduplicateDevices(devices: import("../types").DeviceInfo[]): De
   return result;
 }
 
+/**
+ * Enrich deduplicated devices with `alternateSerial` from mDNS discovery data.
+ *
+ * When a device only shows ONE transport in `adb devices` (e.g. only IP:port,
+ * or only mDNS), this function tries to fill in the missing alternate serial
+ * by cross-referencing with the mDNS services list from a scan.
+ *
+ * - IP:port device → finds matching mDNS service by IP → constructs mDNS serial
+ * - mDNS device → finds matching service by name → fills IP:port from service
+ */
+export function enrichWithDiscoveredServices(
+  devices: DeduplicatedDevice[],
+  discoveredServices: import("../types").MdnsService[],
+): DeduplicatedDevice[] {
+  if (discoveredServices.length === 0) return devices;
+
+  return devices.map((d) => {
+    // Already has an alternate or isn't wireless — nothing to do
+    if (d.alternateSerial || !isWirelessDevice(d.serial)) return d;
+
+    if (isIpPortDevice(d.serial)) {
+      // IP:port device → find mDNS service with matching IP address
+      const deviceIp = d.serial.split(":")[0];
+      const svc = discoveredServices.find(
+        (s) => s.service_type.includes("connect") && s.ip_port.split(":")[0] === deviceIp,
+      );
+      if (svc) {
+        // Construct the mDNS serial from the service name
+        return { ...d, alternateSerial: `${svc.name}._adb-tls-connect._tcp` };
+      }
+    } else if (isMdnsDevice(d.serial)) {
+      // mDNS device → find matching service by name to get IP:port
+      const namePart = d.serial.split("._adb-tls")[0];
+      const svc = discoveredServices.find(
+        (s) => s.name === namePart && s.service_type.includes("connect"),
+      );
+      if (svc) {
+        return { ...d, alternateSerial: svc.ip_port };
+      }
+    }
+
+    return d;
+  });
+}
+
 /** Validate an IPv4 address. */
 export function isValidIp(ip: string): boolean {
   const parts = ip.split(".");

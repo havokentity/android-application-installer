@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
@@ -18,7 +18,7 @@ import { useToolsState } from "./hooks/useToolsState";
 import { useDeviceState } from "./hooks/useDeviceState";
 import { useFileState } from "./hooks/useFileState";
 import { useAabSettings } from "./hooks/useAabSettings";
-import { useWirelessAdb, deduplicateDevices, isIpPortDevice } from "./hooks/useWirelessAdb";
+import { useWirelessAdb, deduplicateDevices, isIpPortDevice, enrichWithDiscoveredServices } from "./hooks/useWirelessAdb";
 import type { DeduplicatedDevice } from "./hooks/useWirelessAdb";
 
 // ─── Components ──────────────────────────────────────────────────────────────
@@ -145,6 +145,14 @@ function App() {
     },
   });
 
+  // Enrich devices with alternate serials from mDNS discovery data.
+  // When only one transport (IP:port or mDNS) appears in `adb devices`,
+  // this fills in the missing twin serial so both install modes are available.
+  const enrichedDevices = useMemo(
+    () => enrichWithDiscoveredServices(dev.devices, wireless.discoveredDevices),
+    [dev.devices, wireless.discoveredDevices],
+  );
+
   // ── Tools ─────────────────────────────────────────────────────────────
   const tools = useToolsState(addLog, {
     onAdbSetup: (path) => {
@@ -206,14 +214,14 @@ function App() {
   const install = async (andRun = false) => {
     if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
 
-    const targetDevices = dev.installAllDevices && dev.devices.length > 1
-      ? deduplicateDevices(dev.devices.filter((d) => d.state === "device")).map((d) => ({
+    const targetDevices = dev.installAllDevices && enrichedDevices.length > 1
+      ? deduplicateDevices(enrichedDevices.filter((d) => d.state === "device")).map((d) => ({
           serial: resolveSerial(d),
           label: d.model || d.serial,
         }))
       : dev.selectedDevice
         ? (() => {
-            const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+            const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
             const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
             return [{ serial: effectiveSerial, label: devInfo?.model || dev.selectedDevice }];
           })()
@@ -279,7 +287,7 @@ function App() {
 
   const launchApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
-    const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+    const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
@@ -291,7 +299,7 @@ function App() {
 
   const stopApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
-    const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+    const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
@@ -303,7 +311,7 @@ function App() {
 
   const uninstallApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
-    const devInfo = dev.devices.find((d) => d.serial === dev.selectedDevice);
+    const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     const confirmed = await ask(`Are you sure you want to uninstall ${file.packageName}?\n\nThis will remove the app and all its data from the device.`, {
       title: "Confirm Uninstall", kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel",
@@ -368,7 +376,7 @@ function App() {
   // ─── Derived state ────────────────────────────────────────────────────
 
   const canInstall = file.selectedFile &&
-    (dev.selectedDevice || (dev.installAllDevices && dev.devices.length > 0)) &&
+    (dev.selectedDevice || (dev.installAllDevices && enrichedDevices.length > 0)) &&
     !isInstalling && !isExtracting && adbStatus === "found";
   const canExtract = file.selectedFile && file.fileType === "aab" && !isExtracting && !isInstalling &&
     aab.javaStatus === "found" && aab.bundletoolStatus === "found";
@@ -401,7 +409,7 @@ function App() {
 
   const deviceSectionEl = (
     <DeviceSection
-      devices={dev.devices} selectedDevice={dev.selectedDevice} onSelectDevice={dev.setSelectedDevice}
+      devices={enrichedDevices} selectedDevice={dev.selectedDevice} onSelectDevice={dev.setSelectedDevice}
       loadingDevices={dev.loadingDevices} onRefreshDevices={dev.refreshDevices}
       adbPath={adbPath} adbStatus={adbStatus} adbManaged={adbManaged}
       onAdbPathChange={handleAdbPathChange}
