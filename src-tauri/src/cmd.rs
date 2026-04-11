@@ -203,50 +203,27 @@ pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String
 }
 
 /// Send a native OS notification.
-/// On macOS, tries `notify-rust` first (shows proper app icon in release builds via
-/// bundle ID). Falls back to `osascript` if `notify-rust` fails (always works, but
-/// shows Script Editor icon). On Linux/Windows uses `notify-rust` directly.
+/// On macOS uses `osascript` (AppleScript) — the only reliable method since
+/// `notify-rust` returns Ok but silently fails to display on modern macOS.
+/// On Linux/Windows uses `notify-rust`.
 #[tauri::command]
-pub(crate) fn send_notification(
-    app: tauri::AppHandle,
-    title: String,
-    body: String,
-) -> Result<(), String> {
+pub(crate) fn send_notification(title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        // Try notify-rust first — it shows the correct app icon in release builds
-        let bundle_id = if tauri::is_dev() {
-            "com.apple.Terminal"
-        } else {
-            &app.config().identifier
-        };
-        let _ = notify_rust::set_application(bundle_id);
-
-        match notify_rust::Notification::new()
-            .summary(&title)
-            .body(&body)
-            .show()
-        {
-            Ok(_) => return Ok(()),
-            Err(_) => {
-                // Fallback: osascript — always works on macOS
-                let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
-                let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
-                let script = format!(
-                    r#"display notification "{}" with title "{}""#,
-                    escaped_body, escaped_title
-                );
-                std::process::Command::new("osascript")
-                    .args(["-e", &script])
-                    .output()
-                    .map_err(|e| format!("Notification failed: {}", e))?;
-                Ok(())
-            }
-        }
+        let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
+        let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
+        let script = format!(
+            r#"display notification "{}" with title "{}""#,
+            escaped_body, escaped_title
+        );
+        std::process::Command::new("osascript")
+            .args(["-e", &script])
+            .output()
+            .map_err(|e| format!("Notification failed: {}", e))?;
+        Ok(())
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = &app; // suppress unused warning
         notify_rust::Notification::new()
             .summary(&title)
             .body(&body)
