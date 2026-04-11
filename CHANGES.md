@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.8.0] — 2026-04-11
 ### Added
 - **Batch file install** — select or drop multiple APK/AAB files; installs sequentially across all target devices with per-file progress prefixes (`[1/3]`, `[2/3]`, etc.); file dialog now supports multi-select; drag-drop accepts multiple files; batch file list displayed below the package section with numbered queue
 - **Device info enrichment** — Android version, API level, and free storage shown in a details row below the device dropdown and inline in the device selector; fetched automatically via `adb shell getprop` and `df /data` when devices connect
