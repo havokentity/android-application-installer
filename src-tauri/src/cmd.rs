@@ -202,6 +202,36 @@ pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String
         .map_err(|e| format!("Failed to write file '{}': {}", path, e))
 }
 
+/// Send a native OS notification using `notify-rust`.
+/// On macOS, sets the application bundle ID so the notification shows the app icon.
+/// In dev mode, falls back to Terminal's bundle ID (standard Tauri dev workaround).
+#[tauri::command]
+pub(crate) fn send_notification(
+    app: tauri::AppHandle,
+    title: String,
+    body: String,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_id = if tauri::is_dev() {
+            "com.apple.Terminal"
+        } else {
+            &app.config().identifier
+        };
+        let _ = notify_rust::set_application(bundle_id);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = &app; // suppress unused warning on non-macOS
+
+    notify_rust::Notification::new()
+        .summary(&title)
+        .body(&body)
+        .show()
+        .map_err(|e| format!("Notification failed: {}", e))?;
+
+    Ok(())
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

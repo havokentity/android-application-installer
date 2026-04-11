@@ -3,7 +3,6 @@ import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { isPermissionGranted, requestPermission, sendNotification } from "@tauri-apps/plugin-notification";
 
 import "./App.css";
 import type { LogEntry, OperationProgress, RecentFilesConfig } from "./types";
@@ -60,16 +59,7 @@ function App() {
   /** Send a native OS notification (non-blocking, best-effort). */
   const notify = useCallback(async (title: string, body: string) => {
     try {
-      let granted = await isPermissionGranted();
-      if (!granted) {
-        const perm = await requestPermission();
-        granted = perm === "granted";
-      }
-      if (granted) {
-        await sendNotification({ title, body });
-      } else {
-        console.warn("Notification permission not granted");
-      }
+      await api.sendNotification(title, body);
     } catch (e) { console.warn("Notification failed:", e); }
   }, []);
 

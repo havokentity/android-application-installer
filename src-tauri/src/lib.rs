@@ -38,6 +38,7 @@ pub fn run() {
             java::list_key_aliases,
             cmd::set_cancel_flag,
             cmd::save_text_file,
+            cmd::send_notification,
             tools::status::get_tools_status,
             tools::download::setup_platform_tools,
             tools::download::setup_bundletool,
