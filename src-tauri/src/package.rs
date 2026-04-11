@@ -9,6 +9,14 @@ use crate::cmd::run_cmd_lenient;
 
 // ─── Tauri Commands ──────────────────────────────────────────────────────────
 
+/// Return the size of a file in bytes.
+#[tauri::command]
+pub(crate) fn get_file_size(path: String) -> Result<u64, String> {
+    std::fs::metadata(&path)
+        .map(|m| m.len())
+        .map_err(|e| format!("Failed to read file size: {}", e))
+}
+
 /// Extract the package name from an APK file by parsing its binary AndroidManifest.xml.
 /// No external tools required — reads the APK as a ZIP and decodes the manifest directly.
 /// Falls back to aapt2/aapt if available.

@@ -9,6 +9,7 @@ const emptyRecent: RecentFilesConfig = { packages: [], keystores: [] };
 const defaults = {
   selectedFile: null as string | null,
   fileType: null as "apk" | "aab" | null,
+  fileSize: null as number | null,
   isDragOver: false,
   isDragRejected: false,
   packageName: "",
@@ -55,7 +56,24 @@ describe("FileSection", () => {
 
   it("displays file type badge", () => {
     render(<FileSection {...defaults} selectedFile="/path/to/my-app.apk" fileType="apk" />);
-    expect(screen.getByText("APK File")).toBeInTheDocument();
+    expect(screen.getByText((_content, element) =>
+      element?.classList.contains("file-type") && /APK File/.test(element.textContent ?? "")
+    )).toBeInTheDocument();
+  });
+
+  it("displays file size when available", () => {
+    render(<FileSection {...defaults} selectedFile="/path/to/my-app.apk" fileType="apk" fileSize={44347801} />);
+    expect(screen.getByText((_content, element) =>
+      element?.classList.contains("file-type") && /42\.3 MB/.test(element.textContent ?? "")
+    )).toBeInTheDocument();
+  });
+
+  it("does not display file size when null", () => {
+    render(<FileSection {...defaults} selectedFile="/path/to/my-app.apk" fileType="apk" fileSize={null} />);
+    const badge = screen.getByText((_content, element) =>
+      element?.classList.contains("file-type") && /APK File/.test(element.textContent ?? "")
+    );
+    expect(badge.textContent).toBe("APK File");
   });
 
   it("displays full file path", () => {
@@ -146,7 +164,9 @@ describe("FileSection", () => {
     expect(apkIcons.length).toBeGreaterThan(0);
 
     rerender(<FileSection {...defaults} selectedFile="/path/app.aab" fileType="aab" />);
-    expect(screen.getByText("AAB File")).toBeInTheDocument();
+    expect(screen.getByText((_content, element) =>
+      element?.classList.contains("file-type") && /AAB File/.test(element.textContent ?? "")
+    )).toBeInTheDocument();
   });
 
   // ── Extract APK from AAB ──────────────────────────────────────────────────

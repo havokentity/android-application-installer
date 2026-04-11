@@ -194,6 +194,14 @@ pub(crate) fn set_cancel_flag(cancel: bool) {
     OPERATION_CANCEL.store(cancel, Ordering::SeqCst);
 }
 
+/// Write text content to a file at the given path.
+/// Used by the frontend to save logs and other exported text.
+#[tauri::command]
+pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String> {
+    std::fs::write(&path, &content)
+        .map_err(|e| format!("Failed to write file '{}': {}", path, e))
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

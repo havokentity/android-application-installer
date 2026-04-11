@@ -31,14 +31,15 @@ src/                          ← React frontend
 ├── api.ts                    Typed IPC layer (wraps all Tauri invoke calls)
 ├── types.ts                  Shared TS interfaces (mirrors Rust structs)
 ├── helpers.ts                Pure utility functions (IDs, formatting)
-├── main.tsx                  React entry point
+├── main.tsx                  React entry point (with ErrorBoundary)
 ├── components/
 │   ├── AppHeader.tsx         Header with title & version
-│   ├── FileSection.tsx       File selection & AAB extraction
+│   ├── ErrorBoundary.tsx     React error boundary (crash recovery)
+│   ├── FileSection.tsx       File selection, file size display & AAB extraction
 │   ├── DeviceSection.tsx     Device selection & actions
 │   ├── AabSettingsSection.tsx  AAB signing settings
 │   ├── ToolsSection.tsx      Tools setup & stale banner
-│   ├── LogPanel.tsx          Activity log with auto-scroll + copy
+│   ├── LogPanel.tsx          Activity log with auto-scroll, copy & export
 │   ├── Toolbar.tsx           Layout & theme toggles
 │   ├── Toast.tsx             Toast notification system (useToast + ToastContainer)
 │   ├── EasterEggOverlay.tsx  Easter egg overlay
@@ -168,10 +169,12 @@ Downloads emit `download-progress` Tauri events (tool name, bytes, percentage, s
 | `list_packages`        | adb.rs      | `adb shell pm list packages -3`                 |
 | `get_package_name`     | package.rs  | Extract package name from APK (binary XML parser) |
 | `get_aab_package_name` | package.rs  | Extract package name from AAB via bundletool     |
+| `get_file_size`        | package.rs  | Return file size in bytes                         |
 | `check_java`           | java.rs     | Detect Java path + version                      |
 | `find_bundletool`      | java.rs     | Locate bundletool.jar                           |
 | `list_key_aliases`     | java.rs     | List key aliases from a keystore via keytool    |
 | `set_cancel_flag`      | cmd.rs      | Set/clear cancellation flag for async ops       |
+| `save_text_file`       | cmd.rs      | Write text content to a file (log export)       |
 | `get_tools_status`     | tools/status.rs  | Check which managed tools are installed     |
 | `setup_platform_tools` | tools/download.rs | Download + extract ADB platform-tools      |
 | `setup_bundletool`     | tools/download.rs | Download latest bundletool from GitHub      |

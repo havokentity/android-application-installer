@@ -1,10 +1,11 @@
 import { FolderOpen, Package, X, Clock, FileOutput, Loader2 } from "lucide-react";
-import { getFileName, shortcutLabel } from "../helpers";
+import { getFileName, shortcutLabel, formatBytes } from "../helpers";
 import type { RecentFilesConfig } from "../types";
 
 interface FileSectionProps {
   selectedFile: string | null;
   fileType: "apk" | "aab" | null;
+  fileSize: number | null;
   isDragOver: boolean;
   isDragRejected: boolean;
   packageName: string;
@@ -20,7 +21,7 @@ interface FileSectionProps {
 }
 
 export function FileSection({
-  selectedFile, fileType, isDragOver, isDragRejected, packageName,
+  selectedFile, fileType, fileSize, isDragOver, isDragRejected, packageName,
   onPackageNameChange, onBrowseFile, onClearFile, onFileSelected,
   recentFiles, onRemoveRecentFile,
   canExtract, isExtracting, onExtractApk,
@@ -34,7 +35,7 @@ export function FileSection({
             <div className="file-icon">{fileType === "apk" ? <Package size={32} /> : <FolderOpen size={32} />}</div>
             <div className="file-details">
               <span className="file-name">{getFileName(selectedFile)}</span>
-              <span className="file-type">{fileType?.toUpperCase()} File</span>
+              <span className="file-type">{fileType?.toUpperCase()} File{fileSize != null ? ` · ${formatBytes(fileSize)}` : ""}</span>
               <span className="file-path">{selectedFile}</span>
             </div>
             {fileType === "aab" && (

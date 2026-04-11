@@ -416,9 +416,9 @@ function App() {
 
   // ─── Derived state ────────────────────────────────────────────────────
 
-  const canInstall = file.selectedFile &&
+  const canInstall = !!(file.selectedFile &&
     (dev.selectedDevice || (dev.installAllDevices && enrichedDevices.length > 0)) &&
-    !isInstalling && !isExtracting && adbStatus === "found";
+    !isInstalling && !isExtracting && adbStatus === "found");
   const canExtract = file.selectedFile && file.fileType === "aab" && !isExtracting && !isInstalling &&
     aab.javaStatus === "found" && aab.bundletoolStatus === "found";
   const adbManaged = tools.toolsStatus?.adb_installed ?? false;
@@ -467,7 +467,7 @@ function App() {
 
   const fileSectionEl = (
     <FileSection
-      selectedFile={file.selectedFile} fileType={file.fileType} isDragOver={file.isDragOver} isDragRejected={file.isDragRejected}
+      selectedFile={file.selectedFile} fileType={file.fileType} fileSize={file.fileSize} isDragOver={file.isDragOver} isDragRejected={file.isDragRejected}
       packageName={file.packageName} onPackageNameChange={file.setPackageName}
       onBrowseFile={file.browseFile} onClearFile={file.clearFile}
       onFileSelected={file.handleFileSelected}
@@ -495,7 +495,22 @@ function App() {
     />
   );
 
-  const logPanelEl = <LogPanel logs={logs} onClear={() => setLogs([])} />;
+  const saveLogs = useCallback(async () => {
+    const outputPath = await save({
+      title: "Save Log", defaultPath: `install-log-${new Date().toISOString().slice(0, 10)}.log`,
+      filters: [{ name: "Log Files", extensions: ["log", "txt"] }],
+    });
+    if (!outputPath) return;
+    const text = logs.map(e => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}`).join("\n");
+    try {
+      await api.saveTextFile(outputPath, text);
+      addToast("Log saved successfully", "success");
+    } catch (e) {
+      addToast(`Failed to save log: ${e}`, "error");
+    }
+  }, [logs, addToast]);
+
+  const logPanelEl = <LogPanel logs={logs} onClear={() => setLogs([])} onSaveLogs={saveLogs} />;
   const easterEggEl = <EasterEggOverlay visible={easterEggVisible} verse={easterEggVerses[easterEggIndex]} />;
 
   // ─── Render ───────────────────────────────────────────────────────────

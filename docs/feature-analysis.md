@@ -19,9 +19,9 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 - [x] **Uninstall confirmation dialog** — `ask()` confirmation before destructive uninstall.
 - [ ] **Native OS notifications** — Notify when long operations complete in the background.
-- [ ] **Log export to file** — "Save log" button in LogPanel using `save()` dialog.
+- [x] **Log export to file** — "Save log" button in LogPanel using `save()` dialog.
 - [ ] **Log filtering/search** — Filter input + level toggle buttons in the log panel.
-- [ ] **File size display** — Show the selected file's size (e.g. "42.3 MB") in FileSection.
+- [x] **File size display** — Show the selected file's size (e.g. "42.3 MB") in FileSection.
 - [ ] **APK downgrade support** — Opt-in checkbox to pass `-d` flag to `adb install`.
 
 ### 🔮 Future Roadmap
@@ -35,10 +35,10 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 - [x] **Extract state from `App.tsx` into custom hooks** — Created `useUpdater`, `useToolsState`, `useDeviceState`, `useFileState`, `useAabSettings`. App.tsx reduced from ~830 to ~320 lines.
 - [x] **Remove duplicate `formatBytes`** — Deleted from `Toolbar.tsx`, importing from `helpers.ts`.
-- [ ] **Tighten `canInstall` type** — Cast to boolean at the call site.
+- [x] **Tighten `canInstall` type** — Cast to boolean at the call site.
 - [ ] **Extract keystore args builder** — Share identical keystore argument construction in `adb.rs`.
 - [ ] **Replace swallowed errors** — Add `console.warn` to ~8 empty catch blocks.
-- [ ] **Add React Error Boundary** — Wrap root in `<ErrorBoundary>` component.
+- [x] **Add React Error Boundary** — Wrap root in `<ErrorBoundary>` component.
 - [ ] **Concurrency-safe cancellation** — Per-operation cancellation tokens instead of global `AtomicBool`.
 
 ---
@@ -76,10 +76,10 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 | Category | Done | Remaining |
 |----------|------|-----------|
-| New Features (1) | 2 | 11 |
-| Code Quality (2) | 2 | 5 |
+| New Features (1) | 4 | 9 |
+| Code Quality (2) | 4 | 3 |
 | UX (3) | 6 | 0 |
 | Performance (4) | 4 | 0 |
 | Architecture (5) | 1 | 3 |
-| **Total** | **15** | **19** |
+| **Total** | **19** | **15** |
 

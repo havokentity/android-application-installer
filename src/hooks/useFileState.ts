@@ -15,6 +15,7 @@ interface UseFileStateOptions {
 export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFileStateOptions) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [fileType, setFileType] = useState<"apk" | "aab" | null>(null);
+  const [fileSize, setFileSize] = useState<number | null>(null);
   const [packageName, setPackageName] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isDragRejected, setIsDragRejected] = useState(false);
@@ -29,6 +30,14 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
     setFileType(ft);
     addLog("info", `Selected: ${getFileName(path)} (${ft.toUpperCase()})`);
     recordRecentFile(path, "packages");
+
+    // Fetch file size
+    try {
+      const size = await api.getFileSize(path);
+      setFileSize(size);
+    } catch {
+      setFileSize(null);
+    }
 
     if (ft === "apk") {
       try {
@@ -66,6 +75,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
   const clearFile = useCallback(() => {
     setSelectedFile(null);
     setFileType(null);
+    setFileSize(null);
     setPackageName("");
   }, []);
 
@@ -110,7 +120,7 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected }: UseFil
   }, [selectedFile]);
 
   return {
-    selectedFile, fileType, packageName, setPackageName,
+    selectedFile, fileType, fileSize, packageName, setPackageName,
     isDragOver, isDragRejected, browseFile, handleFileSelected, clearFile,
   };
 }

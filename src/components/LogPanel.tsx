@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from "react";
-import { Info, Copy, Check } from "lucide-react";
+import { Info, Copy, Check, Download } from "lucide-react";
 import { LogIcon } from "./StatusIndicators";
 import type { LogEntry } from "../types";
 
@@ -8,9 +8,10 @@ const MAX_VISIBLE_LOGS = 200;
 interface LogPanelProps {
   logs: LogEntry[];
   onClear: () => void;
+  onSaveLogs?: () => void;
 }
 
-export function LogPanel({ logs, onClear }: LogPanelProps) {
+export function LogPanel({ logs, onClear, onSaveLogs }: LogPanelProps) {
   const logEndRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const [copied, setCopied] = useState(false);
@@ -49,6 +50,11 @@ export function LogPanel({ logs, onClear }: LogPanelProps) {
             <button className="btn btn-ghost btn-small" onClick={copyLogs} title="Copy log to clipboard">
               {copied ? <Check size={12} /> : <Copy size={12} />} {copied ? "Copied" : "Copy"}
             </button>
+            {onSaveLogs && (
+              <button className="btn btn-ghost btn-small" onClick={onSaveLogs} title="Save log to file">
+                <Download size={12} /> Save
+              </button>
+            )}
             <button className="btn btn-ghost btn-small" onClick={onClear}>
               Clear
             </button>

@@ -88,5 +88,27 @@ describe("LogPanel", () => {
     render(<LogPanel logs={[]} onClear={vi.fn()} />);
     expect(screen.getByText("Log")).toBeInTheDocument();
   });
+
+  it("shows Save button when onSaveLogs is provided and logs exist", () => {
+    render(<LogPanel logs={makeLogs(1)} onClear={vi.fn()} onSaveLogs={vi.fn()} />);
+    expect(screen.getByText("Save")).toBeInTheDocument();
+  });
+
+  it("does not show Save button when onSaveLogs is not provided", () => {
+    render(<LogPanel logs={makeLogs(1)} onClear={vi.fn()} />);
+    expect(screen.queryByText("Save")).not.toBeInTheDocument();
+  });
+
+  it("does not show Save button when there are no logs", () => {
+    render(<LogPanel logs={[]} onClear={vi.fn()} onSaveLogs={vi.fn()} />);
+    expect(screen.queryByText("Save")).not.toBeInTheDocument();
+  });
+
+  it("calls onSaveLogs when Save button is clicked", () => {
+    const onSave = vi.fn();
+    render(<LogPanel logs={makeLogs(2)} onClear={vi.fn()} onSaveLogs={onSave} />);
+    fireEvent.click(screen.getByText("Save"));
+    expect(onSave).toHaveBeenCalledOnce();
+  });
 });
 

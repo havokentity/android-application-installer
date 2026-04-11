@@ -10,6 +10,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.7.1] — 2026-04-11
+### Added
+- **File size display** — selected file's size (e.g. "42.3 MB") shown in the Package section next to the file type badge
+- **Log export to file** — "Save" button in the Log panel exports the full log to a `.log` or `.txt` file via a save dialog
+- **React Error Boundary** — wraps the entire app in an `<ErrorBoundary>` that catches render errors and shows a styled recovery screen with a "Reload" button instead of a white screen
+- `get_file_size` and `save_text_file` Tauri commands with typed IPC wrappers in `api.ts`
+- 6 new frontend tests (file size display, log save button) — total: 367
+
+### Changed
+- **Tightened `canInstall` type** — `canInstall` is now a clean `boolean` instead of `string | false | boolean`; used `!!()` cast at the call site
+- Updated `docs/feature-analysis.md` — marked 4 items as completed (19/34 done)
+- Updated `docs/architecture.md` — added `ErrorBoundary.tsx`, `get_file_size`, `save_text_file` commands, and updated component descriptions
+
+---
+
 ## [1.7.0] — 2026-04-11
 ### Added
 - **Wireless ADB (WiFi)** — pair, connect, and disconnect Android 11+ devices over WiFi without a USB cable; collapsible WiFi panel in the Device section with IP/port/pairing-code fields

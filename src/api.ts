@@ -66,6 +66,9 @@ export const uninstallApp = (adbPath: string, device: string, packageName: strin
 
 // ─── Package ──────────────────────────────────────────────────────────────────
 
+export const getFileSize = (path: string) =>
+  invoke<number>("get_file_size", { path });
+
 export const getPackageName = (apkPath: string) =>
   invoke<string>("get_package_name", { apkPath });
 
@@ -115,4 +118,9 @@ export const removeRecentFile = (path: string, category: "packages" | "keystores
 
 export const setCancelFlag = (cancel: boolean) =>
   invoke("set_cancel_flag", { cancel });
+
+// ─── File I/O ─────────────────────────────────────────────────────────────────
+
+export const saveTextFile = (path: string, content: string) =>
+  invoke("save_text_file", { path, content });
 
