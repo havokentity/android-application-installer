@@ -342,6 +342,61 @@ pub(crate) async fn stop_device_tracking(
 
 // ─── Wireless ADB (WiFi) ────────────────────────────────────────────────────
 
+/// A device discovered via `adb mdns services`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MdnsService {
+    pub name: String,
+    pub service_type: String,
+    pub ip_port: String,
+}
+
+/// Parse the output of `adb mdns services`.
+///
+/// Typical output:
+/// ```text
+/// List of discovered mdns services
+/// adb-SERIAL123	_adb-tls-connect._tcp.	192.168.1.100:43567
+/// adb-SERIAL456	_adb-tls-pairing._tcp.	192.168.1.101:37215
+/// ```
+pub(crate) fn parse_mdns_services(stdout: &str) -> Vec<MdnsService> {
+    stdout
+        .lines()
+        .filter(|l| l.contains('\t'))
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                Some(MdnsService {
+                    name: parts[0].trim().to_string(),
+                    service_type: parts[1].trim().to_string(),
+                    ip_port: parts[2].trim().to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Check if mDNS discovery is available (`adb mdns check`).
+#[tauri::command]
+pub(crate) fn adb_mdns_check(adb_path: String) -> Result<bool, String> {
+    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["mdns", "check"])?;
+    let combined = format!("{}\n{}", stdout, stderr);
+    // If daemon or mdns is running, we get something like "mdns daemon version [...]"
+    Ok(combined.contains("mdns daemon version") || combined.contains("Openscreen"))
+}
+
+/// Discover devices on the local network via `adb mdns services`.
+/// Returns only connectable services (`_adb-tls-connect._tcp`).
+#[tauri::command]
+pub(crate) fn adb_mdns_services(adb_path: String) -> Result<Vec<MdnsService>, String> {
+    let (stdout, stderr, _) = run_cmd_lenient(&adb_path, &["mdns", "services"])?;
+    if stderr.contains("unknown host service") || stderr.contains("mdns") && stderr.contains("not") {
+        return Err("mDNS discovery is not supported by this ADB version. Update platform-tools to 31+.".into());
+    }
+    Ok(parse_mdns_services(&stdout))
+}
+
 /// Parse the result of `adb pair <ip:port> <code>`.
 pub(crate) fn parse_pair_result(stdout: &str, stderr: &str) -> Result<String, String> {
     let combined = format!("{}\n{}", stdout, stderr);
@@ -1072,5 +1127,45 @@ mod tests {
     fn parse_disconnect_unknown_output() {
         let result = parse_disconnect_result("some other output", "");
         assert!(result.is_ok()); // graceful fallback
+    }
+
+    // ── mDNS discovery tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_mdns_services_typical_output() {
+        let stdout = "List of discovered mdns services\n\
+                       adb-ABC123\t_adb-tls-connect._tcp.\t192.168.1.100:43567\n\
+                       adb-DEF456\t_adb-tls-pairing._tcp.\t192.168.1.101:37215\n";
+        let services = parse_mdns_services(stdout);
+        assert_eq!(services.len(), 2);
+        assert_eq!(services[0].name, "adb-ABC123");
+        assert_eq!(services[0].service_type, "_adb-tls-connect._tcp.");
+        assert_eq!(services[0].ip_port, "192.168.1.100:43567");
+        assert_eq!(services[1].name, "adb-DEF456");
+        assert!(services[1].service_type.contains("pairing"));
+    }
+
+    #[test]
+    fn parse_mdns_services_empty() {
+        let stdout = "List of discovered mdns services\n";
+        let services = parse_mdns_services(stdout);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn parse_mdns_services_no_tabs() {
+        let stdout = "some random output with no tabs\n";
+        let services = parse_mdns_services(stdout);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn parse_mdns_services_single_connect() {
+        let stdout = "List of discovered mdns services\n\
+                       adb-PIXEL7\t_adb-tls-connect._tcp.\t192.168.0.42:5555\n";
+        let services = parse_mdns_services(stdout);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name, "adb-PIXEL7");
+        assert_eq!(services[0].ip_port, "192.168.0.42:5555");
     }
 }

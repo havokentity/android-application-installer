@@ -212,5 +212,48 @@ describe("useWirelessAdb", () => {
     expect(result.current.isPairing).toBe(false);
     expect(result.current.isConnecting).toBe(false);
   });
+
+  it("discoveredDevices starts empty", () => {
+    const { result } = renderHook(() => useWirelessAdb(defaults));
+    expect(result.current.discoveredDevices).toEqual([]);
+  });
+
+  it("isScanning starts as false", () => {
+    const { result } = renderHook(() => useWirelessAdb(defaults));
+    expect(result.current.isScanning).toBe(false);
+  });
+
+  it("mdnsSupported starts as null", () => {
+    const { result } = renderHook(() => useWirelessAdb(defaults));
+    expect(result.current.mdnsSupported).toBeNull();
+  });
+
+  it("selectDiscovered fills connect fields for connect service", () => {
+    const addLog = vi.fn();
+    const { result } = renderHook(() => useWirelessAdb({ ...defaults, addLog }));
+    act(() => {
+      result.current.selectDiscovered({
+        name: "adb-PIXEL7",
+        service_type: "_adb-tls-connect._tcp.",
+        ip_port: "192.168.1.42:43567",
+      });
+    });
+    expect(result.current.connectIp).toBe("192.168.1.42");
+    expect(result.current.connectPort).toBe("43567");
+  });
+
+  it("selectDiscovered fills pair fields for pairing service", () => {
+    const addLog = vi.fn();
+    const { result } = renderHook(() => useWirelessAdb({ ...defaults, addLog }));
+    act(() => {
+      result.current.selectDiscovered({
+        name: "adb-PIXEL7",
+        service_type: "_adb-tls-pairing._tcp.",
+        ip_port: "192.168.1.42:37215",
+      });
+    });
+    expect(result.current.pairIp).toBe("192.168.1.42");
+    expect(result.current.pairPort).toBe("37215");
+  });
 });
 

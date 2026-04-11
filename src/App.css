@@ -1391,6 +1391,70 @@ body {
   background: var(--green-dim) !important;
 }
 
+/* ─── WiFi Discovery List ──────────────────────────────────────────────────── */
+
+.wifi-discover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wifi-discovered-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wifi-discovered-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  gap: 8px;
+}
+
+.wifi-discovered-item:hover {
+  border-color: var(--green);
+}
+
+.wifi-discovered-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.wifi-discovered-name {
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wifi-discovered-addr {
+  color: var(--text-3);
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.wifi-discovered-type {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
 /* ─── Operation Progress Bar ───────────────────────────────────────────────── */
 
 .operation-progress {

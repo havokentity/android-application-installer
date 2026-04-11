@@ -57,6 +57,11 @@ const wirelessDefaults: WirelessAdbState = {
   pair: vi.fn(),
   connect: vi.fn(),
   disconnect: vi.fn(),
+  discoveredDevices: [],
+  isScanning: false,
+  mdnsSupported: null,
+  scan: vi.fn(),
+  selectDiscovered: vi.fn(),
 };
 
 const defaults = {
@@ -351,6 +356,83 @@ describe("DeviceSection", () => {
     render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
     fireEvent.click(screen.getByTitle("Wireless ADB (WiFi)"));
     expect(setWifiExpanded).toHaveBeenCalledWith(true);
+  });
+
+  // ── Network Discovery ─────────────────────────────────────────────────
+
+  it("shows Scan button in WiFi panel", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Scan")).toBeInTheDocument();
+  });
+
+  it("calls scan when Scan button is clicked", () => {
+    const scan = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, scan };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText("Scan"));
+    expect(scan).toHaveBeenCalledOnce();
+  });
+
+  it("shows 'Scanning...' when isScanning is true", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, isScanning: true };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("Scanning...")).toBeInTheDocument();
+  });
+
+  it("shows mDNS not supported warning when mdnsSupported is false", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, mdnsSupported: false as boolean | null };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText(/mDNS not supported/)).toBeInTheDocument();
+  });
+
+  it("shows discovered devices when available", () => {
+    const wireless = {
+      ...wirelessDefaults,
+      wifiExpanded: true,
+      discoveredDevices: [
+        { name: "adb-PIXEL7", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" },
+      ],
+    };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText("adb-PIXEL7")).toBeInTheDocument();
+    expect(screen.getByText("192.168.1.42:43567")).toBeInTheDocument();
+  });
+
+  it("shows type badges for connect and pairing services", () => {
+    const wireless = {
+      ...wirelessDefaults,
+      wifiExpanded: true,
+      discoveredDevices: [
+        { name: "adb-PIXEL7", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" },
+        { name: "adb-GALAXY", service_type: "_adb-tls-pairing._tcp.", ip_port: "192.168.1.42:37215" },
+      ],
+    };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    const badges = screen.getAllByText(/^(Connect|Pair)$/);
+    const badgeTexts = badges.map((b) => b.textContent);
+    expect(badgeTexts).toContain("Connect");
+    expect(badgeTexts).toContain("Pair");
+  });
+
+  it("calls selectDiscovered when Use button is clicked", () => {
+    const selectDiscovered = vi.fn();
+    const svc = { name: "adb-PIXEL7", service_type: "_adb-tls-connect._tcp.", ip_port: "192.168.1.42:43567" };
+    const wireless = {
+      ...wirelessDefaults,
+      wifiExpanded: true,
+      discoveredDevices: [svc],
+      selectDiscovered,
+    };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    fireEvent.click(screen.getByText("Use"));
+    expect(selectDiscovered).toHaveBeenCalledWith(svc);
+  });
+
+  it("shows hint text when no devices discovered and mdns not yet checked", () => {
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, discoveredDevices: [], mdnsSupported: null };
+    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    expect(screen.getByText(/Click Scan to discover/)).toBeInTheDocument();
   });
 });
 

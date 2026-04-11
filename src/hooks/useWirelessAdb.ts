@@ -1,6 +1,6 @@
 // ─── Wireless ADB Hook ───────────────────────────────────────────────────────
 import { useState, useCallback } from "react";
-import type { LogEntry } from "../types";
+import type { LogEntry, MdnsService } from "../types";
 import type { ToastLevel } from "../components/Toast";
 import * as api from "../api";
 
@@ -50,6 +50,12 @@ export interface WirelessAdbState {
   pair: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: (serial: string) => Promise<void>;
+  // mDNS discovery
+  discoveredDevices: MdnsService[];
+  isScanning: boolean;
+  mdnsSupported: boolean | null;
+  scan: () => Promise<void>;
+  selectDiscovered: (svc: MdnsService) => void;
 }
 
 interface UseWirelessAdbOptions {
@@ -67,6 +73,9 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
   const [connectPort, setConnectPort] = useState("");
   const [isPairing, setIsPairing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [discoveredDevices, setDiscoveredDevices] = useState<MdnsService[]>([]);
+  const [isScanning, setIsScanning] = useState(false);
+  const [mdnsSupported, setMdnsSupported] = useState<boolean | null>(null);
 
   const canPair = !!(adbPath && isValidIp(pairIp) && isValidPort(pairPort) && isValidPairingCode(pairingCode) && !isPairing);
   const canConnect = !!(adbPath && isValidIp(connectIp) && isValidPort(connectPort) && !isConnecting);
@@ -121,6 +130,49 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     }
   }, [adbPath, addLog, addToast]);
 
+  const scan = useCallback(async () => {
+    if (!adbPath || isScanning) return;
+    setIsScanning(true);
+    try {
+      // Check mDNS support on first scan
+      if (mdnsSupported === null) {
+        const supported = await api.adbMdnsCheck(adbPath);
+        setMdnsSupported(supported);
+        if (!supported) {
+          addLog("warning", "mDNS discovery not supported by this ADB version. Update platform-tools to 31+.");
+          addToast("mDNS not supported — update ADB to 31+", "warning");
+          return;
+        }
+      }
+      const services = await api.adbMdnsServices(adbPath);
+      setDiscoveredDevices(services);
+      if (services.length === 0) {
+        addLog("info", "No wireless devices discovered on the network.");
+      } else {
+        addLog("info", `Found ${services.length} device(s) via mDNS.`);
+      }
+    } catch (e) {
+      addLog("warning", `mDNS scan failed: ${e}`);
+      setMdnsSupported(false);
+    } finally {
+      setIsScanning(false);
+    }
+  }, [adbPath, isScanning, mdnsSupported, addLog, addToast]);
+
+  /** Auto-fill IP and port from a discovered service for pair or connect. */
+  const selectDiscovered = useCallback((svc: MdnsService) => {
+    const [ip, port] = svc.ip_port.split(":");
+    if (svc.service_type.includes("pairing")) {
+      setPairIp(ip);
+      setPairPort(port || "");
+      addLog("info", `Selected pairing service: ${svc.name} (${svc.ip_port})`);
+    } else {
+      setConnectIp(ip);
+      setConnectPort(port || "");
+      addLog("info", `Selected connect service: ${svc.name} (${svc.ip_port})`);
+    }
+  }, [addLog]);
+
   return {
     wifiExpanded, setWifiExpanded,
     pairIp, setPairIp, pairPort, setPairPort, pairingCode, setPairingCode,
@@ -128,6 +180,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     isPairing, isConnecting,
     canPair, canConnect,
     pair, connect, disconnect,
+    discoveredDevices, isScanning, mdnsSupported, scan, selectDiscovered,
   };
 }
 

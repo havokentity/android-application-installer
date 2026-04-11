@@ -1,7 +1,7 @@
 import {
   Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
-  Usb, Wifi, Unplug,
+  Usb, Wifi, Unplug, Radio,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
@@ -239,6 +239,50 @@ export function DeviceSection({
                   </button>
                 </div>
                 <p className="hint">IP & port shown on the Wireless Debugging screen (different port from pairing)</p>
+              </div>
+
+              {/* ── Network Discovery ──────────────────────────────── */}
+              <div className="wifi-group">
+                <div className="wifi-group-title wifi-discover-header">
+                  <span>Devices on network</span>
+                  <button
+                    className="btn btn-ghost btn-small"
+                    onClick={wireless.scan}
+                    disabled={wireless.isScanning}
+                    title="Scan for devices via mDNS"
+                  >
+                    {wireless.isScanning ? <Loader2 size={12} className="spin" /> : <Radio size={12} />}
+                    {wireless.isScanning ? "Scanning..." : "Scan"}
+                  </button>
+                </div>
+                {wireless.mdnsSupported === false && (
+                  <p className="hint hint-warning"><AlertTriangle size={12} /> mDNS not supported. Update ADB platform-tools to 31+.</p>
+                )}
+                {wireless.discoveredDevices.length === 0 && wireless.mdnsSupported !== false && (
+                  <p className="hint">Click Scan to discover Android devices with Wireless Debugging enabled.</p>
+                )}
+                {wireless.discoveredDevices.length > 0 && (
+                  <ul className="wifi-discovered-list">
+                    {wireless.discoveredDevices.map((svc) => (
+                      <li key={`${svc.name}-${svc.service_type}`} className="wifi-discovered-item">
+                        <div className="wifi-discovered-info">
+                          <span className="wifi-discovered-name">{svc.name}</span>
+                          <span className="wifi-discovered-addr">{svc.ip_port}</span>
+                          <span className={`wifi-discovered-type ${svc.service_type.includes("pairing") ? "badge-yellow" : "badge-green"}`}>
+                            {svc.service_type.includes("pairing") ? "Pair" : "Connect"}
+                          </span>
+                        </div>
+                        <button
+                          className="btn btn-ghost btn-small"
+                          onClick={() => wireless.selectDiscovered(svc)}
+                          title={svc.service_type.includes("pairing") ? "Fill pairing fields" : "Fill connect fields"}
+                        >
+                          Use
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             </div>
           )}

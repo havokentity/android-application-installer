@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  DeviceInfo, ToolsStatus, StaleTool, RecentFilesConfig,
+  DeviceInfo, ToolsStatus, StaleTool, RecentFilesConfig, MdnsService,
 } from "./types";
 
 // ─── ADB ──────────────────────────────────────────────────────────────────────
@@ -31,6 +31,12 @@ export const adbConnect = (adbPath: string, ipPort: string) =>
 
 export const adbDisconnect = (adbPath: string, ipPort: string) =>
   invoke<string>("adb_disconnect", { adbPath, ipPort });
+
+export const adbMdnsCheck = (adbPath: string) =>
+  invoke<boolean>("adb_mdns_check", { adbPath });
+
+export const adbMdnsServices = (adbPath: string) =>
+  invoke<MdnsService[]>("adb_mdns_services", { adbPath });
 
 export const installApk = (adbPath: string, device: string, apkPath: string) =>
   invoke<string>("install_apk", { adbPath, device, apkPath });

@@ -20,6 +20,8 @@ pub fn run() {
             adb::adb_pair,
             adb::adb_connect,
             adb::adb_disconnect,
+            adb::adb_mdns_check,
+            adb::adb_mdns_services,
             adb::install_apk,
             adb::install_aab,
             adb::extract_apk_from_aab,
