@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.6.8] — 2026-04-11
 ### Added
 - **Push-based device tracking** — replaced 8-second polling with `adb track-devices -l` for instant device connect/disconnect detection; automatically falls back to polling if tracking fails
 - **Log panel virtualization** — only the most recent 200 log entries are rendered; earlier entries are retained for copy/export with a "N earlier entries hidden" indicator
