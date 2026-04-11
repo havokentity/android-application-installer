@@ -149,7 +149,7 @@ export const setCancelFlag = (cancel: boolean) =>
 export const saveTextFile = (path: string, content: string) =>
   invoke("save_text_file", { path, content });
 
-// ─── Notifications ────────────────────────────────────────────────────────────
+// ─── Notifications ────────────────────────────────────────────────────────
 
 export const sendNotification = (title: string, body: string) =>
   invoke("send_notification", { title, body });

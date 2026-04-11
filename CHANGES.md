@@ -23,6 +23,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 - **APK metadata extraction** — rewrote `extract_manifest_from_apk` to use structured DOM traversal instead of broken `format!("{:?}", doc)` + regex approach; now correctly reads `android:`-prefixed attributes and traverses child elements for `<uses-sdk>` and `<uses-permission>`
+- **Native OS notifications broken on macOS** — `notify-rust` was silently failing; fixed by trying `notify-rust` with proper bundle ID first (shows app icon in release builds), with automatic `osascript` fallback if it fails (guaranteed delivery); dev mode shows Terminal icon (known macOS limitation)
 
 ### Changed
 - Updated `docs/feature-analysis.md` — marked 3 items as completed (27/34 done)

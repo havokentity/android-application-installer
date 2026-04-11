@@ -202,9 +202,10 @@ pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String
         .map_err(|e| format!("Failed to write file '{}': {}", path, e))
 }
 
-/// Send a native OS notification using `notify-rust`.
-/// On macOS, sets the application bundle ID so the notification shows the app icon.
-/// In dev mode, falls back to Terminal's bundle ID (standard Tauri dev workaround).
+/// Send a native OS notification.
+/// On macOS, tries `notify-rust` first (shows proper app icon in release builds via
+/// bundle ID). Falls back to `osascript` if `notify-rust` fails (always works, but
+/// shows Script Editor icon). On Linux/Windows uses `notify-rust` directly.
 #[tauri::command]
 pub(crate) fn send_notification(
     app: tauri::AppHandle,
@@ -213,24 +214,48 @@ pub(crate) fn send_notification(
 ) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
+        // Try notify-rust first — it shows the correct app icon in release builds
         let bundle_id = if tauri::is_dev() {
             "com.apple.Terminal"
         } else {
             &app.config().identifier
         };
         let _ = notify_rust::set_application(bundle_id);
+
+        match notify_rust::Notification::new()
+            .summary(&title)
+            .body(&body)
+            .show()
+        {
+            Ok(_) => return Ok(()),
+            Err(_) => {
+                // Fallback: osascript — always works on macOS
+                let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
+                let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
+                let script = format!(
+                    r#"display notification "{}" with title "{}""#,
+                    escaped_body, escaped_title
+                );
+                std::process::Command::new("osascript")
+                    .args(["-e", &script])
+                    .output()
+                    .map_err(|e| format!("Notification failed: {}", e))?;
+                Ok(())
+            }
+        }
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = &app; // suppress unused warning on non-macOS
-
-    notify_rust::Notification::new()
-        .summary(&title)
-        .body(&body)
-        .show()
-        .map_err(|e| format!("Notification failed: {}", e))?;
-
-    Ok(())
+    {
+        let _ = &app; // suppress unused warning
+        notify_rust::Notification::new()
+            .summary(&title)
+            .body(&body)
+            .show()
+            .map_err(|e| format!("Notification failed: {}", e))?;
+        Ok(())
+    }
 }
+
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
