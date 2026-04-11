@@ -1406,6 +1406,24 @@ body {
   background: var(--red-dim) !important;
 }
 
+.wifi-pair-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--yellow-dim);
+  border: 1px solid var(--yellow);
+  font-size: 12px;
+  color: var(--yellow);
+  animation: slideDown 200ms ease;
+}
+
+.wifi-pair-prompt span {
+  flex: 1;
+}
+
 .btn-active {
   color: var(--green) !important;
   background: var(--green-dim) !important;

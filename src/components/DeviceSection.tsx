@@ -282,6 +282,18 @@ export function DeviceSection({
                   )}
                 </div>
                 <p className="hint">IP & port shown on the Wireless Debugging screen (different port from pairing)</p>
+                {wireless.needsPairing && (
+                  <div className="wifi-pair-prompt">
+                    <AlertTriangle size={12} />
+                    <span>Device doesn't appear to be paired.</span>
+                    <button
+                      className="btn btn-accent btn-small"
+                      onClick={wireless.promptPairing}
+                    >
+                      <Wifi size={12} /> Pair this device
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* ── Network Discovery ──────────────────────────────── */}

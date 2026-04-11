@@ -52,6 +52,9 @@ export interface WirelessAdbState {
   connect: () => Promise<void>;
   disconnect: (serial: string) => Promise<void>;
   cancelWirelessOp: () => Promise<void>;
+  // pairing prompt after connect failure
+  needsPairing: boolean;
+  promptPairing: () => void;
   // mDNS discovery
   discoveredDevices: MdnsService[];
   isScanning: boolean;
@@ -76,6 +79,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
   const [isPairing, setIsPairing] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
+  const [needsPairing, setNeedsPairing] = useState(false);
   const [discoveredDevices, setDiscoveredDevices] = useState<MdnsService[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [mdnsSupported, setMdnsSupported] = useState<boolean | null>(null);
@@ -95,6 +99,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       addToast("Device paired successfully", "success");
       setConnectIp(pairIp);
       setPairingCode("");
+      setNeedsPairing(false);
     } catch (e) {
       const msg = String(e);
       if (msg.includes("cancelled")) {
@@ -119,6 +124,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       const result = await api.adbConnect(adbPath, ipPort);
       addLog("success", result);
       addToast("Connected wirelessly", "success");
+      setNeedsPairing(false);
     } catch (e) {
       const msg = String(e);
       if (msg.includes("cancelled")) {
@@ -127,6 +133,10 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
       } else {
         addLog("error", `Connection failed: ${e}`);
         addToast(`Connection failed: ${e}`, "error");
+        // If the failure looks like a pairing issue, prompt user to pair first
+        if (msg.includes("failed to connect") || msg.includes("connection refused") || msg.includes("no response")) {
+          setNeedsPairing(true);
+        }
       }
     } finally {
       setIsConnecting(false);
@@ -197,6 +207,15 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     }
   }, [adbPath, isScanning, mdnsSupported, addLog, addToast]);
 
+  /** Copy the connect IP into the pairing fields so the user only needs port + code. */
+  const promptPairing = useCallback(() => {
+    setPairIp(connectIp);
+    setPairPort("");
+    setPairingCode("");
+    setNeedsPairing(false);
+    addLog("info", `Pairing fields pre-filled with ${connectIp}. Enter the pairing port and code from your device.`);
+  }, [connectIp, addLog]);
+
   /** Auto-fill IP and port from a discovered service for pair or connect. */
   const selectDiscovered = useCallback((svc: MdnsService) => {
     const [ip, port] = svc.ip_port.split(":");
@@ -218,6 +237,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast }: UseWirelessAdbOpti
     isPairing, isConnecting, isDisconnecting,
     canPair, canConnect,
     pair, connect, disconnect, cancelWirelessOp,
+    needsPairing, promptPairing,
     discoveredDevices, isScanning, mdnsSupported, scan, selectDiscovered,
   };
 }

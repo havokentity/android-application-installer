@@ -255,5 +255,25 @@ describe("useWirelessAdb", () => {
     expect(result.current.pairIp).toBe("192.168.1.42");
     expect(result.current.pairPort).toBe("37215");
   });
+
+  it("needsPairing starts as false", () => {
+    const { result } = renderHook(() => useWirelessAdb(defaults));
+    expect(result.current.needsPairing).toBe(false);
+  });
+
+  it("promptPairing copies connectIp into pairIp and clears pair fields", () => {
+    const addLog = vi.fn();
+    const { result } = renderHook(() => useWirelessAdb({ ...defaults, addLog }));
+    act(() => {
+      result.current.setConnectIp("192.168.0.23");
+      result.current.setConnectPort("38355");
+    });
+    act(() => {
+      result.current.promptPairing();
+    });
+    expect(result.current.pairIp).toBe("192.168.0.23");
+    expect(result.current.pairPort).toBe("");
+    expect(result.current.pairingCode).toBe("");
+  });
 });
 
