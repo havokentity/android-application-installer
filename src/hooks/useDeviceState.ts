@@ -21,7 +21,7 @@ export function useDeviceState(
   const [installMode, setInstallMode] = useState<InstallMode>(
     () => (localStorage.getItem("installMode") as InstallMode) || "direct",
   );
-  const prevDeviceSerials = useRef("");
+  const prevDeviceFingerprint = useRef("");
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
 
@@ -30,9 +30,10 @@ export function useDeviceState(
 
   // ── Update devices from any source ──────────────────────────────────
   const applyDeviceUpdate = useCallback((devs: DeviceInfo[], logChange: boolean) => {
-    const newSerials = devs.map((d) => d.serial).sort().join(",");
-    if (newSerials === prevDeviceSerials.current && devs.length > 0) return;
-    prevDeviceSerials.current = newSerials;
+    // Include both serial AND state so offline→online transitions are detected
+    const fingerprint = devs.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+    if (fingerprint === prevDeviceFingerprint.current && devs.length > 0) return;
+    prevDeviceFingerprint.current = fingerprint;
     const deduped = deduplicateDevices(devs);
     setDevices(deduped);
     if (deduped.length > 0) {
@@ -56,7 +57,7 @@ export function useDeviceState(
       const rawDevs = await api.getDevices(adbPath);
       const deduped = deduplicateDevices(rawDevs);
       setDevices(deduped);
-      prevDeviceSerials.current = deduped.map((d) => d.serial).sort().join(",");
+      prevDeviceFingerprint.current = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
       if (deduped.length > 0) {
         setSelectedDevice((prev) => {
           if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
@@ -93,7 +94,7 @@ export function useDeviceState(
 
   // Sync ref
   useEffect(() => {
-    prevDeviceSerials.current = devices.map((d) => d.serial).sort().join(",");
+    prevDeviceFingerprint.current = devices.map((d) => `${d.serial}:${d.state}`).sort().join(",");
   }, [devices]);
 
   // ── Push-based tracking with polling fallback ───────────────────────

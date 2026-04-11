@@ -193,6 +193,54 @@ describe("deduplicateDevices", () => {
     expect(result).toHaveLength(1);
     expect(result[0].alternateSerial).toBeUndefined();
   });
+
+  // ── State-aware priority ─────────────────────────────────────────────
+
+  it("prefers online mDNS over offline IP:port", () => {
+    const devices: DeviceInfo[] = [
+      { serial: "192.168.0.23:38355", state: "offline", model: "I2401", product: "ossi", transport_id: "" },
+      { serial: "adb-10BF._adb-tls-connect._tcp", state: "device", model: "I2401", product: "ossi", transport_id: "" },
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    // mDNS is online, so it's preferred even though IP:port is usually default
+    expect(result[0].serial).toBe("adb-10BF._adb-tls-connect._tcp");
+    expect(result[0].state).toBe("device");
+    expect(result[0].alternateSerial).toBe("192.168.0.23:38355");
+  });
+
+  it("prefers online IP:port over offline mDNS", () => {
+    const devices: DeviceInfo[] = [
+      { serial: "adb-10BF._adb-tls-connect._tcp", state: "offline", model: "I2401", product: "ossi", transport_id: "" },
+      { serial: "192.168.0.23:38355", state: "device", model: "I2401", product: "ossi", transport_id: "" },
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+    expect(result[0].state).toBe("device");
+    expect(result[0].alternateSerial).toBe("adb-10BF._adb-tls-connect._tcp");
+  });
+
+  it("falls back to IP:port preference when both are online", () => {
+    const devices: DeviceInfo[] = [
+      { serial: "adb-10BF._adb-tls-connect._tcp", state: "device", model: "I2401", product: "ossi", transport_id: "" },
+      { serial: "192.168.0.23:38355", state: "device", model: "I2401", product: "ossi", transport_id: "" },
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+  });
+
+  it("falls back to IP:port preference when both are offline", () => {
+    const devices: DeviceInfo[] = [
+      { serial: "adb-10BF._adb-tls-connect._tcp", state: "offline", model: "I2401", product: "ossi", transport_id: "" },
+      { serial: "192.168.0.23:38355", state: "offline", model: "I2401", product: "ossi", transport_id: "" },
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("192.168.0.23:38355");
+    expect(result[0].state).toBe("offline");
+  });
 });
 
 describe("isValidIp", () => {

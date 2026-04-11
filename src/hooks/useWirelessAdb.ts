@@ -29,7 +29,12 @@ export interface DeduplicatedDevice extends import("../types").DeviceInfo {
  * Deduplicate devices that represent the same physical device connected via
  * multiple wireless transports (e.g. IP:port AND mDNS service name).
  * Groups by model+product when both are non-empty and both entries are wireless.
- * Returns one representative per physical device (prefers IP:port over mDNS).
+ * Returns one representative per physical device.
+ *
+ * Selection priority:
+ *  1. Prefer the entry that is "device" (online) over one that is offline/unauthorized.
+ *  2. When both have the same state, prefer IP:port (direct install, no Play Protect).
+ *
  * The discarded twin's serial is stored as `alternateSerial` on the surviving entry.
  */
 export function deduplicateDevices(devices: import("../types").DeviceInfo[]): DeduplicatedDevice[] {
@@ -50,9 +55,22 @@ export function deduplicateDevices(devices: import("../types").DeviceInfo[]): De
       );
 
       if (twin) {
-        // Prefer IP:port over mDNS — it installs without Play Protect scan
-        const preferred = isIpPortDevice(d.serial) ? d : twin;
-        const discarded = isIpPortDevice(d.serial) ? twin : d;
+        let preferred: import("../types").DeviceInfo;
+        let discarded: import("../types").DeviceInfo;
+
+        // Priority 1: prefer the online ("device") entry
+        if (d.state === "device" && twin.state !== "device") {
+          preferred = d;
+          discarded = twin;
+        } else if (twin.state === "device" && d.state !== "device") {
+          preferred = twin;
+          discarded = d;
+        } else {
+          // Priority 2: same state — prefer IP:port (direct install)
+          preferred = isIpPortDevice(d.serial) ? d : twin;
+          discarded = isIpPortDevice(d.serial) ? twin : d;
+        }
+
         consumed.add(d.serial);
         consumed.add(twin.serial);
         result.push({ ...preferred, alternateSerial: discarded.serial });
