@@ -156,6 +156,35 @@ pub(crate) async fn run_cmd_async(program: &str, args: &[&str]) -> Result<(Strin
     }
 }
 
+/// Same as run_cmd_async but doesn't fail on non-zero exit.
+/// Returns (stdout, stderr, success) — useful for tools like `adb pair`
+/// that may exit non-zero but still produce useful output.
+pub(crate) async fn run_cmd_async_lenient(program: &str, args: &[&str]) -> Result<(String, String, bool), String> {
+    if OPERATION_CANCEL.load(Ordering::Relaxed) {
+        return Err("Operation cancelled by user.".to_string());
+    }
+
+    let child = tokio::process::Command::new(program)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Failed to run '{}': {}", program, e))?;
+
+    tokio::select! {
+        output = child.wait_with_output() => {
+            let output = output.map_err(|e| format!("Process error for '{}': {}", program, e))?;
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            Ok((stdout, stderr, output.status.success()))
+        }
+        _ = poll_cancel() => {
+            Err("Operation cancelled by user.".to_string())
+        }
+    }
+}
+
 // ─── Cancellation Control ────────────────────────────────────────────────────
 
 /// Set or clear the global cancellation flag for async operations.

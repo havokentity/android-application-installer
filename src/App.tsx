@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
@@ -18,6 +18,9 @@ import { useToolsState } from "./hooks/useToolsState";
 import { useDeviceState } from "./hooks/useDeviceState";
 import { useFileState } from "./hooks/useFileState";
 import { useAabSettings } from "./hooks/useAabSettings";
+import { useWirelessAdb, deduplicateDevices, isIpPortDevice, isMdnsDevice, enrichWithDiscoveredServices } from "./hooks/useWirelessAdb";
+import type { DeduplicatedDevice } from "./hooks/useWirelessAdb";
+import type { InstallMode } from "./hooks/useDeviceState";
 
 // ─── Components ──────────────────────────────────────────────────────────────
 import { Toolbar } from "./components/Toolbar";
@@ -133,6 +136,57 @@ function App() {
 
   // ── Devices ───────────────────────────────────────────────────────────
   const dev = useDeviceState(adbPath, adbStatus, addLog);
+  const wireless = useWirelessAdb({
+    adbPath, addLog, addToast,
+    onDeviceChange: () => {
+      // Quiet refresh immediately, then again after a delay for mDNS twin discovery.
+      // Uses quiet (non-verbose) refresh to avoid log spam and UI churn.
+      dev.refreshDevicesQuiet();
+      setTimeout(() => dev.refreshDevicesQuiet(), 2000);
+    },
+  });
+
+  // Enrich devices with alternate serials from mDNS discovery data.
+  // When only one transport (IP:port or mDNS) appears in `adb devices`,
+  // this fills in the missing twin serial so both install modes are available.
+  const enrichedDevices = useMemo(
+    () => enrichWithDiscoveredServices(dev.devices, wireless.discoveredDevices),
+    [dev.devices, wireless.discoveredDevices],
+  );
+
+  // Handle install mode change with auto-connect/scan for alternate transport.
+  // When switching to "direct" → auto-connect IP:port if not yet in device list.
+  // When switching to "verified" → re-scan mDNS to help ADB discover the transport.
+  const handleInstallModeChange = useCallback((mode: InstallMode) => {
+    dev.setInstallMode(mode);
+
+    const deviceInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+    if (!deviceInfo?.alternateSerial) return;
+
+    if (mode === "direct") {
+      // We need the IP:port transport for direct installs
+      const ipSerial = isIpPortDevice(deviceInfo.serial) ? deviceInfo.serial : deviceInfo.alternateSerial;
+      if (ipSerial && isIpPortDevice(ipSerial) && ipSerial !== deviceInfo.serial) {
+        // Check if this IP:port is already connected in ADB
+        const alreadyConnected = dev.devices.some((d) => d.serial === ipSerial);
+        if (!alreadyConnected) {
+          addLog("info", `Connecting ${ipSerial} for direct mode...`);
+          wireless.connectDirect(ipSerial);
+        }
+      }
+    } else if (mode === "verified") {
+      // We need the mDNS transport for verified installs; can't force-connect,
+      // but re-scanning helps ADB discover it faster
+      const mdnsSerial = isMdnsDevice(deviceInfo.serial) ? deviceInfo.serial : deviceInfo.alternateSerial;
+      if (mdnsSerial && isMdnsDevice(mdnsSerial) && mdnsSerial !== deviceInfo.serial) {
+        const alreadyConnected = dev.devices.some((d) => d.serial === mdnsSerial);
+        if (!alreadyConnected) {
+          addLog("info", "Scanning for mDNS transport for verified mode...");
+          wireless.scan();
+        }
+      }
+    }
+  }, [enrichedDevices, dev, wireless, addLog]);
 
   // ── Tools ─────────────────────────────────────────────────────────────
   const tools = useToolsState(addLog, {
@@ -173,12 +227,46 @@ function App() {
 
   // ─── Installation ─────────────────────────────────────────────────────
 
+  /** Resolve the effective ADB serial for a device based on the current install mode.
+   *  In "verified" mode, use the mDNS alternate serial if available.
+   *  In "direct" mode (default), use the primary (IP:port) serial.
+   *  Falls back to primary serial if the preferred transport isn't actually connected. */
+  const resolveSerial = useCallback((device: DeduplicatedDevice): string => {
+    let preferred = device.serial;
+
+    if (dev.installMode === "verified" && device.alternateSerial) {
+      // We want the mDNS serial for verified mode
+      if (isIpPortDevice(device.serial)) preferred = device.alternateSerial;
+    } else if (dev.installMode === "direct" && device.alternateSerial) {
+      // We want the IP:port serial for direct mode
+      if (!isIpPortDevice(device.serial)) preferred = device.alternateSerial;
+    }
+
+    // Safety: if we resolved to an alternate that isn't actually connected
+    // in ADB, fall back to the primary (which is always in the device list)
+    if (preferred !== device.serial) {
+      const isConnected = dev.devices.some((d) => d.serial === preferred);
+      if (!isConnected) return device.serial;
+    }
+
+    return preferred;
+  }, [dev.installMode, dev.devices]);
+
   const install = async (andRun = false) => {
     if (!file.selectedFile) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
 
-    const targetDevices = dev.installAllDevices && dev.devices.length > 1
-      ? dev.devices.filter((d) => d.state === "device").map((d) => d.serial)
-      : dev.selectedDevice ? [dev.selectedDevice] : [];
+    const targetDevices = dev.installAllDevices && enrichedDevices.length > 1
+      ? deduplicateDevices(enrichedDevices.filter((d) => d.state === "device")).map((d) => ({
+          serial: resolveSerial(d),
+          label: d.model || d.serial,
+        }))
+      : dev.selectedDevice
+        ? (() => {
+            const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+            const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
+            return [{ serial: effectiveSerial, label: devInfo?.model || dev.selectedDevice }];
+          })()
+        : [];
 
     if (targetDevices.length === 0) { addLog("error", "Please select a device first."); addToast("No device selected", "error"); return; }
 
@@ -195,9 +283,8 @@ function App() {
     const multi = targetDevices.length > 1;
 
     try {
-      for (const device of targetDevices) {
-        const devInfo = dev.devices.find((d) => d.serial === device);
-        const deviceLabel = devInfo?.model || device;
+      for (const target of targetDevices) {
+        const { serial: device, label: deviceLabel } = target;
         const prefix = multi ? `[${deviceLabel}] ` : "";
 
         try {
@@ -241,26 +328,32 @@ function App() {
 
   const launchApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
+    const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+    const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Launching ${file.packageName}...`);
-      addLog("success", await api.launchApp(adbPath, dev.selectedDevice, file.packageName));
+      addLog("success", await api.launchApp(adbPath, effectiveSerial, file.packageName));
       addToast(`${file.packageName} launched`, "success");
     } catch (e) { addLog("error", String(e)); addToast("Failed to launch app", "error"); }
   };
 
   const stopApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
+    const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+    const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Stopping ${file.packageName}...`);
-      addLog("success", await api.stopApp(adbPath, dev.selectedDevice, file.packageName));
+      addLog("success", await api.stopApp(adbPath, effectiveSerial, file.packageName));
       addToast(`${file.packageName} stopped`, "info");
     } catch (e) { addLog("error", String(e)); addToast("Failed to stop app", "error"); }
   };
 
   const uninstallApp = async () => {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); return; }
+    const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+    const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
     const confirmed = await ask(`Are you sure you want to uninstall ${file.packageName}?\n\nThis will remove the app and all its data from the device.`, {
       title: "Confirm Uninstall", kind: "warning", okLabel: "Uninstall", cancelLabel: "Cancel",
     });
@@ -268,7 +361,7 @@ function App() {
     try { await api.setCancelFlag(false); } catch { /* non-critical */ }
     try {
       addLog("info", `Uninstalling ${file.packageName}...`);
-      addLog("success", await api.uninstallApp(adbPath, dev.selectedDevice, file.packageName));
+      addLog("success", await api.uninstallApp(adbPath, effectiveSerial, file.packageName));
       addToast(`${file.packageName} uninstalled`, "success");
     } catch (e) { addLog("error", String(e)); addToast("Uninstall failed", "error"); }
   };
@@ -324,7 +417,7 @@ function App() {
   // ─── Derived state ────────────────────────────────────────────────────
 
   const canInstall = file.selectedFile &&
-    (dev.selectedDevice || (dev.installAllDevices && dev.devices.length > 0)) &&
+    (dev.selectedDevice || (dev.installAllDevices && enrichedDevices.length > 0)) &&
     !isInstalling && !isExtracting && adbStatus === "found";
   const canExtract = file.selectedFile && file.fileType === "aab" && !isExtracting && !isInstalling &&
     aab.javaStatus === "found" && aab.bundletoolStatus === "found";
@@ -357,16 +450,18 @@ function App() {
 
   const deviceSectionEl = (
     <DeviceSection
-      devices={dev.devices} selectedDevice={dev.selectedDevice} onSelectDevice={dev.setSelectedDevice}
+      devices={enrichedDevices} selectedDevice={dev.selectedDevice} onSelectDevice={dev.setSelectedDevice}
       loadingDevices={dev.loadingDevices} onRefreshDevices={dev.refreshDevices}
       adbPath={adbPath} adbStatus={adbStatus} adbManaged={adbManaged}
       onAdbPathChange={handleAdbPathChange}
       onDetectAdb={detectAdb}
       expanded={dev.deviceExpanded} onToggleExpanded={() => dev.setDeviceExpanded(!dev.deviceExpanded)}
       installAllDevices={dev.installAllDevices} onInstallAllDevicesChange={dev.setInstallAllDevices}
+      installMode={dev.installMode} onInstallModeChange={handleInstallModeChange}
       isInstalling={isInstalling} canInstall={canInstall} packageName={file.packageName}
       onInstall={install} onLaunch={launchApp} onStopApp={stopApp} onUninstall={uninstallApp}
       operationProgress={operationProgress} onCancelOperation={cancelOperation}
+      wireless={wireless}
     />
   );
 

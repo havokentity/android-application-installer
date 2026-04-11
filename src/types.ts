@@ -52,6 +52,12 @@ export interface StaleTool {
 
 export type DetectionStatus = "unknown" | "found" | "not-found";
 
+export interface MdnsService {
+  name: string;
+  service_type: string;
+  ip_port: string;
+}
+
 export interface RecentFile {
   path: string;
   name: string;

@@ -2,33 +2,46 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { LogEntry, DeviceInfo, DetectionStatus } from "../types";
+import { deduplicateDevices } from "./useWirelessAdb";
+import type { DeduplicatedDevice } from "./useWirelessAdb";
 import * as api from "../api";
+
+export type InstallMode = "direct" | "verified";
 
 export function useDeviceState(
   adbPath: string,
   adbStatus: DetectionStatus,
   addLog: (level: LogEntry["level"], message: string) => void,
 ) {
-  const [devices, setDevices] = useState<DeviceInfo[]>([]);
+  const [devices, setDevices] = useState<DeduplicatedDevice[]>([]);
   const [selectedDevice, setSelectedDevice] = useState("");
   const [loadingDevices, setLoadingDevices] = useState(false);
   const [deviceExpanded, setDeviceExpanded] = useState(true);
   const [installAllDevices, setInstallAllDevices] = useState(false);
-  const prevDeviceSerials = useRef("");
+  const [installMode, setInstallMode] = useState<InstallMode>(
+    () => (localStorage.getItem("installMode") as InstallMode) || "direct",
+  );
+  const prevDeviceFingerprint = useRef("");
   const trackingActive = useRef(false);
+  const refreshInProgress = useRef(false);
+
+  // Persist install mode preference
+  useEffect(() => { localStorage.setItem("installMode", installMode); }, [installMode]);
 
   // ── Update devices from any source ──────────────────────────────────
   const applyDeviceUpdate = useCallback((devs: DeviceInfo[], logChange: boolean) => {
-    const newSerials = devs.map((d) => d.serial).sort().join(",");
-    if (newSerials === prevDeviceSerials.current && devs.length > 0) return;
-    prevDeviceSerials.current = newSerials;
-    setDevices(devs);
-    if (devs.length > 0) {
+    // Include both serial AND state so offline→online transitions are detected
+    const fingerprint = devs.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+    if (fingerprint === prevDeviceFingerprint.current && devs.length > 0) return;
+    prevDeviceFingerprint.current = fingerprint;
+    const deduped = deduplicateDevices(devs);
+    setDevices(deduped);
+    if (deduped.length > 0) {
       setSelectedDevice((prev) => {
-        if (!prev || !devs.find((d) => d.serial === prev)) return devs[0].serial;
+        if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
         return prev;
       });
-      if (logChange) addLog("info", `Device update: ${devs.length} device(s) connected`);
+      if (logChange) addLog("info", `Device update: ${deduped.length} device(s) connected`);
     } else {
       setSelectedDevice("");
       if (logChange) addLog("info", "All devices disconnected.");
@@ -37,18 +50,20 @@ export function useDeviceState(
 
   // ── Refresh (verbose, manual) ───────────────────────────────────────
   const refreshDevices = useCallback(async () => {
-    if (!adbPath) return;
+    if (!adbPath || refreshInProgress.current) return;
+    refreshInProgress.current = true;
     setLoadingDevices(true);
     try {
-      const devs = await api.getDevices(adbPath);
-      setDevices(devs);
-      prevDeviceSerials.current = devs.map((d) => d.serial).sort().join(",");
-      if (devs.length > 0) {
+      const rawDevs = await api.getDevices(adbPath);
+      const deduped = deduplicateDevices(rawDevs);
+      setDevices(deduped);
+      prevDeviceFingerprint.current = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+      if (deduped.length > 0) {
         setSelectedDevice((prev) => {
-          if (!prev || !devs.find((d) => d.serial === prev)) return devs[0].serial;
+          if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
           return prev;
         });
-        addLog("info", `Found ${devs.length} device(s)`);
+        addLog("info", `Found ${deduped.length} device(s)`);
       } else {
         setSelectedDevice("");
         addLog("warning", "No devices connected. Enable USB debugging on your phone and connect via USB.");
@@ -58,6 +73,7 @@ export function useDeviceState(
       setSelectedDevice("");
       addLog("error", `Failed to list devices: ${e}`);
     } finally {
+      refreshInProgress.current = false;
       setLoadingDevices(false);
     }
   }, [adbPath, addLog]);
@@ -78,7 +94,7 @@ export function useDeviceState(
 
   // Sync ref
   useEffect(() => {
-    prevDeviceSerials.current = devices.map((d) => d.serial).sort().join(",");
+    prevDeviceFingerprint.current = devices.map((d) => `${d.serial}:${d.state}`).sort().join(",");
   }, [devices]);
 
   // ── Push-based tracking with polling fallback ───────────────────────
@@ -130,9 +146,10 @@ export function useDeviceState(
 
   return {
     devices, selectedDevice, setSelectedDevice,
-    loadingDevices, refreshDevices,
+    loadingDevices, refreshDevices, refreshDevicesQuiet,
     deviceExpanded, setDeviceExpanded,
     installAllDevices, setInstallAllDevices,
+    installMode, setInstallMode,
   };
 }
 

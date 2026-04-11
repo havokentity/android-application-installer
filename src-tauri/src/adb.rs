@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Emitter;
 
-use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_lenient};
+use crate::cmd::{adb_binary, emit_op_progress, run_cmd, run_cmd_async, run_cmd_async_lenient, run_cmd_lenient};
 use crate::tools;
 
 // ─── Data Types ──────────────────────────────────────────────────────────────
@@ -338,6 +338,180 @@ pub(crate) async fn stop_device_tracking(
         handle.abort();
     }
     Ok(())
+}
+
+// ─── Wireless ADB (WiFi) ────────────────────────────────────────────────────
+
+/// A device discovered via `adb mdns services`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MdnsService {
+    pub name: String,
+    pub service_type: String,
+    pub ip_port: String,
+}
+
+/// Parse the output of `adb mdns services`.
+///
+/// Typical output:
+/// ```text
+/// List of discovered mdns services
+/// adb-SERIAL123	_adb-tls-connect._tcp.	192.168.1.100:43567
+/// adb-SERIAL456	_adb-tls-pairing._tcp.	192.168.1.101:37215
+/// ```
+pub(crate) fn parse_mdns_services(stdout: &str) -> Vec<MdnsService> {
+    stdout
+        .lines()
+        .filter(|l| l.contains('\t'))
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() >= 3 {
+                Some(MdnsService {
+                    name: parts[0].trim().to_string(),
+                    service_type: parts[1].trim().to_string(),
+                    ip_port: parts[2].trim().to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Check if mDNS discovery is available (`adb mdns check`).
+#[tauri::command]
+pub(crate) async fn adb_mdns_check(adb_path: String) -> Result<bool, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["mdns", "check"]).await?;
+    let combined = format!("{}\n{}", stdout, stderr);
+    Ok(combined.contains("mdns daemon version") || combined.contains("Openscreen"))
+}
+
+/// Discover devices on the local network via `adb mdns services`.
+/// Async with cancellation support. Deduplicates by (name, service_type, ip_port).
+///
+/// ADB's mDNS daemon can have a stale cache after disconnecting a device —
+/// it already "consumed" the service announcement and won't report it again
+/// until the phone re-announces (e.g. toggling WiFi debugging off/on).
+/// When no services are found and no devices are connected, we restart the
+/// ADB server to force a fresh mDNS discovery round, then retry.
+#[tauri::command]
+pub(crate) async fn adb_mdns_services(adb_path: String) -> Result<Vec<MdnsService>, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["mdns", "services"]).await?;
+    if stderr.contains("unknown host service") || stderr.contains("mdns") && stderr.contains("not") {
+        return Err("mDNS discovery is not supported by this ADB version. Update platform-tools to 31+.".into());
+    }
+    let mut services = parse_mdns_services(&stdout);
+
+    // If nothing was found, the mDNS cache may be stale (common after `adb disconnect`).
+    // Restart the ADB server to reset mDNS state, but only when no devices are
+    // currently connected so we don't disrupt active sessions.
+    if services.is_empty() {
+        let has_connected = run_cmd_async_lenient(&adb_path, &["devices"])
+            .await
+            .map(|(out, _, _)| {
+                out.lines()
+                    .skip(1)
+                    .any(|l| !l.trim().is_empty() && l.contains('\t'))
+            })
+            .unwrap_or(false);
+
+        if !has_connected {
+            let _ = run_cmd_async_lenient(&adb_path, &["kill-server"]).await;
+            let _ = run_cmd_async_lenient(&adb_path, &["start-server"]).await;
+            // Give the fresh mDNS daemon time to discover services on the network
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+            let (stdout2, _, _) = run_cmd_async_lenient(&adb_path, &["mdns", "services"]).await?;
+            services = parse_mdns_services(&stdout2);
+        }
+    }
+
+    // Deduplicate — adb mdns services can return the same entry multiple times.
+    // Sort first so identical entries are adjacent, then dedup.
+    services.sort_by(|a, b| (&a.name, &a.service_type, &a.ip_port).cmp(&(&b.name, &b.service_type, &b.ip_port)));
+    services.dedup_by(|a, b| a.name == b.name && a.service_type == b.service_type && a.ip_port == b.ip_port);
+    Ok(services)
+}
+
+/// Parse the result of `adb pair <ip:port> <code>`.
+pub(crate) fn parse_pair_result(stdout: &str, stderr: &str) -> Result<String, String> {
+    let combined = format!("{}\n{}", stdout, stderr);
+    if stdout.contains("Successfully paired") {
+        Ok(stdout.trim().to_string())
+    } else if combined.contains("Failed") || combined.contains("error") || combined.contains("refused") {
+        Err(format!("Pairing failed: {}", combined.trim()))
+    } else if combined.contains("timed out") || combined.contains("timeout") {
+        Err("Pairing timed out. Make sure the pairing code is correct and the device is on the same network.".into())
+    } else if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        Err("Pairing failed: no response from ADB.".into())
+    } else {
+        Err(format!("Unexpected pairing response: {}", combined.trim()))
+    }
+}
+
+/// Parse the result of `adb connect <ip:port>`.
+pub(crate) fn parse_connect_result(stdout: &str, stderr: &str) -> Result<String, String> {
+    let combined = format!("{}\n{}", stdout, stderr);
+    if stdout.contains("connected to") {
+        Ok(stdout.trim().to_string())
+    } else if stdout.contains("already connected") {
+        Ok(stdout.trim().to_string())
+    } else if combined.contains("refused") || combined.contains("Connection refused") {
+        Err("Connection refused. Make sure wireless debugging is enabled and the port is correct.".into())
+    } else if combined.contains("timed out") || combined.contains("timeout") {
+        Err("Connection timed out. Check the IP address and that the device is on the same network.".into())
+    } else if combined.contains("failed") || combined.contains("error") {
+        Err(format!("Connection failed: {}", combined.trim()))
+    } else if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        Err("Connection failed: no response from ADB.".into())
+    } else {
+        Err(format!("Unexpected connection response: {}", combined.trim()))
+    }
+}
+
+/// Parse the result of `adb disconnect <ip:port>`.
+pub(crate) fn parse_disconnect_result(stdout: &str, _stderr: &str) -> Result<String, String> {
+    if stdout.contains("disconnected") {
+        Ok(stdout.trim().to_string())
+    } else if stdout.contains("error") || stdout.contains("no such device") {
+        Err(format!("Disconnect failed: {}", stdout.trim()))
+    } else {
+        Ok(format!("Disconnected: {}", stdout.trim()))
+    }
+}
+
+/// Pair with a device over WiFi using `adb pair <ip:port> <pairing_code>`.
+/// Requires Android 11+ with wireless debugging enabled.
+/// Async with cancellation support — pairing can hang if the code is wrong.
+#[tauri::command]
+pub(crate) async fn adb_pair(
+    adb_path: String,
+    ip_port: String,
+    pairing_code: String,
+) -> Result<String, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["pair", &ip_port, &pairing_code]).await?;
+    parse_pair_result(&stdout, &stderr)
+}
+
+/// Connect to a device over WiFi using `adb connect <ip:port>`.
+/// Async with cancellation support.
+#[tauri::command]
+pub(crate) async fn adb_connect(
+    adb_path: String,
+    ip_port: String,
+) -> Result<String, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["connect", &ip_port]).await?;
+    parse_connect_result(&stdout, &stderr)
+}
+
+/// Disconnect a wireless device using `adb disconnect <ip:port>`.
+/// Async with cancellation support.
+#[tauri::command]
+pub(crate) async fn adb_disconnect(
+    adb_path: String,
+    ip_port: String,
+) -> Result<String, String> {
+    let (stdout, stderr, _) = run_cmd_async_lenient(&adb_path, &["disconnect", &ip_port]).await?;
+    parse_disconnect_result(&stdout, &stderr)
 }
 
 /// Install an APK onto the specified device (async with progress & cancellation).
@@ -892,5 +1066,144 @@ mod tests {
         let output = "\n\nABC123\tdevice\n\n";
         let devices = parse_device_list(output);
         assert_eq!(devices.len(), 1);
+    }
+
+    // ── Wireless ADB parse tests ─────────────────────────────────────────
+
+    #[test]
+    fn parse_pair_success() {
+        let stdout = "Successfully paired to 192.168.1.100:37123 [guid=adb-ABC123-def456]";
+        let result = parse_pair_result(stdout, "");
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Successfully paired"));
+    }
+
+    #[test]
+    fn parse_pair_failed() {
+        let result = parse_pair_result("", "error: Failed to pair");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("failed"));
+    }
+
+    #[test]
+    fn parse_pair_timeout() {
+        let result = parse_pair_result("", "error: connection timed out");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timed out"));
+    }
+
+    #[test]
+    fn parse_pair_empty_response() {
+        let result = parse_pair_result("", "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no response"));
+    }
+
+    #[test]
+    fn parse_pair_refused() {
+        let result = parse_pair_result("", "error: connection refused");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_connect_success() {
+        let stdout = "connected to 192.168.1.100:5555";
+        let result = parse_connect_result(stdout, "");
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("connected to"));
+    }
+
+    #[test]
+    fn parse_connect_already_connected() {
+        let stdout = "already connected to 192.168.1.100:5555";
+        let result = parse_connect_result(stdout, "");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_connect_refused() {
+        let result = parse_connect_result("", "Connection refused");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("refused"));
+    }
+
+    #[test]
+    fn parse_connect_timeout() {
+        let result = parse_connect_result("", "connection timed out");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timed out"));
+    }
+
+    #[test]
+    fn parse_connect_failed_generic() {
+        let result = parse_connect_result("failed to connect", "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_connect_empty_response() {
+        let result = parse_connect_result("", "");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no response"));
+    }
+
+    #[test]
+    fn parse_disconnect_success() {
+        let stdout = "disconnected 192.168.1.100:5555";
+        let result = parse_disconnect_result(stdout, "");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parse_disconnect_error() {
+        let stdout = "error: no such device '192.168.1.100:5555'";
+        let result = parse_disconnect_result(stdout, "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_disconnect_unknown_output() {
+        let result = parse_disconnect_result("some other output", "");
+        assert!(result.is_ok()); // graceful fallback
+    }
+
+    // ── mDNS discovery tests ──────────────────────────────────────────────
+
+    #[test]
+    fn parse_mdns_services_typical_output() {
+        let stdout = "List of discovered mdns services\n\
+                       adb-ABC123\t_adb-tls-connect._tcp.\t192.168.1.100:43567\n\
+                       adb-DEF456\t_adb-tls-pairing._tcp.\t192.168.1.101:37215\n";
+        let services = parse_mdns_services(stdout);
+        assert_eq!(services.len(), 2);
+        assert_eq!(services[0].name, "adb-ABC123");
+        assert_eq!(services[0].service_type, "_adb-tls-connect._tcp.");
+        assert_eq!(services[0].ip_port, "192.168.1.100:43567");
+        assert_eq!(services[1].name, "adb-DEF456");
+        assert!(services[1].service_type.contains("pairing"));
+    }
+
+    #[test]
+    fn parse_mdns_services_empty() {
+        let stdout = "List of discovered mdns services\n";
+        let services = parse_mdns_services(stdout);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn parse_mdns_services_no_tabs() {
+        let stdout = "some random output with no tabs\n";
+        let services = parse_mdns_services(stdout);
+        assert!(services.is_empty());
+    }
+
+    #[test]
+    fn parse_mdns_services_single_connect() {
+        let stdout = "List of discovered mdns services\n\
+                       adb-PIXEL7\t_adb-tls-connect._tcp.\t192.168.0.42:5555\n";
+        let services = parse_mdns_services(stdout);
+        assert_eq!(services.len(), 1);
+        assert_eq!(services[0].name, "adb-PIXEL7");
+        assert_eq!(services[0].ip_port, "192.168.0.42:5555");
     }
 }

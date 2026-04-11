@@ -4,7 +4,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  DeviceInfo, ToolsStatus, StaleTool, RecentFilesConfig,
+  DeviceInfo, ToolsStatus, StaleTool, RecentFilesConfig, MdnsService,
 } from "./types";
 
 // ─── ADB ──────────────────────────────────────────────────────────────────────
@@ -20,6 +20,23 @@ export const startDeviceTracking = (adbPath: string) =>
 
 export const stopDeviceTracking = () =>
   invoke<void>("stop_device_tracking");
+
+// ─── Wireless ADB ─────────────────────────────────────────────────────────────
+
+export const adbPair = (adbPath: string, ipPort: string, pairingCode: string) =>
+  invoke<string>("adb_pair", { adbPath, ipPort, pairingCode });
+
+export const adbConnect = (adbPath: string, ipPort: string) =>
+  invoke<string>("adb_connect", { adbPath, ipPort });
+
+export const adbDisconnect = (adbPath: string, ipPort: string) =>
+  invoke<string>("adb_disconnect", { adbPath, ipPort });
+
+export const adbMdnsCheck = (adbPath: string) =>
+  invoke<boolean>("adb_mdns_check", { adbPath });
+
+export const adbMdnsServices = (adbPath: string) =>
+  invoke<MdnsService[]>("adb_mdns_services", { adbPath });
 
 export const installApk = (adbPath: string, device: string, apkPath: string) =>
   invoke<string>("install_apk", { adbPath, device, apkPath });

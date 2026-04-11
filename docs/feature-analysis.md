@@ -9,7 +9,7 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 ### 🔥 High Impact
 
-- [ ] **Wireless ADB (WiFi)** — Add `adb pair` / `adb connect` support for Android 11+. New UI in DeviceSection for IP/port/pairing code entry.
+- [x] **Wireless ADB (WiFi)** — `adb pair` / `adb connect` / `adb disconnect` support for Android 11+. Collapsible WiFi panel in DeviceSection with IP/port/pairing-code entry, auto-fill connect IP after pairing, disconnect button for wireless devices. Backed by `useWirelessAdb` hook. See [wireless-adb-guide.md](wireless-adb-guide.md).
 - [ ] **Batch file install** — Select or drop multiple APK/AAB files. Install sequentially with per-file progress.
 - [ ] **APK/AAB metadata panel** — Show version name/code, min/target SDK, permissions, file size before installing.
 - [ ] **Device info enrichment** — Show Android version, API level, free storage next to each device.
@@ -76,10 +76,10 @@ Items marked `[x]` are **completed**, items marked `[ ]` are **pending**.
 
 | Category | Done | Remaining |
 |----------|------|-----------|
-| New Features (1) | 1 | 12 |
+| New Features (1) | 2 | 11 |
 | Code Quality (2) | 2 | 5 |
 | UX (3) | 6 | 0 |
 | Performance (4) | 4 | 0 |
 | Architecture (5) | 1 | 3 |
-| **Total** | **14** | **20** |
+| **Total** | **15** | **19** |
 

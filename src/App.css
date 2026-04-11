@@ -1318,6 +1318,253 @@ body {
   border-top: 1px solid var(--border);
 }
 
+/* ─── Wireless ADB Panel ──────────────────────────────────────────────────── */
+
+.wifi-panel {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+}
+
+.wifi-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin-bottom: 12px;
+}
+
+.wifi-group {
+  margin-bottom: 12px;
+}
+
+.wifi-group:last-child {
+  margin-bottom: 0;
+}
+
+.wifi-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.wifi-inputs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.wifi-inputs .input {
+  flex: 1;
+  min-width: 100px;
+}
+
+.wifi-port-input {
+  max-width: 80px !important;
+  flex: 0 0 80px !important;
+}
+
+.wifi-code-input {
+  max-width: 110px !important;
+  flex: 0 0 110px !important;
+}
+
+.wifi-disconnect-btn {
+  margin-top: 6px;
+  color: var(--text-3);
+}
+
+.wifi-disconnect-btn:hover {
+  color: var(--red);
+}
+
+.wifi-disconnect-inline {
+  color: var(--text-3) !important;
+  padding: 4px !important;
+}
+
+.wifi-disconnect-inline:hover:not(:disabled) {
+  color: var(--red) !important;
+  background: var(--red-dim) !important;
+}
+
+.wifi-cancel-btn {
+  color: var(--red) !important;
+  padding: 4px 6px !important;
+  flex-shrink: 0;
+}
+
+.wifi-cancel-btn:hover:not(:disabled) {
+  background: var(--red-dim) !important;
+}
+
+.wifi-pair-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--yellow-dim);
+  border: 1px solid var(--yellow);
+  font-size: 12px;
+  color: var(--yellow);
+  animation: slideDown 200ms ease;
+}
+
+.wifi-pair-prompt span {
+  flex: 1;
+}
+
+.btn-active {
+  color: var(--green) !important;
+  background: var(--green-dim) !important;
+}
+
+/* ─── Install Mode Toggle ──────────────────────────────────────────────────── */
+
+.install-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.install-mode-label {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.install-mode-pills {
+  display: flex;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.install-mode-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: none;
+  background: var(--bg-1);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 120ms ease;
+  line-height: 1;
+}
+
+.install-mode-pill:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.install-mode-pill:hover:not(.active) {
+  background: var(--bg-2);
+  color: var(--text-2);
+}
+
+.install-mode-pill.active {
+  background: var(--green-dim);
+  color: var(--green);
+  font-weight: 600;
+}
+
+.install-mode-pill:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ─── WiFi Discovery List ──────────────────────────────────────────────────── */
+
+.wifi-discover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.wifi-discovered-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wifi-discovered-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  gap: 10px;
+}
+
+.wifi-discovered-item:hover {
+  border-color: var(--green);
+}
+
+.wifi-discovered-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wifi-discovered-icon {
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.wifi-discovered-name {
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wifi-discovered-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.wifi-discovered-actions .btn {
+  gap: 4px;
+}
+
+.wifi-discovered-addr {
+  color: var(--text-3);
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", "Consolas", monospace;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.wifi-discovered-type {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
 /* ─── Operation Progress Bar ───────────────────────────────────────────────── */
 
 .operation-progress {
