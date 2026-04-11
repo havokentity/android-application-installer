@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.7.0] — 2026-04-11
 ### Added
 - **Wireless ADB (WiFi)** — pair, connect, and disconnect Android 11+ devices over WiFi without a USB cable; collapsible WiFi panel in the Device section with IP/port/pairing-code fields
 - **mDNS network discovery** — scan the local network for Android devices with Wireless Debugging enabled; auto-fill IP and port from discovered services; requires ADB platform-tools 31+
