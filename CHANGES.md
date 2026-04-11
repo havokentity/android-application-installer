@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.7.2] — 2026-04-11
 ### Added
 - **APK/AAB downgrade support** — "Downgrade" checkbox inline next to the package name field; passes `-d` to `adb install` for APKs and `--allow-downgrade` to `bundletool install-apks` for AABs
 - **Native OS notifications** — desktop notifications via `notify-rust` when install or extract operations complete; shows app icon in release builds, Terminal icon in dev mode; cross-platform (macOS, Linux, Windows)
