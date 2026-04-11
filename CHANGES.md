@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.7.3] — 2026-04-11
 ### Added
 - **APK/AAB metadata panel** — version name/code, min/target SDK levels displayed in a metadata row below the file info after selection; auto-detected from binary manifest (APK) or bundletool dump (AAB) with aapt/aapt2 fallback
 - **Signing profile presets** — save, load, and delete named keystore + password + alias configurations in AAB Settings; profiles persisted in `signing_profiles.json`; UI with dropdown selector, save input, and delete button
