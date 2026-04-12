@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "tauri:build": "tauri build && node -e \"require('child_process').exec(process.platform==='win32'?'explorer src-tauri\\\\target\\\\release\\\\bundle':process.platform==='darwin'?'open src-tauri/target/release/bundle':'xdg-open src-tauri/target/release/bundle')\"",
+    "tauri:build": "tauri build && node scripts/open-bundle.mjs",
     "version": "node scripts/bump-version.mjs",
     "version:patch": "node scripts/bump-version.mjs patch",
     "version:minor": "node scripts/bump-version.mjs minor",
