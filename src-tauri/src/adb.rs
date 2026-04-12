@@ -258,84 +258,62 @@ pub(crate) fn find_adb(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 /// List connected Android devices via `adb devices -l`.
+/// Async with timeouts so a slow `adb start-server` won't block the UI.
 #[tauri::command]
-pub(crate) fn get_devices(adb_path: String) -> Result<Vec<DeviceInfo>, String> {
-    // Start the server first (idempotent if already running)
-    let _ = run_cmd_lenient(&adb_path, &["start-server"]);
+pub(crate) async fn get_devices(adb_path: String) -> Result<Vec<DeviceInfo>, String> {
+    use tokio::time::{timeout, Duration};
 
-    let (stdout, _) = run_cmd(&adb_path, &["devices", "-l"])?;
+    // Start the server first (idempotent if already running).
+    // On Windows with USB devices this can take several seconds, so give it
+    // a generous timeout rather than blocking indefinitely.
+    let _ = timeout(
+        Duration::from_secs(15),
+        run_cmd_async_lenient(&adb_path, &["start-server"]),
+    )
+    .await;
 
-    let mut devices = Vec::new();
-    for line in stdout.lines().skip(1) {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
+    let (stdout, _, _) = timeout(
+        Duration::from_secs(10),
+        run_cmd_async_lenient(&adb_path, &["devices", "-l"]),
+    )
+    .await
+    .map_err(|_| "Timed out listing devices — ADB may be unresponsive.".to_string())?
+    .map_err(|e| format!("Failed to list devices: {}", e))?;
 
-        let parts: Vec<&str> = line.splitn(2, char::is_whitespace).collect();
-        if parts.len() < 2 {
-            continue;
-        }
-
-        let serial = parts[0].to_string();
-        let rest = parts[1].trim();
-
-        // First token is the state (device, offline, unauthorized, etc.)
-        let state_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-        let state = rest[..state_end].to_string();
-
-        // Parse key:value properties (model, product, transport_id, etc.)
-        let mut model = String::new();
-        let mut product = String::new();
-        let mut transport_id = String::new();
-
-        if state_end < rest.len() {
-            for part in rest[state_end..].split_whitespace() {
-                if let Some((key, value)) = part.split_once(':') {
-                    match key {
-                        "model" => model = value.replace('_', " "),
-                        "product" => product = value.to_string(),
-                        "transport_id" => transport_id = value.to_string(),
-                        _ => {}
-                    }
-                }
-            }
-        }
-
-        devices.push(DeviceInfo {
-            serial,
-            state,
-            model,
-            product,
-            transport_id,
-        });
-    }
-
-    Ok(devices)
+    Ok(parse_device_list(&stdout))
 }
 
 /// Get enriched device details: Android version, API level, free storage.
+/// Async with per-command timeouts to avoid hanging when a device is slow.
 #[tauri::command]
-pub(crate) fn get_device_details(adb_path: String, device: String) -> Result<DeviceDetails, String> {
-    let android_version = run_cmd_lenient(
-        &adb_path,
-        &["-s", &device, "shell", "getprop", "ro.build.version.release"],
-    )
-    .map(|(out, _, _)| out.trim().to_string())
-    .unwrap_or_default();
+pub(crate) async fn get_device_details(adb_path: String, device: String) -> Result<DeviceDetails, String> {
+    use tokio::time::{timeout, Duration};
+    let cmd_timeout = Duration::from_secs(10);
 
-    let api_level = run_cmd_lenient(
-        &adb_path,
-        &["-s", &device, "shell", "getprop", "ro.build.version.sdk"],
+    let android_version = timeout(cmd_timeout,
+        run_cmd_async_lenient(&adb_path, &["-s", &device, "shell", "getprop", "ro.build.version.release"]),
     )
-    .map(|(out, _, _)| out.trim().to_string())
-    .unwrap_or_default();
-
-    let free_storage = run_cmd_lenient(
-        &adb_path,
-        &["-s", &device, "shell", "df", "/data"],
-    )
+    .await
     .ok()
+    .and_then(|r| r.ok())
+    .map(|(out, _, _)| out.trim().to_string())
+    .unwrap_or_default();
+
+    let api_level = timeout(cmd_timeout,
+        run_cmd_async_lenient(&adb_path, &["-s", &device, "shell", "getprop", "ro.build.version.sdk"]),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.ok())
+    .map(|(out, _, _)| out.trim().to_string())
+    .unwrap_or_default();
+
+    let free_storage = timeout(cmd_timeout,
+        run_cmd_async_lenient(&adb_path, &["-s", &device, "shell", "df", "/data"]),
+    )
+    .await
+    .ok()
+    .and_then(|r| r.ok())
     .and_then(|(out, _, _)| parse_df_available(&out))
     .unwrap_or_else(|| "Unknown".to_string());
 
@@ -427,11 +405,17 @@ pub(crate) async fn start_device_tracking(
     let adb = adb_path.clone();
 
     let handle = tokio::spawn(async move {
-        // Ensure ADB server is running
-        let _ = no_window_async(&mut tokio::process::Command::new(&adb))
-            .args(["start-server"])
-            .output()
-            .await;
+        // Ensure ADB server is running (with timeout to avoid hanging)
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(15),
+            async {
+                let _ = no_window_async(&mut tokio::process::Command::new(&adb))
+                    .args(["start-server"])
+                    .output()
+                    .await;
+            },
+        )
+        .await;
 
         loop {
             if stop_flag.load(Ordering::Relaxed) {

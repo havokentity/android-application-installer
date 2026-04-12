@@ -25,6 +25,7 @@ export function useDeviceState(
   const prevDeviceFingerprint = useRef("");
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
+  const fetchingDetailsFor = useRef<Set<string>>(new Set());
 
   // Persist install mode preference
   useEffect(() => { localStorage.setItem("installMode", installMode); }, [installMode]);
@@ -80,9 +81,7 @@ export function useDeviceState(
   }, [adbPath, addLog]);
 
   // ── Initial refresh when ADB is found ──────────────────────────────
-  useEffect(() => {
-    if (adbStatus === "found") refreshDevices();
-  }, [adbStatus]); // eslint-disable-line react-hooks/exhaustive-deps
+  // (handled by the tracking effect below — tracker push provides initial list)
 
   // ── Silent refresh for polling fallback ─────────────────────────────
   const refreshDevicesQuiet = useCallback(async () => {
@@ -98,16 +97,21 @@ export function useDeviceState(
     prevDeviceFingerprint.current = devices.map((d) => `${d.serial}:${d.state}`).sort().join(",");
   }, [devices]);
 
-  // ── Push-based tracking with polling fallback ───────────────────────
+  // ── Push-based tracking with one-shot fallback ─────────────────────
   useEffect(() => {
     if (adbStatus !== "found" || !adbPath) return;
 
     let intervalId: ReturnType<typeof setInterval> | null = null;
     let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+
+    setLoadingDevices(true);
 
     const startTracking = async () => {
-      // Listen for push events
+      // Listen for push events — this will provide the initial device list
       const unlisten = await listen<DeviceInfo[]>("device-list-changed", (event) => {
+        if (cancelled) return;
+        setLoadingDevices(false);
         applyDeviceUpdate(event.payload, true);
       });
       unlistenFn = unlisten;
@@ -115,11 +119,47 @@ export function useDeviceState(
       try {
         await api.startDeviceTracking(adbPath);
         trackingActive.current = true;
+
+        // The tracker emits the current device list immediately.
+        // Give it a moment, then clear loading if no event arrived
+        // (happens when zero devices are connected).
+        setTimeout(() => {
+          if (!cancelled) setLoadingDevices(false);
+        }, 3000);
       } catch (e) {
         console.warn("Device tracking failed, falling back to polling:", e);
-        // Tracking failed — fall back to polling
         trackingActive.current = false;
-        intervalId = setInterval(refreshDevicesQuiet, 8000);
+
+        // Tracking failed — do a one-shot device refresh + start polling
+        try {
+          const rawDevs = await api.getDevices(adbPath);
+          if (!cancelled) {
+            const deduped = deduplicateDevices(rawDevs);
+            setDevices(deduped);
+            prevDeviceFingerprint.current = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+            if (deduped.length > 0) {
+              setSelectedDevice((prev) => {
+                if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
+                return prev;
+              });
+              addLog("info", `Found ${deduped.length} device(s)`);
+            } else {
+              setSelectedDevice("");
+              addLog("warning", "No devices connected. Enable USB debugging on your phone and connect via USB.");
+            }
+          }
+        } catch (e2) {
+          if (!cancelled) {
+            setDevices([]);
+            setSelectedDevice("");
+            addLog("error", `Failed to list devices: ${e2}`);
+          }
+        }
+
+        if (!cancelled) {
+          setLoadingDevices(false);
+          intervalId = setInterval(refreshDevicesQuiet, 8000);
+        }
       }
     };
 
@@ -130,6 +170,7 @@ export function useDeviceState(
     window.addEventListener("focus", onFocus);
 
     return () => {
+      cancelled = true;
       window.removeEventListener("focus", onFocus);
       if (intervalId) clearInterval(intervalId);
       if (unlistenFn) unlistenFn();
@@ -138,7 +179,7 @@ export function useDeviceState(
         trackingActive.current = false;
       }
     };
-  }, [adbStatus, adbPath, refreshDevicesQuiet, applyDeviceUpdate]);
+  }, [adbStatus, adbPath, refreshDevicesQuiet, applyDeviceUpdate, addLog]);
 
   // ── Auto-collapse when device is connected ─────────────────────────
   useEffect(() => {
@@ -148,23 +189,25 @@ export function useDeviceState(
 
   // ── Fetch device details (Android version, API level, storage) ────
   const fetchDeviceDetails = useCallback(async (serial: string) => {
-    if (!adbPath || deviceDetails[serial]) return;
+    if (!adbPath) return;
+    // Skip if already fetched or currently in-flight
+    if (fetchingDetailsFor.current.has(serial)) return;
+    fetchingDetailsFor.current.add(serial);
     try {
       const details = await api.getDeviceDetails(adbPath, serial);
       setDeviceDetails((prev) => ({ ...prev, [serial]: details }));
     } catch (e) { console.warn(`Failed to get details for ${serial}:`, e); }
-  }, [adbPath, deviceDetails]);
+    finally { fetchingDetailsFor.current.delete(serial); }
+  }, [adbPath]);
 
   // Auto-fetch details for selected device and all online devices
   useEffect(() => {
     if (!adbPath) return;
     const online = devices.filter((d) => d.state === "device");
     for (const d of online) {
-      if (!deviceDetails[d.serial]) {
-        fetchDeviceDetails(d.serial);
-      }
+      fetchDeviceDetails(d.serial);
     }
-  }, [devices, adbPath, deviceDetails, fetchDeviceDetails]);
+  }, [devices, adbPath, fetchDeviceDetails]);
 
   return {
     devices, selectedDevice, setSelectedDevice,
