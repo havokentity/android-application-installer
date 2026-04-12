@@ -222,7 +222,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
 
   // Listen for QR pairing result events from the backend
   useEffect(() => {
-    const unlisten = listen<QrPairingResult>("qr-pairing-result", (event) => {
+    const unlistenResult = listen<QrPairingResult>("qr-pairing-result", (event) => {
       const result = event.payload;
       setIsQrPairing(false);
       setQrPairingInfo(null);
@@ -242,7 +242,14 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
         }
       }
     });
-    return () => { unlisten.then((fn) => fn()); };
+    // Forward backend pairing progress to the log panel
+    const unlistenLog = listen<string>("qr-pairing-log", (event) => {
+      addLog("info", `[QR] ${event.payload}`);
+    });
+    return () => {
+      unlistenResult.then((fn) => fn());
+      unlistenLog.then((fn) => fn());
+    };
   }, [addLog, addToast, onDeviceChange]);
 
   const canPair = !!(adbPath && isValidIp(pairIp) && isValidPort(pairPort) && isValidPairingCode(pairingCode) && !isPairing);

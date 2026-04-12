@@ -23,6 +23,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
+use tokio_rustls::TlsAcceptor;
 
 use crate::cmd::run_cmd_async_lenient;
 
@@ -277,7 +278,7 @@ async fn read_payload(
 
 // ─── Pairing Protocol Handler ────────────────────────────────────────────────
 
-/// Run the full ADB pairing protocol on an accepted TCP connection.
+/// Run the full ADB pairing protocol on an established (TLS) stream.
 ///
 /// Protocol flow (we are Bob / Server):
 ///  1. Send our SPAKE2 message (S*)
@@ -285,11 +286,14 @@ async fn read_payload(
 ///  3. Derive shared AES key
 ///  4. Read client's encrypted PeerInfo (server reads FIRST)
 ///  5. Send our encrypted PeerInfo
-async fn handle_pairing(
-    stream: &mut tokio::net::TcpStream,
+async fn handle_pairing<S>(
+    stream: &mut S,
     password: &[u8],
     adb_pub_key: &str,
-) -> Result<(), String> {
+) -> Result<(), String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
     // 1. SPAKE2 handshake — generate our message (S* = y·B + w·N)
     let (spake, our_msg) = Spake2Bob::new(password)?;
 
@@ -406,6 +410,34 @@ fn random_alphanum(len: usize) -> String {
         .collect()
 }
 
+// ─── TLS ─────────────────────────────────────────────────────────────────────
+
+/// Generate a self-signed TLS certificate and build a [`TlsAcceptor`].
+///
+/// AOSP's pairing server uses an ephemeral RSA-2048 self-signed cert with
+/// `SSL_VERIFY_NONE` — neither side verifies the other's certificate.
+/// We use rcgen's default (ECDSA P-256) which BoringSSL also supports.
+fn build_tls_acceptor() -> Result<TlsAcceptor, String> {
+    let ck = rcgen::generate_simple_self_signed(vec!["adb".into()])
+        .map_err(|e| format!("TLS cert generation failed: {e}"))?;
+
+    let cert_der = tokio_rustls::rustls::pki_types::CertificateDer::from(
+        ck.cert.der().to_vec(),
+    );
+    let key_der = tokio_rustls::rustls::pki_types::PrivateKeyDer::from(
+        tokio_rustls::rustls::pki_types::PrivatePkcs8KeyDer::from(
+            ck.key_pair.serialize_der(),
+        ),
+    );
+
+    let config = tokio_rustls::rustls::ServerConfig::builder()
+        .with_no_client_auth()
+        .with_single_cert(vec![cert_der], key_der)
+        .map_err(|e| format!("TLS config failed: {e}"))?;
+
+    Ok(TlsAcceptor::from(Arc::new(config)))
+}
+
 // ─── Managed State ───────────────────────────────────────────────────────────
 
 /// Managed state for the QR pairing background task.
@@ -431,6 +463,8 @@ pub struct QrPairingInfo {
     pub qr_data: String,
     pub service_name: String,
     pub password: String,
+    pub ip: String,
+    pub port: u16,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -490,6 +524,8 @@ pub(crate) async fn start_qr_pairing(
         qr_data,
         service_name: service_name.clone(),
         password: password.clone(),
+        ip: local_ip.clone(),
+        port,
     };
 
     // Set up the background task
@@ -503,7 +539,7 @@ pub(crate) async fn start_qr_pairing(
 
     let handle = tokio::spawn(async move {
         let result =
-            run_pairing_server(listener, &svc_name, &pw, &ip, port, &adb_pub_key, &cancel_clone, &adb)
+            run_pairing_server(listener, &svc_name, &pw, &ip, port, &adb_pub_key, &cancel_clone, &adb, &app_handle)
                 .await;
 
         let pairing_result = match result {
@@ -550,7 +586,7 @@ pub(crate) async fn cancel_qr_pairing(
     Ok(())
 }
 
-/// Run the pairing server: mDNS advertisement + TCP accept + protocol.
+/// Run the pairing server: TLS cert → mDNS advertisement → TCP accept → TLS → SPAKE2.
 async fn run_pairing_server(
     listener: tokio::net::TcpListener,
     service_name: &str,
@@ -560,8 +596,18 @@ async fn run_pairing_server(
     adb_pub_key: &str,
     cancel: &Arc<AtomicBool>,
     adb_path: &str,
+    app: &tauri::AppHandle,
 ) -> Result<String, String> {
-    // Start mDNS advertisement
+    // Helper to emit progress strings the frontend can show in its log panel
+    let log = |msg: String| {
+        let _ = app.emit("qr-pairing-log", &msg);
+    };
+
+    // 1. Build ephemeral TLS acceptor (self-signed cert, no client-cert verify)
+    let tls_acceptor = build_tls_acceptor()?;
+    log(format!("TLS certificate generated"));
+
+    // 2. Start mDNS advertisement
     let mdns = mdns_sd::ServiceDaemon::new()
         .map_err(|e| format!("mDNS daemon failed to start: {}", e))?;
 
@@ -580,7 +626,12 @@ async fn run_pairing_server(
     mdns.register(service_info)
         .map_err(|e| format!("mDNS registration failed: {}", e))?;
 
-    // Wait for the phone to connect (with timeout and cancellation)
+    log(format!("mDNS service registered: {} at {}:{}", service_name, local_ip, port));
+
+    // Give the announcement a moment to propagate
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // 3. Wait for the phone to connect (with timeout and cancellation)
     let result = async {
         let cancel_check = async {
             loop {
@@ -594,10 +645,19 @@ async fn run_pairing_server(
         tokio::select! {
             accept = listener.accept() => {
                 match accept {
-                    Ok((mut stream, addr)) => {
+                    Ok((tcp_stream, addr)) => {
                         let device_ip = addr.ip().to_string();
-                        // Run the pairing protocol
-                        handle_pairing(&mut stream, password.as_bytes(), adb_pub_key).await?;
+                        log(format!("TCP connection from {}", addr));
+
+                        // 4. TLS handshake
+                        let mut tls_stream = tls_acceptor.accept(tcp_stream).await
+                            .map_err(|e| format!("TLS handshake failed: {}", e))?;
+                        log("TLS handshake complete".into());
+
+                        // 5. Run SPAKE2 + PeerInfo exchange over TLS
+                        handle_pairing(&mut tls_stream, password.as_bytes(), adb_pub_key).await?;
+                        log("Pairing protocol complete".into());
+
                         Ok(device_ip)
                     }
                     Err(e) => Err(format!("TCP accept failed: {}", e)),
@@ -619,6 +679,7 @@ async fn run_pairing_server(
 
     // If pairing succeeded, try to auto-connect via mDNS discovery
     if let Ok(ref device_ip) = result {
+        log("Pairing succeeded — waiting for device to advertise connect service…".into());
         // Give the phone a moment to start its connect service
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 

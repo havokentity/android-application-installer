@@ -49,6 +49,8 @@ export interface QrPairingInfo {
   qr_data: string;
   service_name: string;
   password: string;
+  ip: string;
+  port: number;
 }
 
 export interface QrPairingResult {

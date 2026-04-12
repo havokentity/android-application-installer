@@ -427,6 +427,9 @@ export function DeviceSection({
                         <Loader2 size={14} className="spin" />
                         <span>Waiting for device to scan...</span>
                       </div>
+                      <p className="hint" style={{ marginTop: 8 }}>
+                        Server: {wireless.qrPairingInfo.ip}:{wireless.qrPairingInfo.port} · Both devices must be on the same WiFi network
+                      </p>
                     </div>
                   </div>
                 )}
