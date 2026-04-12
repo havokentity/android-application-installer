@@ -4,7 +4,7 @@ import { resolve } from "path";
 
 const bundlePath = resolve("src-tauri/target/release/bundle");
 const commands = {
-  win32: `explorer "${bundlePath}"`,
+  win32: `start "" "${bundlePath}"`,
   darwin: `open "${bundlePath}"`,
   linux: `xdg-open "${bundlePath}"`,
 };
