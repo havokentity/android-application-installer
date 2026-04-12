@@ -451,22 +451,58 @@ fn build_tls_acceptor() -> Result<TlsAcceptor, String> {
 
 // ─── Windows Firewall ────────────────────────────────────────────────────────
 
-/// Try to add a temporary inbound TCP firewall rule for the pairing port.
-/// Returns `true` if the rule was added, `false` if it failed (no admin, etc.).
-/// This is best-effort — the pairing may still work without it if the user has
-/// already allowed the application through Windows Firewall.
-#[cfg(target_os = "windows")]
-async fn try_add_firewall_rule(port: u16) -> bool {
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+/// Result of the firewall setup attempt.
+#[derive(Clone, Copy, PartialEq)]
+enum FirewallStatus {
+    /// Temporary port-specific rules were added (should be cleaned up).
+    TempRulesAdded,
+    /// A persistent program-level rule is active (don't clean up).
+    ProgramRuleOk,
+    /// No rules could be added.
+    Failed,
+}
 
-    let rule_name = format!("ADB QR Pairing (port {})", port);
-    let port_str = port.to_string();
+/// Persistent program-level rule name (survives across sessions).
+const PROGRAM_RULE_NAME: &str = "Android Application Installer";
+
+/// Check if our persistent program-level firewall rule already exists.
+/// `netsh show rule` doesn't require admin.
+#[cfg(target_os = "windows")]
+async fn check_program_rule_exists() -> bool {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let result = tokio::process::Command::new("netsh")
         .args([
+            "advfirewall", "firewall", "show", "rule",
+            &format!("name={}", PROGRAM_RULE_NAME),
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await;
+
+    match result {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            output.status.success() && stdout.contains(PROGRAM_RULE_NAME)
+        }
+        Err(_) => false,
+    }
+}
+
+/// Try to add temporary port-specific inbound rules (TCP for pairing +
+/// UDP 5353 for mDNS).  Requires admin — will fail silently if not elevated.
+#[cfg(target_os = "windows")]
+async fn try_add_temp_rules(port: u16) -> bool {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let tcp_name = format!("ADB QR Pairing TCP (port {})", port);
+    let tcp_ok = tokio::process::Command::new("netsh")
+        .args([
             "advfirewall", "firewall", "add", "rule",
-            &format!("name={}", rule_name),
+            &format!("name={}", tcp_name),
             "dir=in", "action=allow", "protocol=tcp",
-            &format!("localport={}", port_str),
+            &format!("localport={}", port),
         ])
         .creation_flags(CREATE_NO_WINDOW)
         .stdout(std::process::Stdio::null())
@@ -474,20 +510,76 @@ async fn try_add_firewall_rule(port: u16) -> bool {
         .status()
         .await;
 
-    matches!(result, Ok(status) if status.success())
-}
+    if !matches!(tcp_ok, Ok(s) if s.success()) {
+        return false;
+    }
 
-/// Remove the temporary firewall rule added by [`try_add_firewall_rule`].
-#[cfg(target_os = "windows")]
-async fn try_remove_firewall_rule(port: u16) {
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-    let rule_name = format!("ADB QR Pairing (port {})", port);
+    // Also add UDP 5353 for mDNS so the phone's multicast queries reach us
     let _ = tokio::process::Command::new("netsh")
         .args([
-            "advfirewall", "firewall", "delete", "rule",
-            &format!("name={}", rule_name),
+            "advfirewall", "firewall", "add", "rule",
+            "name=ADB QR Pairing mDNS",
+            "dir=in", "action=allow", "protocol=udp",
+            "localport=5353",
         ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+
+    true
+}
+
+/// Try to add a persistent program-level firewall rule with UAC elevation.
+/// Shows a UAC prompt to the user — if accepted the rule persists across sessions.
+#[cfg(target_os = "windows")]
+async fn try_add_program_rule_elevated() -> bool {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) => return false,
+    };
+
+    // Use PowerShell Start-Process -Verb RunAs to trigger UAC elevation.
+    // Single-quoted ArgumentList preserves the inner double-quotes for netsh.
+    let netsh_args = format!(
+        "advfirewall firewall add rule name=\"{}\" dir=in action=allow program=\"{}\" enable=yes",
+        PROGRAM_RULE_NAME, exe_path
+    );
+    let ps_command = format!(
+        "Start-Process netsh -ArgumentList '{}' -Verb RunAs -Wait -WindowStyle Hidden",
+        netsh_args.replace('\'', "''")
+    );
+
+    let result = tokio::process::Command::new("powershell")
+        .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", &ps_command])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+
+    matches!(result, Ok(s) if s.success())
+}
+
+/// Remove the temporary port-specific firewall rules added by [`try_add_temp_rules`].
+#[cfg(target_os = "windows")]
+async fn try_remove_temp_rules(port: u16) {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let tcp_name = format!("ADB QR Pairing TCP (port {})", port);
+    let _ = tokio::process::Command::new("netsh")
+        .args(["advfirewall", "firewall", "delete", "rule", &format!("name={}", tcp_name)])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+
+    let _ = tokio::process::Command::new("netsh")
+        .args(["advfirewall", "firewall", "delete", "rule", "name=ADB QR Pairing mDNS"])
         .creation_flags(CREATE_NO_WINDOW)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -497,9 +589,13 @@ async fn try_remove_firewall_rule(port: u16) {
 
 /// No-op on non-Windows platforms.
 #[cfg(not(target_os = "windows"))]
-async fn try_add_firewall_rule(_port: u16) -> bool { false }
+async fn check_program_rule_exists() -> bool { false }
 #[cfg(not(target_os = "windows"))]
-async fn try_remove_firewall_rule(_port: u16) {}
+async fn try_add_temp_rules(_port: u16) -> bool { false }
+#[cfg(not(target_os = "windows"))]
+async fn try_add_program_rule_elevated() -> bool { false }
+#[cfg(not(target_os = "windows"))]
+async fn try_remove_temp_rules(_port: u16) {}
 
 // ─── Managed State ───────────────────────────────────────────────────────────
 
@@ -666,15 +762,37 @@ async fn run_pairing_server(
         let _ = app.emit("qr-pairing-log", &msg);
     };
 
-    // 0. Try to add a Windows Firewall exception for the pairing port.
-    //    The phone makes an INBOUND TCP connection to our port — Windows Firewall
-    //    blocks inbound by default unless the app is explicitly allowed.
-    let firewall_added = try_add_firewall_rule(port).await;
-    if firewall_added {
-        log(format!("✓ Firewall rule added for TCP port {}", port));
-    } else if cfg!(target_os = "windows") {
-        log("⚠ Could not add firewall rule (may need admin). If pairing hangs, allow this app in Windows Firewall.".into());
-    }
+    // 0. Ensure Windows Firewall allows inbound connections (TCP for pairing,
+    //    UDP 5353 for mDNS).  The phone makes an INBOUND TCP connection to our
+    //    port AND discovers us via mDNS multicast — both are blocked by default.
+    let fw_status = if cfg!(target_os = "windows") {
+        if check_program_rule_exists().await {
+            log("✓ Firewall: program rule active".into());
+            FirewallStatus::ProgramRuleOk
+        } else if try_add_temp_rules(port).await {
+            log(format!("✓ Firewall rules added for TCP port {} and mDNS", port));
+            FirewallStatus::TempRulesAdded
+        } else {
+            log("Requesting firewall access (you may see a UAC prompt)…".into());
+            if try_add_program_rule_elevated().await {
+                log("✓ Firewall: program rule added (persists for future sessions)".into());
+                FirewallStatus::ProgramRuleOk
+            } else {
+                let exe_hint = std::env::current_exe()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "<app path>".into());
+                log("⚠ Could not add firewall rule. Pairing will likely fail.".into());
+                log("  → Run this command in an admin terminal to fix permanently:".into());
+                log(format!(
+                    "    netsh advfirewall firewall add rule name=\"{}\" dir=in action=allow program=\"{}\" enable=yes",
+                    PROGRAM_RULE_NAME, exe_hint
+                ));
+                FirewallStatus::Failed
+            }
+        }
+    } else {
+        FirewallStatus::Failed // non-Windows, no firewall handling needed
+    };
 
     // 1. Build ephemeral TLS acceptor (self-signed cert, TLS 1.3 only, no client-cert verify)
     let tls_acceptor = build_tls_acceptor()?;
@@ -687,7 +805,16 @@ async fn run_pairing_server(
     let mdns = mdns_sd::ServiceDaemon::new()
         .map_err(|e| format!("mDNS daemon failed to start: {}", e))?;
 
-    let hostname = format!("{}.local.", service_name);
+    let hostname = {
+        let machine = std::env::var("COMPUTERNAME")
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .unwrap_or_else(|_| service_name.to_string())
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+            .collect::<String>();
+        format!("{}.local.", machine)
+    };
     let service_info = mdns_sd::ServiceInfo::new(
         "_adb-tls-pairing._tcp.local.",
         service_name,
@@ -748,8 +875,10 @@ async fn run_pairing_server(
 
                 let elapsed = start.elapsed().as_secs();
 
-                // Re-announce mDNS every ~30 s in case the initial advertisement was missed
-                if last_reannounce.elapsed().as_secs() >= 30 {
+                // Re-announce mDNS more aggressively initially:
+                // every 5 s for the first 30 s, then every 15 s
+                let reannounce_interval = if elapsed < 30 { 5 } else { 15 };
+                if last_reannounce.elapsed().as_secs() >= reannounce_interval {
                     last_reannounce = std::time::Instant::now();
                     let re_info = mdns_sd::ServiceInfo::new(
                         "_adb-tls-pairing._tcp.local.",
@@ -769,13 +898,12 @@ async fn run_pairing_server(
                 if elapsed >= 15 && !warned_firewall {
                     warned_firewall = true;
                     log("⚠ No connection received after 15 s — possible causes:".into());
-                    if cfg!(target_os = "windows") {
-                        log("  • Windows Firewall may be blocking inbound TCP connections".into());
-                        log("    → Open Windows Firewall settings and allow this app".into());
+                    if cfg!(target_os = "windows") && fw_status == FirewallStatus::Failed {
+                        log("  • Windows Firewall is blocking inbound connections (most likely cause)".into());
+                        log("    → Accept the UAC prompt if it appears, or add a firewall rule manually".into());
                     }
                     log("  • mDNS multicast may not traverse between WiFi and wired LAN".into());
-                    log("    → Some routers block multicast between wireless and ethernet".into());
-                    log("    → If your PC has WiFi, try enabling it temporarily".into());
+                    log("    → Most routers bridge multicast fine; if yours doesn't, try connecting your PC via WiFi".into());
                     log(format!("  • Server listening at {}:{}", local_ip, port));
                 }
 
@@ -796,9 +924,9 @@ async fn run_pairing_server(
     let _ = mdns.unregister(&fullname);
     let _ = mdns.shutdown();
 
-    // Clean up temporary firewall rule
-    if firewall_added {
-        try_remove_firewall_rule(port).await;
+    // Clean up temporary firewall rules (program-level rules persist intentionally)
+    if fw_status == FirewallStatus::TempRulesAdded {
+        try_remove_temp_rules(port).await;
     }
 
     // If pairing succeeded, try to auto-connect via mDNS discovery
