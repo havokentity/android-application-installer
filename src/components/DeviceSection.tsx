@@ -428,7 +428,7 @@ export function DeviceSection({
                         <span>Waiting for device to scan...</span>
                       </div>
                       <p className="hint" style={{ marginTop: 8 }}>
-                        Server: {wireless.qrPairingInfo.ip}:{wireless.qrPairingInfo.port} · Both devices must be on the same WiFi network
+                        Server: {wireless.qrPairingInfo.ip}:{wireless.qrPairingInfo.port} · Both devices must be on the same network (WiFi or LAN). If pairing hangs, check Windows Firewall.
                       </p>
                     </div>
                   </div>

@@ -303,6 +303,13 @@ where
         .write_all(&our_msg)
         .await
         .map_err(|e| format!("Send SPAKE2 msg failed: {}", e))?;
+    // Flush to ensure the message is sent before we wait for the response.
+    // Without this, TLS may buffer the record and deadlock (both sides waiting
+    // for a message the other hasn't flushed yet).
+    stream
+        .flush()
+        .await
+        .map_err(|e| format!("Flush SPAKE2 msg failed: {}", e))?;
 
     // 3. Read client's SPAKE2 message
     let (msg_type, payload_len) = read_header(stream).await?;
@@ -430,13 +437,69 @@ fn build_tls_acceptor() -> Result<TlsAcceptor, String> {
         ),
     );
 
-    let config = tokio_rustls::rustls::ServerConfig::builder()
+    // AOSP mandates TLS 1.3 only for ADB pairing
+    // (SSL_CTX_set_min/max_proto_version both set to TLS1_3_VERSION)
+    let config = tokio_rustls::rustls::ServerConfig::builder_with_protocol_versions(
+            &[&tokio_rustls::rustls::version::TLS13],
+        )
         .with_no_client_auth()
         .with_single_cert(vec![cert_der], key_der)
         .map_err(|e| format!("TLS config failed: {e}"))?;
 
     Ok(TlsAcceptor::from(Arc::new(config)))
 }
+
+// ─── Windows Firewall ────────────────────────────────────────────────────────
+
+/// Try to add a temporary inbound TCP firewall rule for the pairing port.
+/// Returns `true` if the rule was added, `false` if it failed (no admin, etc.).
+/// This is best-effort — the pairing may still work without it if the user has
+/// already allowed the application through Windows Firewall.
+#[cfg(target_os = "windows")]
+async fn try_add_firewall_rule(port: u16) -> bool {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let rule_name = format!("ADB QR Pairing (port {})", port);
+    let port_str = port.to_string();
+    let result = tokio::process::Command::new("netsh")
+        .args([
+            "advfirewall", "firewall", "add", "rule",
+            &format!("name={}", rule_name),
+            "dir=in", "action=allow", "protocol=tcp",
+            &format!("localport={}", port_str),
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+
+    matches!(result, Ok(status) if status.success())
+}
+
+/// Remove the temporary firewall rule added by [`try_add_firewall_rule`].
+#[cfg(target_os = "windows")]
+async fn try_remove_firewall_rule(port: u16) {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let rule_name = format!("ADB QR Pairing (port {})", port);
+    let _ = tokio::process::Command::new("netsh")
+        .args([
+            "advfirewall", "firewall", "delete", "rule",
+            &format!("name={}", rule_name),
+        ])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await;
+}
+
+/// No-op on non-Windows platforms.
+#[cfg(not(target_os = "windows"))]
+async fn try_add_firewall_rule(_port: u16) -> bool { false }
+#[cfg(not(target_os = "windows"))]
+async fn try_remove_firewall_rule(_port: u16) {}
 
 // ─── Managed State ───────────────────────────────────────────────────────────
 
@@ -586,7 +649,7 @@ pub(crate) async fn cancel_qr_pairing(
     Ok(())
 }
 
-/// Run the pairing server: TLS cert → mDNS advertisement → TCP accept → TLS → SPAKE2.
+/// Run the pairing server: firewall → TLS cert → mDNS advertisement → TCP accept → TLS → SPAKE2.
 async fn run_pairing_server(
     listener: tokio::net::TcpListener,
     service_name: &str,
@@ -603,11 +666,24 @@ async fn run_pairing_server(
         let _ = app.emit("qr-pairing-log", &msg);
     };
 
-    // 1. Build ephemeral TLS acceptor (self-signed cert, no client-cert verify)
+    // 0. Try to add a Windows Firewall exception for the pairing port.
+    //    The phone makes an INBOUND TCP connection to our port — Windows Firewall
+    //    blocks inbound by default unless the app is explicitly allowed.
+    let firewall_added = try_add_firewall_rule(port).await;
+    if firewall_added {
+        log(format!("✓ Firewall rule added for TCP port {}", port));
+    } else if cfg!(target_os = "windows") {
+        log("⚠ Could not add firewall rule (may need admin). If pairing hangs, allow this app in Windows Firewall.".into());
+    }
+
+    // 1. Build ephemeral TLS acceptor (self-signed cert, TLS 1.3 only, no client-cert verify)
     let tls_acceptor = build_tls_acceptor()?;
-    log(format!("TLS certificate generated"));
+    log("✓ TLS 1.3 certificate generated".into());
 
     // 2. Start mDNS advertisement
+    //    The phone discovers our pairing server via mDNS after scanning the QR.
+    //    If multicast doesn't traverse WiFi↔Ethernet on the router, the phone
+    //    will never find us — there is no fallback in the Android QR pairing flow.
     let mdns = mdns_sd::ServiceDaemon::new()
         .map_err(|e| format!("mDNS daemon failed to start: {}", e))?;
 
@@ -623,59 +699,107 @@ async fn run_pairing_server(
     .map_err(|e| format!("mDNS service creation failed: {}", e))?;
 
     let fullname = service_info.get_fullname().to_string();
-    mdns.register(service_info)
+    mdns.register(service_info.clone())
         .map_err(|e| format!("mDNS registration failed: {}", e))?;
 
-    log(format!("mDNS service registered: {} at {}:{}", service_name, local_ip, port));
+    log(format!("✓ mDNS service registered: {} at {}:{}", service_name, local_ip, port));
+    log("Waiting for phone to scan QR and connect…".into());
 
-    // Give the announcement a moment to propagate
+    // Give the initial announcement a moment to propagate
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-    // 3. Wait for the phone to connect (with timeout and cancellation)
-    let result = async {
-        let cancel_check = async {
-            loop {
-                if cancel.load(Ordering::Relaxed) {
-                    return;
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            }
-        };
+    // 3. Wait for the phone to connect (with periodic diagnostics)
+    let accept_future = listener.accept();
+    tokio::pin!(accept_future);
 
+    let start = std::time::Instant::now();
+    let mut warned_firewall = false;
+    let mut last_reannounce = std::time::Instant::now();
+
+    let result = loop {
         tokio::select! {
-            accept = listener.accept() => {
-                match accept {
+            accept_result = &mut accept_future => {
+                match accept_result {
                     Ok((tcp_stream, addr)) => {
                         let device_ip = addr.ip().to_string();
-                        log(format!("TCP connection from {}", addr));
+                        log(format!("✓ TCP connection from {}", addr));
 
-                        // 4. TLS handshake
+                        // 4. TLS 1.3 handshake
+                        log("Starting TLS 1.3 handshake…".into());
                         let mut tls_stream = tls_acceptor.accept(tcp_stream).await
                             .map_err(|e| format!("TLS handshake failed: {}", e))?;
-                        log("TLS handshake complete".into());
+                        log("✓ TLS handshake complete".into());
 
                         // 5. Run SPAKE2 + PeerInfo exchange over TLS
+                        log("Running SPAKE2 key exchange…".into());
                         handle_pairing(&mut tls_stream, password.as_bytes(), adb_pub_key).await?;
-                        log("Pairing protocol complete".into());
+                        log("✓ Pairing protocol complete!".into());
 
-                        Ok(device_ip)
+                        break Ok(device_ip);
                     }
-                    Err(e) => Err(format!("TCP accept failed: {}", e)),
+                    Err(e) => break Err(format!("TCP accept failed: {}", e)),
                 }
             }
-            _ = cancel_check => {
-                Err("cancelled".to_string())
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_secs(PAIRING_TIMEOUT_SECS)) => {
-                Err("QR pairing timed out. No device connected within 2 minutes.".to_string())
+            _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                // ── Periodic check: cancel, diagnostics, timeout ──
+                if cancel.load(Ordering::Relaxed) {
+                    break Err("cancelled".to_string());
+                }
+
+                let elapsed = start.elapsed().as_secs();
+
+                // Re-announce mDNS every ~30 s in case the initial advertisement was missed
+                if last_reannounce.elapsed().as_secs() >= 30 {
+                    last_reannounce = std::time::Instant::now();
+                    let re_info = mdns_sd::ServiceInfo::new(
+                        "_adb-tls-pairing._tcp.local.",
+                        service_name,
+                        &hostname,
+                        local_ip,
+                        port,
+                        None::<std::collections::HashMap<String, String>>,
+                    );
+                    if let Ok(ri) = re_info {
+                        let _ = mdns.register(ri);
+                    }
+                    log("(re-announced mDNS service)".into());
+                }
+
+                // Diagnostic warning after 15 s with no connection
+                if elapsed >= 15 && !warned_firewall {
+                    warned_firewall = true;
+                    log("⚠ No connection received after 15 s — possible causes:".into());
+                    if cfg!(target_os = "windows") {
+                        log("  • Windows Firewall may be blocking inbound TCP connections".into());
+                        log("    → Open Windows Firewall settings and allow this app".into());
+                    }
+                    log("  • mDNS multicast may not traverse between WiFi and wired LAN".into());
+                    log("    → Some routers block multicast between wireless and ethernet".into());
+                    log("    → If your PC has WiFi, try enabling it temporarily".into());
+                    log(format!("  • Server listening at {}:{}", local_ip, port));
+                }
+
+                // Timeout
+                if elapsed >= PAIRING_TIMEOUT_SECS {
+                    break Err(
+                        "QR pairing timed out — the phone never connected. \
+                         Check Windows Firewall and ensure mDNS multicast works between \
+                         your phone's WiFi and your PC's network."
+                            .to_string(),
+                    );
+                }
             }
         }
-    }
-    .await;
+    };
 
     // Clean up mDNS regardless of result
     let _ = mdns.unregister(&fullname);
     let _ = mdns.shutdown();
+
+    // Clean up temporary firewall rule
+    if firewall_added {
+        try_remove_firewall_rule(port).await;
+    }
 
     // If pairing succeeded, try to auto-connect via mDNS discovery
     if let Ok(ref device_ip) = result {
