@@ -328,6 +328,8 @@ function App() {
 
     const isBatch = filesToInstall.length > 1;
     let cancelled = false;
+    let successCount = 0;
+    let failCount = 0;
 
     try {
       for (let fi = 0; fi < filesToInstall.length; fi++) {
@@ -361,6 +363,8 @@ function App() {
               addToast(`${fileName} installed on ${deviceLabel}`, "success");
             }
 
+            successCount++;
+
             // Record file-profile association on successful install
             if (activeProfileName && currentFile) {
               api.setProfileForFile(currentFile, activeProfileName).catch((e) =>
@@ -383,6 +387,7 @@ function App() {
               cancelled = true;
               break;
             }
+            failCount++;
             addToast(`Install failed on ${deviceLabel}`, "error");
           }
         }
@@ -390,8 +395,19 @@ function App() {
     } finally {
       setOperationState({ type: "idle" });
       if (cancelToken) { api.releaseCancelToken(cancelToken).catch((e) => console.warn("releaseCancelToken failed:", e)); }
-      const summary = isBatch ? `${filesToInstall.length} files installed` : `${getFileName(filesToInstall[0])} has been installed.`;
-      notify("Installation Complete", summary);
+      if (cancelled) {
+        notify("Installation Cancelled", "The operation was cancelled by the user.");
+      } else if (failCount > 0 && successCount === 0) {
+        const summary = isBatch
+          ? `All ${failCount} install(s) failed.`
+          : `${getFileName(filesToInstall[0])} failed to install.`;
+        notify("Installation Failed", summary);
+      } else if (failCount > 0) {
+        notify("Installation Partially Complete", `${successCount} succeeded, ${failCount} failed.`);
+      } else {
+        const summary = isBatch ? `${filesToInstall.length} files installed` : `${getFileName(filesToInstall[0])} has been installed.`;
+        notify("Installation Complete", summary);
+      }
     }
   };
 
@@ -467,6 +483,7 @@ function App() {
 
     setOperationState({ type: "extracting", progress: null, cancelToken });
 
+    let extractSuccess = false;
     try {
       addLog("info", `Extracting universal APK from ${getFileName(file.selectedFile)}...`);
       const result = await api.extractApkFromAab({
@@ -478,13 +495,18 @@ function App() {
       });
       addLog("success", result);
       addToast("APK extracted successfully", "success");
+      extractSuccess = true;
     } catch (e) {
       addLog("error", String(e));
       addToast("APK extraction failed", "error");
     } finally {
       setOperationState({ type: "idle" });
       if (cancelToken) { api.releaseCancelToken(cancelToken).catch((e) => console.warn("releaseCancelToken failed:", e)); }
-      notify("Extraction Complete", `APK extracted from ${getFileName(file.selectedFile!)}`);
+      if (extractSuccess) {
+        notify("Extraction Complete", `APK extracted from ${getFileName(file.selectedFile!)}`);
+      } else {
+        notify("Extraction Failed", `Failed to extract APK from ${getFileName(file.selectedFile!)}`);
+      }
     }
   };
 
