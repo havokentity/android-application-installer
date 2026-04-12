@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tauri::Emitter;
 
-use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, no_window_async, run_cmd, run_cmd_async_lenient, run_cmd_async_with_cancel, run_cmd_lenient};
+use crate::cmd::{adb_binary, emit_op_progress, get_cancel_flag, no_window_async, run_cmd, run_cmd_async_lenient, run_cmd_async_lenient_with_cancel, run_cmd_async_with_cancel, run_cmd_lenient};
 use crate::tools;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -692,6 +692,17 @@ pub(crate) async fn adb_disconnect(
 }
 
 /// Install an APK onto the specified device (async with progress & cancellation).
+///
+/// On Windows, ADB's built-in `install` command (both streamed and `--no-streaming`)
+/// has a bug where it reports `failed to read copy response: EOF` even though the
+/// file was pushed successfully.  To work around this we split the install into
+/// separate steps:
+///   1. Copy the APK to a local temp file (avoids network-drive / space issues)
+///   2. `adb push` to the device (lenient — tolerates the EOF error)
+///   3. `adb shell pm install` from the device-side path
+///   4. Clean up both the local temp and the device-side file
+///
+/// On macOS / Linux the standard `adb install` path is used (no issues there).
 #[tauri::command]
 pub(crate) async fn install_apk(
     app: tauri::AppHandle,
@@ -708,6 +719,148 @@ pub(crate) async fn install_apk(
         "Installing APK...", Some(1), Some(1), true,
     );
 
+    if cfg!(target_os = "windows") {
+        // ── Windows: manual push + pm install ────────────────────────────
+        // Step 0: Copy APK to a local temp file (avoids Google Drive, OneDrive,
+        // network drives, and paths with spaces).
+        let file_name = Path::new(&apk_path)
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .replace(' ', "_");
+        let temp_path = env::temp_dir().join(&file_name);
+        let local_path = match tokio::fs::copy(&apk_path, &temp_path).await {
+            Ok(_) => temp_path.to_string_lossy().to_string(),
+            Err(_) => apk_path.clone(), // Fall back to original if copy fails
+        };
+        let device_dest = format!("/data/local/tmp/{}", file_name);
+
+        // Step 1: Push to device (lenient — tolerates EOF error as long as
+        // output contains "pushed").
+        let push_result = run_cmd_async_lenient_with_cancel(
+            &adb_path,
+            &["-s", &device, "push", &local_path, &device_dest],
+            &cancel,
+        ).await;
+
+        // Clean up local temp copy immediately
+        let _ = tokio::fs::remove_file(&temp_path).await;
+
+        match push_result {
+            Err(e) if e.contains("cancelled") => {
+                emit_op_progress(&app, "install_apk", &device, "cancelled", &e, None, None, false);
+                return Err(e);
+            }
+            Err(e) => {
+                let msg = format!("Failed to push APK to device:\n{}", e);
+                emit_op_progress(&app, "install_apk", &device, "error", &msg, None, None, false);
+                return Err(msg);
+            }
+            Ok((stdout, stderr, _success)) => {
+                let combined = format!("{}\n{}", stdout, stderr);
+                // Verify the file was actually pushed (ADB prints "X file pushed")
+                if !combined.contains("pushed") {
+                    let msg = format!("APK push failed:\n{}", combined.trim());
+                    emit_op_progress(&app, "install_apk", &device, "error", &msg, None, None, false);
+                    return Err(msg);
+                }
+                // If we get here, the file was pushed even if ADB reported an EOF error
+            }
+        }
+
+        // Step 1.5: Wait for the device to come back after USB reset.
+        // On Windows, large pushes can trigger a USB bus reset — the device
+        // disconnects momentarily (hardware disconnect sound) and reconnects.
+        // `adb wait-for-usb-device` blocks until the device is available again.
+        emit_op_progress(
+            &app, "install_apk", &device, "running",
+            "Waiting for device...", Some(1), Some(1), true,
+        );
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            async {
+                let _ = run_cmd_async_lenient_with_cancel(
+                    &adb_path,
+                    &["-s", &device, "wait-for-usb-device"],
+                    &cancel,
+                ).await;
+            },
+        ).await;
+
+        // Small extra delay to let the device fully settle after reconnect
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Step 1.75: Verify the file actually arrived on the device.
+        // USB resets can cause the push to silently fail — ADB reports
+        // "1 file pushed" but the device never received it.
+        let verify = run_cmd_async_lenient_with_cancel(
+            &adb_path,
+            &["-s", &device, "shell", "ls", &device_dest],
+            &cancel,
+        ).await;
+
+        let file_exists = match &verify {
+            Ok((stdout, stderr, success)) => {
+                *success && !stdout.contains("No such file") && !stderr.contains("No such file")
+            }
+            Err(_) => false,
+        };
+
+        if !file_exists {
+            let msg = "APK transfer failed — the file did not arrive on the device.\n\n\
+                       This usually means the USB connection was interrupted during transfer.\n\
+                       Try:\n  • Using a different USB port (preferably USB 3.0 / directly on the motherboard)\n  \
+                       • Using a different USB cable\n  \
+                       • Avoiding USB hubs\n  \
+                       • Enabling wireless ADB as an alternative".to_string();
+            emit_op_progress(&app, "install_apk", &device, "error", &msg, None, None, false);
+            return Err(msg);
+        }
+
+        emit_op_progress(
+            &app, "install_apk", &device, "running",
+            "Installing APK on device...", Some(1), Some(1), true,
+        );
+
+        // Step 2: Install from device-side path via pm
+        let mut pm_args = vec!["-s", &device, "shell", "pm", "install", "-r"];
+        if allow_downgrade.unwrap_or(false) {
+            pm_args.push("-d");
+        }
+        pm_args.push(&device_dest);
+
+        let install_result = run_cmd_async_with_cancel(&adb_path, &pm_args, &cancel).await;
+
+        // Step 3: Clean up device-side file regardless of install outcome
+        let _ = run_cmd_async_lenient_with_cancel(
+            &adb_path,
+            &["-s", &device, "shell", "rm", "-f", &device_dest],
+            &cancel,
+        ).await;
+
+        match install_result {
+            Err(e) => {
+                let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+                emit_op_progress(&app, "install_apk", &device, status, &e, None, None, false);
+                return Err(e);
+            }
+            Ok((stdout, stderr)) => {
+                if stdout.contains("Failure") || stderr.contains("Failure") {
+                    let msg = format!("APK install failed:\n{}\n{}", stdout.trim(), stderr.trim());
+                    emit_op_progress(&app, "install_apk", &device, "error", &msg, None, None, false);
+                    return Err(msg);
+                }
+
+                emit_op_progress(
+                    &app, "install_apk", &device, "done",
+                    "APK installed successfully", Some(1), Some(1), false,
+                );
+                return Ok(format!("APK installed successfully.\n{}", stdout.trim()));
+            }
+        }
+    }
+
+    // ── macOS / Linux: standard adb install ──────────────────────────────
     let mut args = vec!["-s", &device, "install", "-r"];
     if allow_downgrade.unwrap_or(false) {
         args.push("-d");
@@ -715,9 +868,7 @@ pub(crate) async fn install_apk(
     args.push(&apk_path);
 
     let (stdout, stderr) = match run_cmd_async_with_cancel(
-        &adb_path,
-        &args,
-        &cancel,
+        &adb_path, &args, &cancel,
     ).await {
         Ok(v) => v,
         Err(e) => {
@@ -727,13 +878,8 @@ pub(crate) async fn install_apk(
         }
     };
 
-    // adb install can succeed (exit 0) but still report Failure in stdout
     if stdout.contains("Failure") || stderr.contains("Failure") {
-        let msg = format!(
-            "APK install failed:\n{}\n{}",
-            stdout.trim(),
-            stderr.trim()
-        );
+        let msg = format!("APK install failed:\n{}\n{}", stdout.trim(), stderr.trim());
         emit_op_progress(&app, "install_apk", &device, "error", &msg, None, None, false);
         return Err(msg);
     }
