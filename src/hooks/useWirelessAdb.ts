@@ -1,8 +1,10 @@
 // ─── Wireless ADB Hook ───────────────────────────────────────────────────────
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import type { DeviceInfo, LogEntry, MdnsService } from "../types";
 import type { ToastLevel } from "../components/Toast";
 import * as api from "../api";
+import type { QrPairingInfo, QrPairingResult } from "../api";
 
 /** Check if a device serial is an IP:port format wireless connection. */
 export function isIpPortDevice(serial: string): boolean {
@@ -184,6 +186,11 @@ export interface WirelessAdbState {
   mdnsSupported: boolean | null;
   scan: () => Promise<void>;
   selectDiscovered: (svc: MdnsService) => void;
+  // QR code pairing
+  qrPairingInfo: QrPairingInfo | null;
+  isQrPairing: boolean;
+  startQrPairing: () => Promise<void>;
+  cancelQrPairing: () => Promise<void>;
 }
 
 interface UseWirelessAdbOptions {
@@ -208,6 +215,35 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
   const [discoveredDevices, setDiscoveredDevices] = useState<MdnsService[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [mdnsSupported, setMdnsSupported] = useState<boolean | null>(null);
+
+  // QR code pairing state
+  const [qrPairingInfo, setQrPairingInfo] = useState<QrPairingInfo | null>(null);
+  const [isQrPairing, setIsQrPairing] = useState(false);
+
+  // Listen for QR pairing result events from the backend
+  useEffect(() => {
+    const unlisten = listen<QrPairingResult>("qr-pairing-result", (event) => {
+      const result = event.payload;
+      setIsQrPairing(false);
+      setQrPairingInfo(null);
+      if (result.success) {
+        addLog("success", `QR pairing successful${result.device_ip ? ` with ${result.device_ip}` : ""}!`);
+        addToast("Device paired via QR code", "success");
+        onDeviceChange?.();
+        // Extra refresh after a delay for the device to fully connect
+        setTimeout(() => onDeviceChange?.(), 3000);
+      } else {
+        const err = result.error || "Unknown error";
+        if (err.includes("cancelled")) {
+          addLog("info", "QR pairing cancelled.");
+        } else {
+          addLog("error", `QR pairing failed: ${err}`);
+          addToast(`QR pairing failed: ${err}`, "error");
+        }
+      }
+    });
+    return () => { unlisten.then((fn) => fn()); };
+  }, [addLog, addToast, onDeviceChange]);
 
   const canPair = !!(adbPath && isValidIp(pairIp) && isValidPort(pairPort) && isValidPairingCode(pairingCode) && !isPairing);
   const canConnect = !!(adbPath && isValidIp(connectIp) && isValidPort(connectPort) && !isConnecting);
@@ -383,6 +419,35 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     }
   }, [addLog]);
 
+  /** Start QR code pairing — shows a QR code for the phone to scan. */
+  const startQrPairing = useCallback(async () => {
+    if (!adbPath || isQrPairing) return;
+    setIsQrPairing(true);
+    setQrPairingInfo(null);
+    addLog("info", "Starting QR code pairing...");
+    try {
+      const info = await api.startQrPairing(adbPath);
+      setQrPairingInfo(info);
+      addLog("info", `QR code ready — scan with your Android phone (Settings → Developer Options → Wireless debugging → Pair device with QR code).`);
+    } catch (e) {
+      setIsQrPairing(false);
+      addLog("error", `QR pairing failed to start: ${e}`);
+      addToast(`QR pairing failed: ${e}`, "error");
+    }
+  }, [adbPath, isQrPairing, addLog, addToast]);
+
+  /** Cancel the current QR pairing session. */
+  const cancelQrPairing = useCallback(async () => {
+    try {
+      await api.cancelQrPairing();
+    } catch (e) {
+      console.warn("cancelQrPairing failed:", e);
+    }
+    setIsQrPairing(false);
+    setQrPairingInfo(null);
+    addLog("info", "QR pairing cancelled.");
+  }, [addLog]);
+
   return {
     wifiExpanded, setWifiExpanded,
     pairIp, setPairIp, pairPort, setPairPort, pairingCode, setPairingCode,
@@ -392,6 +457,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     pair, connect, disconnect, connectDirect, cancelWirelessOp,
     needsPairing, promptPairing,
     discoveredDevices, isScanning, mdnsSupported, scan, selectDiscovered,
+    qrPairingInfo, isQrPairing, startQrPairing, cancelQrPairing,
   };
 }
 

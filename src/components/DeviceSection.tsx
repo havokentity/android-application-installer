@@ -1,7 +1,7 @@
 import {
   Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
-  Usb, Wifi, Unplug, Radio, Zap, ShieldCheck,
+  Usb, Wifi, Unplug, Radio, Zap, ShieldCheck, QrCode,
 } from "lucide-react";
 import { Settings } from "lucide-react";
 import { StatusDot } from "./StatusIndicators";
@@ -378,6 +378,62 @@ export function DeviceSection({
                     >
                       <Wifi size={12} /> Pair this device
                     </button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── QR Code Pairing ────────────────────────────────── */}
+              <div className="wifi-group">
+                <div className="wifi-group-title wifi-discover-header">
+                  <span>QR Code Pairing</span>
+                  {!wireless.isQrPairing && (
+                    <button
+                      className="btn btn-accent btn-small"
+                      onClick={wireless.startQrPairing}
+                      disabled={!adbPath}
+                      title="Show QR code for your phone to scan"
+                    >
+                      <QrCode size={12} /> Show QR Code
+                    </button>
+                  )}
+                  {wireless.isQrPairing && (
+                    <button
+                      className="btn btn-ghost btn-small wifi-cancel-btn"
+                      onClick={wireless.cancelQrPairing}
+                      title="Cancel QR pairing"
+                    >
+                      <X size={12} /> Cancel
+                    </button>
+                  )}
+                </div>
+                {!wireless.isQrPairing && !wireless.qrPairingInfo && (
+                  <p className="hint">Show a QR code for your phone to scan — no need to type IP, port, or code manually.</p>
+                )}
+                {wireless.isQrPairing && wireless.qrPairingInfo && (
+                  <div className="qr-pairing-dialog">
+                    <div
+                      className="qr-pairing-code"
+                      dangerouslySetInnerHTML={{ __html: wireless.qrPairingInfo.qr_svg }}
+                    />
+                    <div className="qr-pairing-instructions">
+                      <p className="qr-pairing-step"><strong>On your Android phone:</strong></p>
+                      <ol className="qr-pairing-steps">
+                        <li>Open <strong>Settings → Developer Options</strong></li>
+                        <li>Tap <strong>Wireless debugging</strong></li>
+                        <li>Tap <strong>Pair device with QR code</strong></li>
+                        <li>Scan this QR code</li>
+                      </ol>
+                      <div className="qr-pairing-status">
+                        <Loader2 size={14} className="spin" />
+                        <span>Waiting for device to scan...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {wireless.isQrPairing && !wireless.qrPairingInfo && (
+                  <div className="qr-pairing-loading">
+                    <Loader2 size={16} className="spin" />
+                    <span>Preparing QR code...</span>
                   </div>
                 )}
               </div>

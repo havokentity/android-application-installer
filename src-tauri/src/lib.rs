@@ -2,6 +2,7 @@ mod adb;
 mod cmd;
 mod java;
 mod package;
+mod qr_pairing;
 mod tools;
 
 use tauri::Manager;
@@ -15,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .manage(tokio::sync::Mutex::new(adb::DeviceTracker::default()))
+        .manage(tokio::sync::Mutex::new(qr_pairing::QrPairingServer::default()))
         .invoke_handler(tauri::generate_handler![
             adb::find_adb,
             adb::get_devices,
@@ -60,6 +62,8 @@ pub fn run() {
             tools::profiles::delete_signing_profile,
             tools::profiles::get_profile_for_file,
             tools::profiles::set_profile_for_file,
+            qr_pairing::start_qr_pairing,
+            qr_pairing::cancel_qr_pairing,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

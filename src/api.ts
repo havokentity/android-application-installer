@@ -42,6 +42,27 @@ export const adbMdnsCheck = (adbPath: string) =>
 export const adbMdnsServices = (adbPath: string) =>
   invoke<MdnsService[]>("adb_mdns_services", { adbPath });
 
+// ─── QR Code Pairing ──────────────────────────────────────────────────────────
+
+export interface QrPairingInfo {
+  qr_svg: string;
+  qr_data: string;
+  service_name: string;
+  password: string;
+}
+
+export interface QrPairingResult {
+  success: boolean;
+  device_ip: string | null;
+  error: string | null;
+}
+
+export const startQrPairing = (adbPath: string) =>
+  invoke<QrPairingInfo>("start_qr_pairing", { adbPath });
+
+export const cancelQrPairing = () =>
+  invoke<void>("cancel_qr_pairing");
+
 export const installApk = (adbPath: string, device: string, apkPath: string, allowDowngrade?: boolean, cancelToken?: string) =>
   invoke<string>("install_apk", { adbPath, device, apkPath, allowDowngrade: allowDowngrade ?? false, cancelToken: cancelToken ?? null });
 
