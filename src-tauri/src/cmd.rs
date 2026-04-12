@@ -27,7 +27,6 @@ fn no_window_cmd(cmd: &mut std::process::Command) -> &mut std::process::Command 
 /// on Windows for async (tokio) commands. No-op on other platforms.
 #[cfg(target_os = "windows")]
 pub(crate) fn no_window_async(cmd: &mut tokio::process::Command) -> &mut tokio::process::Command {
-    use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     cmd.creation_flags(CREATE_NO_WINDOW)
 }
