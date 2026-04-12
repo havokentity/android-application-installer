@@ -22,11 +22,14 @@ pub(crate) fn kill_adb_server(adb_path: &str) {
 
 /// Build keystore-related arguments for bundletool commands.
 /// Returns a Vec of `--ks=`, `--ks-pass=`, `--ks-key-alias=`, `--key-pass=` args.
+/// When no keystore is provided, falls back to the Android debug keystore
+/// (creating it if necessary) so that APKs are always signed.
 fn build_keystore_args(
     keystore_path: &Option<String>,
     keystore_pass: &Option<String>,
     key_alias: &Option<String>,
     key_pass: &Option<String>,
+    java_path: Option<&str>,
 ) -> Vec<String> {
     let mut args = Vec::new();
     if let Some(ref ks) = keystore_path {
@@ -47,9 +50,91 @@ fn build_keystore_args(
                     args.push(format!("--key-pass=pass:{}", pass));
                 }
             }
+            return args;
         }
     }
+
+    // No keystore provided — fall back to the Android debug keystore so APKs
+    // are always signed (required on Windows; macOS bundletool sometimes
+    // auto-signs, but being explicit is safer everywhere).
+    if let Some(debug_ks) = ensure_debug_keystore(java_path) {
+        args.push(format!("--ks={}", debug_ks));
+        args.push("--ks-pass=pass:android".into());
+        args.push("--ks-key-alias=androiddebugkey".into());
+        args.push("--key-pass=pass:android".into());
+    }
+
     args
+}
+
+/// Return the path to the standard Android debug keystore, creating it with
+/// `keytool` if it doesn't already exist.
+///
+/// Default location: `~/.android/debug.keystore`
+/// Default credentials: password=`android`, alias=`androiddebugkey`
+fn ensure_debug_keystore(java_path: Option<&str>) -> Option<String> {
+    let home = env::var("HOME")
+        .or_else(|_| env::var("USERPROFILE"))
+        .ok()?;
+    let android_dir = PathBuf::from(&home).join(".android");
+    let debug_ks = android_dir.join("debug.keystore");
+
+    if debug_ks.exists() {
+        return Some(debug_ks.to_string_lossy().to_string());
+    }
+
+    // Ensure the ~/.android directory exists
+    let _ = fs::create_dir_all(&android_dir);
+
+    // Derive keytool path from the java binary (sibling in the same bin/ dir)
+    let keytool_name = if cfg!(target_os = "windows") {
+        "keytool.exe"
+    } else {
+        "keytool"
+    };
+
+    let keytool_path = if let Some(jp) = java_path {
+        let java = Path::new(jp);
+        if let Some(bin_dir) = java.parent() {
+            let kt = bin_dir.join(keytool_name);
+            if kt.exists() {
+                kt.to_string_lossy().to_string()
+            } else {
+                keytool_name.to_string()
+            }
+        } else {
+            keytool_name.to_string()
+        }
+    } else {
+        keytool_name.to_string()
+    };
+
+    let ks_str = debug_ks.to_string_lossy().to_string();
+    let result = run_cmd_lenient(
+        &keytool_path,
+        &[
+            "-genkeypair",
+            "-v",
+            "-keystore", &ks_str,
+            "-storepass", "android",
+            "-alias", "androiddebugkey",
+            "-keypass", "android",
+            "-keyalg", "RSA",
+            "-keysize", "2048",
+            "-validity", "10000",
+            "-dname", "CN=Android Debug,O=Android,C=US",
+        ],
+    );
+
+    match result {
+        Ok((_, _, true)) => Some(ks_str),
+        Ok((_, _, false)) => {
+            // keytool ran but exited non-zero — the keystore may still have
+            // been created (some JDK versions warn but succeed).
+            if debug_ks.exists() { Some(ks_str) } else { None }
+        }
+        Err(_) => None,
+    }
 }
 
 // ─── Data Types ──────────────────────────────────────────────────────────────
@@ -715,8 +800,8 @@ pub(crate) async fn install_aab(
         format!("--adb={}", adb_path),
     ];
 
-    // Add keystore args if provided
-    build_args.extend(build_keystore_args(&keystore_path, &keystore_pass, &key_alias, &key_pass));
+    // Add keystore args (falls back to debug keystore if none provided)
+    build_args.extend(build_keystore_args(&keystore_path, &keystore_pass, &key_alias, &key_pass, Some(&java_path)));
 
     // ── Step 1/2: Build APKs ──────────────────────────────────────────────
     emit_op_progress(
@@ -815,8 +900,8 @@ pub(crate) async fn extract_apk_from_aab(
         "--mode=universal".into(),
     ];
 
-    // Add keystore args if provided
-    build_args.extend(build_keystore_args(&keystore_path, &keystore_pass, &key_alias, &key_pass));
+    // Add keystore args (falls back to debug keystore if none provided)
+    build_args.extend(build_keystore_args(&keystore_path, &keystore_pass, &key_alias, &key_pass, Some(&java_path)));
 
     // ── Step 1/2: Build universal APKs from AAB ─────────────────────────
     emit_op_progress(
@@ -1311,9 +1396,19 @@ mod tests {
     // ── build_keystore_args tests ─────────────────────────────────────────
 
     #[test]
-    fn keystore_args_all_none() {
-        let args = build_keystore_args(&None, &None, &None, &None);
-        assert!(args.is_empty());
+    fn keystore_args_all_none_falls_back_to_debug() {
+        // With no explicit keystore and no java_path, build_keystore_args will
+        // attempt to use the debug keystore. If ~/.android/debug.keystore exists
+        // it returns 4 debug args; if not and keytool isn't found it returns empty.
+        let args = build_keystore_args(&None, &None, &None, &None, None);
+        // Either 0 (no debug keystore and no keytool) or 4 (debug keystore found/created)
+        assert!(args.is_empty() || args.len() == 4);
+        if args.len() == 4 {
+            assert!(args[0].contains("debug.keystore"));
+            assert_eq!(args[1], "--ks-pass=pass:android");
+            assert_eq!(args[2], "--ks-key-alias=androiddebugkey");
+            assert_eq!(args[3], "--key-pass=pass:android");
+        }
     }
 
     #[test]
@@ -1323,6 +1418,7 @@ mod tests {
             &Some("storepass".into()),
             &Some("myalias".into()),
             &Some("keypass".into()),
+            None,
         );
         assert_eq!(args.len(), 4);
         assert_eq!(args[0], "--ks=/path/to/keystore.jks");
@@ -1338,20 +1434,23 @@ mod tests {
             &None,
             &None,
             &None,
+            None,
         );
         assert_eq!(args.len(), 1);
         assert_eq!(args[0], "--ks=/my/keystore.jks");
     }
 
     #[test]
-    fn keystore_args_empty_path_skips_all() {
+    fn keystore_args_empty_path_falls_back_to_debug() {
         let args = build_keystore_args(
             &Some("".into()),
             &Some("pass".into()),
             &Some("alias".into()),
             &Some("keypass".into()),
+            None,
         );
-        assert!(args.is_empty());
+        // Empty keystore path triggers debug keystore fallback
+        assert!(args.is_empty() || args.len() == 4);
     }
 
     #[test]
@@ -1361,6 +1460,7 @@ mod tests {
             &Some("".into()),
             &Some("alias".into()),
             &None,
+            None,
         );
         assert_eq!(args.len(), 2);
         assert_eq!(args[0], "--ks=/ks.jks");

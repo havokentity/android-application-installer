@@ -358,7 +358,12 @@ mod tests {
 
     #[test]
     fn run_cmd_echo_succeeds() {
-        let result = run_cmd("echo", &["hello"]);
+        // `echo` is a shell built-in on Windows, so invoke it via cmd.exe.
+        let result = if cfg!(target_os = "windows") {
+            run_cmd("cmd.exe", &["/C", "echo", "hello"])
+        } else {
+            run_cmd("echo", &["hello"])
+        };
         assert!(result.is_ok());
         let (stdout, _) = result.unwrap();
         assert!(stdout.trim().contains("hello"));
@@ -383,7 +388,12 @@ mod tests {
 
     #[test]
     fn run_cmd_lenient_true_exit_returns_ok() {
-        let result = run_cmd_lenient("true", &[]);
+        // `true` doesn't exist on Windows; use `cmd.exe /C exit /b 0` instead.
+        let result = if cfg!(target_os = "windows") {
+            run_cmd_lenient("cmd.exe", &["/C", "exit", "/b", "0"])
+        } else {
+            run_cmd_lenient("true", &[])
+        };
         assert!(result.is_ok());
         let (_, _, success) = result.unwrap();
         assert!(success);
