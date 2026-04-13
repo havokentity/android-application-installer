@@ -27,6 +27,12 @@ export function useDeviceState(
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
   const fetchingDetailsFor = useRef<Set<string>>(new Set());
+  // Debounce log for device-count changes: after wireless pairing ADB briefly
+  // reports both mDNS and IP:port transports as separate devices before the
+  // properties needed for deduplication (model, product) are populated.
+  // Debouncing ensures we only log the settled state, not intermediate churn.
+  const pendingDeviceLog = useRef<{ fp: string; count: number } | null>(null);
+  const deviceLogTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Persist install mode preference
   useEffect(() => { localStorage.setItem("installMode", installMode); }, [installMode]);
@@ -53,16 +59,28 @@ export function useDeviceState(
         if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
         return prev;
       });
-      if (logChange && dedupedChanged) {
-        lastLoggedDedupFp.current = dedupedFp;
-        addLog("info", `Device update: ${deduped.length} device(s) connected`);
-      }
     } else {
       setSelectedDevice("");
-      if (logChange && dedupedChanged) {
-        lastLoggedDedupFp.current = dedupedFp;
-        addLog("info", "All devices disconnected.");
-      }
+    }
+
+    // Debounce the log message: after wireless pairing the device list can
+    // churn rapidly (mDNS + IP:port appear before dedup properties settle).
+    // Only log the final state after a 1.5 s quiet period.
+    if (logChange && dedupedChanged) {
+      pendingDeviceLog.current = { fp: dedupedFp, count: deduped.length };
+      if (deviceLogTimer.current) clearTimeout(deviceLogTimer.current);
+      deviceLogTimer.current = setTimeout(() => {
+        const pending = pendingDeviceLog.current;
+        if (pending) {
+          lastLoggedDedupFp.current = pending.fp;
+          if (pending.count > 0) {
+            addLog("info", `Device update: ${pending.count} device(s) connected`);
+          } else {
+            addLog("info", "All devices disconnected.");
+          }
+          pendingDeviceLog.current = null;
+        }
+      }, 1500);
     }
   }, [addLog]);
 
@@ -189,6 +207,7 @@ export function useDeviceState(
       cancelled = true;
       window.removeEventListener("focus", onFocus);
       if (intervalId) clearInterval(intervalId);
+      if (deviceLogTimer.current) clearTimeout(deviceLogTimer.current);
       if (unlistenFn) unlistenFn();
       if (trackingActive.current) {
         api.stopDeviceTracking().catch((e) => console.warn("stopDeviceTracking cleanup failed:", e));
