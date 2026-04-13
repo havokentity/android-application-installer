@@ -22,8 +22,9 @@ npm run changelog              # populate [Unreleased] from commits
 # review CHANGES.md, edit if needed, commit edits
 npm run release:patch          # or release:minor / release:major
 
-# After CI completes:
-npm run release:publish        # publish the draft GitHub Release
+# CI auto-publishes the release after all builds complete.
+# Manual publish (only if auto-publish fails):
+# npm run release:publish
 ```
 
 ---
@@ -180,6 +181,8 @@ After the push, the GitHub Actions workflow triggers automatically:
 
 ### 6. Publish the GitHub Release
 
+> **⚠️ DEPRECATED:** This step is no longer required. The GitHub Actions CI/CD pipeline now automatically publishes the release after all platform builds complete successfully. The information below is kept for reference only (e.g. if you need to manually publish a release that failed auto-publish).
+
 Once CI completes and the draft release has all artifacts:
 
 **Option A — CLI (recommended):**
@@ -319,8 +322,7 @@ git commit -m "update: changelog for v1.8.5"
 # 4. Release
 npm run release:patch               # tests → bump → commit → tag → push
 
-# 5. Wait for CI (~20 min), then publish
-npm run release:publish
+# 5. Wait for CI (~20 min) — release is auto-published when builds complete
 
 # 6. Pull the updater.json commit from CI
 git pull origin main
