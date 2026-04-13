@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.9.1] — 2026-04-13
 ### Changed
 - **Unified firewall setup and improved mDNS discovery** — consolidated firewall rule management and enhanced mDNS service discovery methods for more reliable wireless device detection
 
