@@ -253,18 +253,9 @@ async fn run_pairing_client(
         let _ = app.emit("qr-pairing-log", &msg);
     };
 
-    // 0. Ensure Windows Firewall allows our program (needed for mDNS UDP 5353).
-    if cfg!(target_os = "windows") {
-        if firewall::check_program_rule_exists().await {
-            log("✓ Firewall: program rule active".into());
-        } else {
-            log("Requesting firewall access (you may see a UAC prompt)…".into());
-            if firewall::try_add_program_rule_elevated().await {
-                log("✓ Firewall: program rule added (persists for future sessions)".into());
-            } else {
-                log("⚠ Could not add firewall rule. mDNS discovery may be affected.".into());
-            }
-        }
+    // 0. Ensure firewall allows mDNS traffic (Windows & macOS).
+    for msg in firewall::ensure_firewall_access(adb_path).await {
+        log(msg);
     }
 
     // 1. Check ADB mDNS daemon
@@ -277,9 +268,9 @@ async fn run_pairing_client(
         log("⚠ ADB mDNS daemon check did not confirm availability — will try anyway".into());
     }
 
-    // 2. Discover phone's pairing service via `adb mdns services`
+    // 2. Discover phone's pairing service (multi-method: ADB mDNS + native mDNS + Bonjour)
     log("Waiting for phone to scan QR code…".into());
-    let (phone_ip, phone_port) = mdns::discover_via_adb_mdns(
+    let (phone_ip, phone_port) = mdns::discover_service(
         service_name,
         adb_path,
         cancel,

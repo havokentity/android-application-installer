@@ -424,6 +424,349 @@ fn parse_ip_port(s: &str) -> Option<(String, u16)> {
     Some((ip_str.to_string(), port))
 }
 
+// ─── Multi-Method Discovery ──────────────────────────────────────────────────
+
+/// Discover the phone's pairing service using multiple methods in parallel.
+///
+/// Races the following discovery methods and returns whichever succeeds first:
+///  1. `adb mdns services` polling (works when ADB's mDNS daemon is functional)
+///  2. `mdns-sd` crate (cross-platform native mDNS, works independently of ADB)
+///  3. `dns-sd` CLI (macOS only — uses native Bonjour, most reliable on macOS)
+///
+/// This multi-method approach fixes macOS where ADB's built-in mDNS (Openscreen)
+/// often conflicts with the system's mDNSResponder on port 5353.
+pub(super) async fn discover_service(
+    service_name: &str,
+    adb_path: &str,
+    cancel: &Arc<AtomicBool>,
+    app: &tauri::AppHandle,
+) -> Result<(String, u16), String> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<(String, u16), String>>(4);
+
+    // Method 1: ADB mDNS polling (all platforms)
+    let tx1 = tx.clone();
+    let (sn, ap, c, a) = (
+        service_name.to_string(),
+        adb_path.to_string(),
+        cancel.clone(),
+        app.clone(),
+    );
+    let h1 = tokio::spawn(async move {
+        let _ = tx1.send(discover_via_adb_mdns(&sn, &ap, &c, &a).await).await;
+    });
+
+    // Method 2: mdns-sd crate (all platforms)
+    let tx2 = tx.clone();
+    let (sn, c, a) = (service_name.to_string(), cancel.clone(), app.clone());
+    let h2 = tokio::spawn(async move {
+        let _ = tx2.send(discover_via_mdns_sd_crate(&sn, &c, &a).await).await;
+    });
+
+    // Method 3: dns-sd CLI (macOS only — native Bonjour)
+    #[cfg(target_os = "macos")]
+    let h3: Option<tokio::task::JoinHandle<()>> = {
+        let tx3 = tx.clone();
+        let (sn, c, a) = (service_name.to_string(), cancel.clone(), app.clone());
+        Some(tokio::spawn(async move {
+            let _ = tx3.send(discover_via_dns_sd_cli(&sn, &c, &a).await).await;
+        }))
+    };
+    #[cfg(not(target_os = "macos"))]
+    let h3: Option<tokio::task::JoinHandle<()>> = None;
+
+    drop(tx);
+
+    let mut last_err = String::from("No discovery method found the pairing service");
+    while let Some(result) = rx.recv().await {
+        match result {
+            Ok(v) => {
+                h1.abort();
+                h2.abort();
+                if let Some(h) = h3 {
+                    h.abort();
+                }
+                return Ok(v);
+            }
+            Err(e) if !e.contains("cancelled") => {
+                // Prefer the most informative error (e.g. the ADB timeout message)
+                if e.len() > last_err.len() || e.contains("timed out") {
+                    last_err = e;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Err(last_err)
+}
+
+// ─── Discovery via mdns-sd Crate ─────────────────────────────────────────────
+
+/// Discover the phone's pairing service using the `mdns-sd` crate.
+///
+/// This provides a cross-platform mDNS implementation that works independently
+/// of ADB's built-in mDNS daemon. Particularly useful on macOS where ADB's
+/// mDNS (Openscreen) may conflict with the system's mDNSResponder on port 5353.
+async fn discover_via_mdns_sd_crate(
+    service_name: &str,
+    cancel: &Arc<AtomicBool>,
+    app: &tauri::AppHandle,
+) -> Result<(String, u16), String> {
+    let log = |msg: String| {
+        let _ = app.emit("qr-pairing-log", &msg);
+    };
+
+    let mdns = mdns_sd::ServiceDaemon::new()
+        .map_err(|e| format!("[mdns-sd] Failed to start mDNS daemon: {}", e))?;
+
+    let service_type = "_adb-tls-pairing._tcp.local.";
+    let receiver = mdns.browse(service_type).map_err(|e| {
+        let _ = mdns.shutdown();
+        format!("[mdns-sd] Browse failed: {}", e)
+    })?;
+
+    log("[mdns-sd] ✓ Started native mDNS browse for _adb-tls-pairing._tcp".into());
+
+    let start = std::time::Instant::now();
+
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            let _ = mdns.shutdown();
+            return Err("cancelled".into());
+        }
+        if start.elapsed().as_secs() >= PAIRING_TIMEOUT_SECS {
+            let _ = mdns.shutdown();
+            return Err("[mdns-sd] Discovery timed out".into());
+        }
+
+        // Drain all available events
+        while let Ok(event) = receiver.try_recv() {
+            match event {
+                mdns_sd::ServiceEvent::ServiceResolved(info) => {
+                    let fullname = info.get_fullname();
+                    log(format!("[mdns-sd] Resolved: {}", fullname));
+
+                    if fullname.contains(service_name) {
+                        let port = info.get_port();
+                        let addrs = info.get_addresses();
+
+                        // Prefer a usable IPv4 address
+                        for addr in addrs.iter() {
+                            let ip = addr.to_ip_addr();
+                            if let std::net::IpAddr::V4(ipv4) = ip {
+                                if !ipv4.is_loopback() && !ipv4.is_unspecified() {
+                                    log(format!(
+                                        "[mdns-sd] ✓ Found phone's pairing service: {}:{}",
+                                        ipv4, port
+                                    ));
+                                    let _ = mdns.shutdown();
+                                    return Ok((ipv4.to_string(), port));
+                                }
+                            }
+                        }
+
+                        // Fall back to any address
+                        if let Some(addr) = addrs.iter().next() {
+                            let ip = addr.to_ip_addr();
+                            log(format!(
+                                "[mdns-sd] ✓ Found phone's pairing service: {}:{}",
+                                ip, port
+                            ));
+                            let _ = mdns.shutdown();
+                            return Ok((ip.to_string(), port));
+                        }
+
+                        log("[mdns-sd] ⚠ Service found but no usable address".into());
+                    }
+                }
+                mdns_sd::ServiceEvent::ServiceFound(_svc_type, name) => {
+                    if name.contains(service_name) {
+                        log(format!("[mdns-sd] Discovered service (resolving…): {}", name));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+    }
+}
+
+// ─── Discovery via dns-sd CLI (macOS Bonjour) ────────────────────────────────
+
+/// Discover the phone's pairing service using macOS's native `dns-sd` command.
+///
+/// This uses the system's Bonjour framework (via IPC to `mDNSResponder`) which
+/// is the most reliable mDNS implementation on macOS — it doesn't need to bind
+/// to port 5353 and has no conflicts with other mDNS daemons.
+///
+/// Steps: Browse → Lookup (get hostname:port) → Resolve hostname to IP.
+#[cfg(target_os = "macos")]
+async fn discover_via_dns_sd_cli(
+    service_name: &str,
+    cancel: &Arc<AtomicBool>,
+    app: &tauri::AppHandle,
+) -> Result<(String, u16), String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    let log = |msg: String| {
+        let _ = app.emit("qr-pairing-log", &msg);
+    };
+
+    log("[dns-sd] Starting macOS Bonjour browse for _adb-tls-pairing._tcp…".into());
+
+    // ── Step 1: Browse for the pairing service ──
+    let mut browse = tokio::process::Command::new("dns-sd")
+        .args(["-B", "_adb-tls-pairing._tcp", "local"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("[dns-sd] Failed to start browse: {}", e))?;
+
+    let stdout = browse.stdout.take().ok_or("[dns-sd] No stdout from browse")?;
+    let mut lines = BufReader::new(stdout).lines();
+    let start = std::time::Instant::now();
+
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            let _ = browse.kill().await;
+            return Err("cancelled".into());
+        }
+        if start.elapsed().as_secs() >= PAIRING_TIMEOUT_SECS {
+            let _ = browse.kill().await;
+            return Err("[dns-sd] Browse timed out".into());
+        }
+
+        match tokio::time::timeout(std::time::Duration::from_secs(2), lines.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                if line.contains("Add") && line.contains(service_name) {
+                    log(format!("[dns-sd] ✓ Found service in browse: {}", line.trim()));
+                    let _ = browse.kill().await;
+                    break;
+                }
+            }
+            Ok(Ok(None)) => {
+                return Err("[dns-sd] Browse process ended unexpectedly".into());
+            }
+            Ok(Err(e)) => {
+                return Err(format!("[dns-sd] Browse read error: {}", e));
+            }
+            Err(_) => continue, // Timeout — check cancel/deadline and retry
+        }
+    }
+
+    // ── Step 2: Lookup the service to get hostname:port ──
+    log("[dns-sd] Looking up service details…".into());
+    let mut lookup = tokio::process::Command::new("dns-sd")
+        .args(["-L", service_name, "_adb-tls-pairing._tcp", "local"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("[dns-sd] Lookup failed to start: {}", e))?;
+
+    let stdout = lookup.stdout.take().ok_or("[dns-sd] No stdout from lookup")?;
+    let mut lines = BufReader::new(stdout).lines();
+    let lookup_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(15);
+
+    let mut hostname = String::new();
+    let mut port: u16 = 0;
+
+    loop {
+        match tokio::time::timeout(std::time::Duration::from_secs(3), lines.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                // Output: "... can be reached at <hostname>:<port> (interface N)"
+                if let Some(idx) = line.find("can be reached at ") {
+                    let after = &line[idx + "can be reached at ".len()..];
+                    let endpoint = after.split_whitespace().next().unwrap_or("");
+                    if let Some((h, p)) = endpoint.rsplit_once(':') {
+                        hostname = h.trim_end_matches('.').to_string();
+                        port = p.parse().unwrap_or(0);
+                        if port > 0 {
+                            log(format!("[dns-sd] Service at {}:{}", hostname, port));
+                            break;
+                        }
+                    }
+                }
+            }
+            Ok(Ok(None)) | Ok(Err(_)) => break,
+            Err(_) => {
+                if tokio::time::Instant::now() >= lookup_deadline {
+                    break;
+                }
+                continue;
+            }
+        }
+    }
+    let _ = lookup.kill().await;
+
+    if port == 0 {
+        return Err("[dns-sd] Could not resolve service hostname/port".into());
+    }
+
+    // ── Step 3: Resolve hostname to IP address ──
+    log(format!("[dns-sd] Resolving {} to IP…", hostname));
+
+    // If hostname already looks like an IP, skip resolution
+    if hostname.parse::<Ipv4Addr>().is_ok() {
+        log(format!("[dns-sd] ✓ Resolved to {}:{}", hostname, port));
+        return Ok((hostname, port));
+    }
+
+    let mut resolve = tokio::process::Command::new("dns-sd")
+        .args(["-G", "v4", &hostname])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("[dns-sd] Address resolve failed to start: {}", e))?;
+
+    let stdout = resolve.stdout.take().ok_or("[dns-sd] No stdout from resolve")?;
+    let mut lines = BufReader::new(stdout).lines();
+    let resolve_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+
+    let mut ip = String::new();
+
+    loop {
+        match tokio::time::timeout(std::time::Duration::from_secs(3), lines.next_line()).await {
+            Ok(Ok(Some(line))) => {
+                // Parse line with "Add" containing an IPv4 address
+                if line.contains("Add") && !line.contains("STARTING") && !line.contains("Timestamp")
+                {
+                    for word in line.split_whitespace() {
+                        if word.parse::<Ipv4Addr>().is_ok() {
+                            ip = word.to_string();
+                            break;
+                        }
+                    }
+                    if !ip.is_empty() {
+                        break;
+                    }
+                }
+            }
+            Ok(Ok(None)) | Ok(Err(_)) => break,
+            Err(_) => {
+                if tokio::time::Instant::now() >= resolve_deadline {
+                    break;
+                }
+                continue;
+            }
+        }
+    }
+    let _ = resolve.kill().await;
+
+    if ip.is_empty() {
+        return Err(format!(
+            "[dns-sd] Could not resolve {} to an IP address",
+            hostname
+        ));
+    }
+
+    log(format!("[dns-sd] ✓ Resolved to {}:{}", ip, port));
+    Ok((ip, port))
+}
+
 // ─── Raw mDNS Responder (fallback) ──────────────────────────────────────────
 //
 // When the mdns-sd daemon can't properly handle port 5353 sharing on Windows
