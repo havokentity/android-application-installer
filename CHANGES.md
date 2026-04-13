@@ -8,6 +8,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+---
+
+## [1.9.0] — 2026-04-13
 ### Added
 - **QR code pairing for wireless ADB (Android 11+)** — scan a QR code shown in your device's Developer Options to pair wirelessly without a USB cable; uses SPAKE2 password-authenticated key exchange over a TLS 1.3 connection with mDNS service discovery
 - **Automatic mDNS service discovery for QR pairing** — the app actively browses for ADB pairing services on the local network via `adb mdns` so paired devices are detected and connected automatically after scanning
