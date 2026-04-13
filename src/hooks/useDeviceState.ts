@@ -23,6 +23,7 @@ export function useDeviceState(
   );
   const [deviceDetails, setDeviceDetails] = useState<Record<string, DeviceDetails>>({});
   const prevDeviceFingerprint = useRef("");
+  const prevDedupedFingerprint = useRef("");
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
   const fetchingDetailsFor = useRef<Set<string>>(new Set());
@@ -38,15 +39,24 @@ export function useDeviceState(
     prevDeviceFingerprint.current = fingerprint;
     const deduped = deduplicateDevices(devs);
     setDevices(deduped);
+
+    // Only log when the DEDUPLICATED result actually changed.
+    // Without this, wireless devices that appear under multiple serials
+    // (mDNS + IP:port) cause repeated "Device update" logs even though
+    // the deduplication collapses them to the same single device.
+    const dedupedFp = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+    const dedupedChanged = dedupedFp !== prevDedupedFingerprint.current;
+    prevDedupedFingerprint.current = dedupedFp;
+
     if (deduped.length > 0) {
       setSelectedDevice((prev) => {
         if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
         return prev;
       });
-      if (logChange) addLog("info", `Device update: ${deduped.length} device(s) connected`);
+      if (logChange && dedupedChanged) addLog("info", `Device update: ${deduped.length} device(s) connected`);
     } else {
       setSelectedDevice("");
-      if (logChange) addLog("info", "All devices disconnected.");
+      if (logChange && dedupedChanged) addLog("info", "All devices disconnected.");
     }
   }, [addLog]);
 
@@ -92,9 +102,10 @@ export function useDeviceState(
     } catch (e) { console.warn("Quiet device refresh failed:", e); }
   }, [adbPath, applyDeviceUpdate]);
 
-  // Sync ref
+  // Sync refs
   useEffect(() => {
     prevDeviceFingerprint.current = devices.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+    prevDedupedFingerprint.current = prevDeviceFingerprint.current;
   }, [devices]);
 
   // ── Push-based tracking with one-shot fallback ─────────────────────
