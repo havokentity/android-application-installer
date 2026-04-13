@@ -8,6 +8,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+- **QR code pairing for wireless ADB (Android 11+)** — scan a QR code shown in your device's Developer Options to pair wirelessly without a USB cable; uses SPAKE2 password-authenticated key exchange over a TLS 1.3 connection with mDNS service discovery
+- **Automatic mDNS service discovery for QR pairing** — the app actively browses for ADB pairing services on the local network via `adb mdns` so paired devices are detected and connected automatically after scanning
+- **Windows Firewall rule management** — automatically creates a temporary inbound firewall rule during QR pairing to allow the mDNS and TLS pairing traffic through, with automatic cleanup on completion
+
+### Changed
+- **Pairing prompt auto-scrolls into view** — the wireless pairing section now scrolls into view automatically when expanded, so the QR code is always visible without manual scrolling
+- **Device section expanded state uses `onSetExpanded`** — `DeviceSection` now accepts a controlled `onSetExpanded` prop instead of a toggle callback, giving the parent full control over the expanded state for programmatic expansion during pairing flows
+- **Device fingerprint tracking more robust** — the deduplication logic now handles edge cases in device list comparisons that could cause the UI to desync from actual connected device state
+
 ---
 
 ## [1.8.4] — 2026-04-11
