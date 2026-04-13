@@ -1,12 +1,14 @@
 //! QR Code pairing for ADB wireless debugging (Android 11+).
 //!
-//! Implements the ADB pairing protocol server:
-//!  1. Advertise an mDNS `_adb-tls-pairing._tcp` service
-//!  2. Display a QR code with the pairing info
-//!  3. Accept a TCP connection from the phone
-//!  4. SPAKE2 key exchange (BoringSSL-compatible, Ed25519)
-//!  5. AES-128-GCM encrypted PeerInfo exchange
-//!  6. Phone stores our RSA key → future `adb connect` works without prompt
+//! Flow:
+//!  1. Generate a QR code containing a random service name + password
+//!  2. Phone scans QR → registers the service via mDNS → starts TLS server
+//!  3. We discover the phone's service via `adb mdns services`
+//!  4. We pair via `adb pair <ip>:<port> <password>` (delegates TLS + SPAKE2 to ADB)
+//!  5. Auto-connect to the device after successful pairing
+//!
+//! This module also contains a full SPAKE2/AES-GCM implementation kept for
+//! reference and tests, but the primary path delegates to ADB for reliability.
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes128Gcm, Key, Nonce};
@@ -17,7 +19,7 @@ use rand::Rng;
 use serde::Serialize;
 use sha2::{Digest, Sha256, Sha512};
 use std::env;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, SocketAddrV4};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -25,6 +27,7 @@ use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio_rustls::TlsAcceptor;
+use tokio_rustls::TlsConnector;
 
 use crate::cmd::run_cmd_async_lenient;
 
@@ -94,13 +97,13 @@ fn spake2_n() -> EdwardsPoint {
         .expect("RFC 9382 N point must decompress")
 }
 
-// ─── SPAKE2 Implementation (BoringSSL-compatible, Bob/Server) ────────────────
+// ─── SPAKE2 Implementation (BoringSSL-compatible) ────────────────────────────
 //
-// In ADB pairing the desktop is the **server** (Bob) and the phone is the
+// In QR pairing the phone is the **server** (Bob) and the desktop is the
 // **client** (Alice).
 //
-//   Alice (phone):  T* = x·B + w·M      K_a = x·(S* − w·N)
-//   Bob   (desktop): S* = y·B + w·N      K_b = y·(T* − w·M)
+//   Alice (desktop): T* = x·B + w·M      K_a = x·(S* − w·N)
+//   Bob   (phone):   S* = y·B + w·N      K_b = y·(T* − w·M)
 //
 // Transcript (both sides compute the same hash):
 //   SHA-256( len(kClientName)||kClientName ||
@@ -116,7 +119,65 @@ fn password_to_scalar(password: &[u8]) -> Scalar {
     Scalar::from_bytes_mod_order_wide(&wide)
 }
 
-/// SPAKE2 Bob (server / desktop) state.
+/// SPAKE2 Alice (client / desktop) state.
+#[allow(dead_code)]
+struct Spake2Alice {
+    x: Scalar,
+    w: Scalar,
+    my_msg: [u8; 32], // T* (Alice's public message)
+}
+
+#[allow(dead_code)]
+impl Spake2Alice {
+    /// Create a new SPAKE2 Alice context, returning (state, outbound_message).
+    fn new(password: &[u8]) -> Result<(Self, Vec<u8>), String> {
+        let w = password_to_scalar(password);
+        let m_point = spake2_m();
+
+        // Random scalar x
+        let x = Scalar::random(&mut rand::rngs::OsRng);
+
+        // T* = x·B + w·M  (B = Ed25519 basepoint)
+        let t_star = EdwardsPoint::mul_base(&x) + w * m_point;
+        let my_msg = t_star.compress().to_bytes();
+
+        Ok((Self { x, w, my_msg }, my_msg.to_vec()))
+    }
+
+    /// Process Bob's (phone) message and derive the shared key.
+    fn finish(self, their_msg: &[u8]) -> Result<Vec<u8>, String> {
+        if their_msg.len() != 32 {
+            return Err(format!("Invalid SPAKE2 message length: {}", their_msg.len()));
+        }
+
+        let n_point = spake2_n();
+
+        let mut msg_bytes = [0u8; 32];
+        msg_bytes.copy_from_slice(their_msg);
+        let s_star = CompressedEdwardsY(msg_bytes)
+            .decompress()
+            .ok_or("Failed to decompress peer's SPAKE2 message")?;
+
+        // K = x·(S* − w·N)
+        let k = self.x * (s_star - self.w * n_point);
+        let k_bytes = k.compress().to_bytes();
+
+        // Transcript hash (BoringSSL-compatible):
+        //   kClientName || kServerName || T* || S* || K
+        let mut hasher = Sha256::new();
+        hash_with_length(&mut hasher, SPAKE2_CLIENT_NAME);
+        hash_with_length(&mut hasher, SPAKE2_SERVER_NAME);
+        hash_with_length(&mut hasher, &self.my_msg); // T* (Alice's message)
+        hash_with_length(&mut hasher, their_msg);    // S* (Bob's message)
+        hash_with_length(&mut hasher, &k_bytes);     // K  (shared point)
+
+        Ok(hasher.finalize().to_vec())
+    }
+}
+
+// Bob kept for tests
+#[allow(dead_code)]
+/// SPAKE2 Bob (server) state.
 struct Spake2Bob {
     y: Scalar,
     w: Scalar,
@@ -279,14 +340,75 @@ async fn read_payload(
 
 // ─── Pairing Protocol Handler ────────────────────────────────────────────────
 
-/// Run the full ADB pairing protocol on an established (TLS) stream.
+/// Run the full ADB pairing protocol as the CLIENT (Alice).
 ///
-/// Protocol flow (we are Bob / Server):
-///  1. Send our SPAKE2 message (S*)
-///  2. Read client's (Alice/phone) SPAKE2 message (T*)
+/// Protocol flow (we are Alice / Client):
+///  1. Send our SPAKE2 message (T*)
+///  2. Read server's (Bob/phone) SPAKE2 message (S*)
 ///  3. Derive shared AES key
-///  4. Read client's encrypted PeerInfo (server reads FIRST)
-///  5. Send our encrypted PeerInfo
+///  4. Send our encrypted PeerInfo (client sends FIRST in AOSP protocol)
+///  5. Read server's encrypted PeerInfo
+#[allow(dead_code)]
+async fn handle_pairing_as_client<S>(
+    stream: &mut S,
+    password: &[u8],
+    adb_pub_key: &str,
+) -> Result<(), String>
+where
+    S: AsyncReadExt + AsyncWriteExt + Unpin,
+{
+    // 1. SPAKE2 handshake — generate our message (T* = x·B + w·M)
+    let (spake, our_msg) = Spake2Alice::new(password)?;
+
+    // 2. Send our SPAKE2 message
+    write_header(stream, MSG_SPAKE2, our_msg.len() as u32).await?;
+    stream
+        .write_all(&our_msg)
+        .await
+        .map_err(|e| format!("Send SPAKE2 msg failed: {}", e))?;
+    stream
+        .flush()
+        .await
+        .map_err(|e| format!("Flush SPAKE2 msg failed: {}", e))?;
+
+    // 3. Read server's SPAKE2 message
+    let (msg_type, payload_len) = read_header(stream).await?;
+    if msg_type != MSG_SPAKE2 {
+        return Err(format!("Expected SPAKE2 message, got type {}", msg_type));
+    }
+    let their_msg = read_payload(stream, payload_len as usize).await?;
+
+    // 4. Complete SPAKE2, derive shared key
+    let spake2_key = spake.finish(&their_msg)?;
+    let aes_key = derive_aes_key(&spake2_key)?;
+
+    // 5. Client sends encrypted PeerInfo FIRST (AOSP protocol order)
+    let our_peer_info = build_peer_info(adb_pub_key);
+    let encrypted_ours = aes_encrypt(&aes_key, 0, &our_peer_info)?;
+    write_header(stream, MSG_PEER_INFO, encrypted_ours.len() as u32).await?;
+    stream
+        .write_all(&encrypted_ours)
+        .await
+        .map_err(|e| format!("Send PeerInfo failed: {}", e))?;
+    stream
+        .flush()
+        .await
+        .map_err(|e| format!("Flush PeerInfo failed: {}", e))?;
+
+    // 6. Read server's encrypted PeerInfo
+    let (peer_type, peer_payload_len) = read_header(stream).await?;
+    if peer_type != MSG_PEER_INFO {
+        return Err(format!("Expected PeerInfo message, got type {}", peer_type));
+    }
+    let encrypted_peer = read_payload(stream, peer_payload_len as usize).await?;
+    let _peer_info = aes_decrypt(&aes_key, 0, &encrypted_peer)?;
+
+    Ok(())
+}
+
+// Old server-side handler kept for tests
+#[allow(dead_code)]
+/// Run the full ADB pairing protocol as the SERVER (Bob).
 async fn handle_pairing<S>(
     stream: &mut S,
     password: &[u8],
@@ -422,9 +544,63 @@ fn random_alphanum(len: usize) -> String {
 //
 // When the mdns-sd daemon can't properly handle port 5353 sharing on Windows
 // (common when the Windows DNS Client service or another mDNS daemon holds the
-// port), this fallback sends gratuitous mDNS announcements directly via a raw
-// UDP socket.  The phone picks up these unsolicited responses and discovers
-// our pairing service without needing the mdns-sd daemon to work at all.
+// port), OR when multicast doesn't traverse between wired Ethernet and WiFi
+// segments, this fallback sends gratuitous mDNS announcements directly via a
+// raw UDP socket on EVERY network interface.  The phone picks up these
+// unsolicited responses and discovers our pairing service.
+
+/// Detect all usable IPv4 addresses on this machine.
+/// On Windows, parses `ipconfig` output. Falls back to the primary IP.
+#[allow(dead_code)]
+async fn get_all_ipv4_addrs(primary_ip: &str) -> Vec<Ipv4Addr> {
+    let mut addrs = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        const CNW: u32 = 0x0800_0000;
+        if let Ok(output) = tokio::process::Command::new("ipconfig")
+            .creation_flags(CNW)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .output()
+            .await
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let lower = line.to_lowercase();
+                // Skip gateway, subnet mask, DNS, DHCP lines
+                if lower.contains("gateway") || lower.contains("mask")
+                    || lower.contains("dns") || lower.contains("dhcp")
+                {
+                    continue;
+                }
+                if let Some(after) = line.rsplit(':').next() {
+                    if let Ok(ip) = after.trim().parse::<Ipv4Addr>() {
+                        if !ip.is_loopback() && !ip.is_link_local()
+                            && !ip.is_unspecified() && ip.octets()[0] < 224
+                            && !addrs.contains(&ip)
+                        {
+                            addrs.push(ip);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Ensure the primary IP is always included (and first)
+    if let Ok(primary) = primary_ip.parse::<Ipv4Addr>() {
+        if !addrs.contains(&primary) {
+            addrs.insert(0, primary);
+        } else {
+            // Move primary to front
+            addrs.retain(|ip| *ip != primary);
+            addrs.insert(0, primary);
+        }
+    }
+
+    addrs
+}
 
 /// Encode a DNS domain name into wire format (length-prefixed labels).
 fn dns_encode_name(name: &str) -> Vec<u8> {
@@ -441,6 +617,9 @@ fn dns_encode_name(name: &str) -> Vec<u8> {
 
 /// Build a raw mDNS announcement (unsolicited DNS response) containing
 /// PTR, SRV, TXT, and A records for our pairing service.
+/// Used for proactive multicast announcements (currently disabled to avoid
+/// Windows DNS Client caching conflicts — kept for tests and possible future use).
+#[allow(dead_code)]
 fn build_mdns_announcement(
     service_name: &str,
     hostname: &str,
@@ -503,63 +682,507 @@ fn build_mdns_announcement(
     p
 }
 
-/// Periodically send gratuitous mDNS announcements via a raw UDP socket,
-/// bypassing the mdns-sd daemon entirely.
+#[allow(dead_code)]
+/// Build an mDNS response for an ANY/SRV query on the specific instance name.
+fn build_instance_response(
+    service_name: &str,
+    hostname: &str,
+    port: u16,
+    ip: Ipv4Addr,
+) -> Vec<u8> {
+    let svc_type = "_adb-tls-pairing._tcp.local.";
+    let instance = format!("{}.{}", service_name, svc_type);
+
+    let inst_enc = dns_encode_name(&instance);
+    let host_enc = dns_encode_name(hostname);
+
+    let mut p = Vec::with_capacity(256);
+
+    // DNS Header
+    p.extend_from_slice(&[0x00, 0x00]); // Transaction ID
+    p.extend_from_slice(&[0x84, 0x00]); // Flags: QR=1 AA=1
+    p.extend_from_slice(&[0x00, 0x00]); // QDCOUNT
+    p.extend_from_slice(&[0x00, 0x02]); // ANCOUNT: SRV + TXT
+    p.extend_from_slice(&[0x00, 0x00]); // NSCOUNT
+    p.extend_from_slice(&[0x00, 0x01]); // ARCOUNT: A
+
+    // Answer 1: SRV
+    p.extend_from_slice(&inst_enc);
+    p.extend_from_slice(&[0x00, 0x21]); // Type SRV
+    p.extend_from_slice(&[0x80, 0x01]); // Class IN + cache-flush
+    p.extend_from_slice(&120u32.to_be_bytes());
+    let srv_rdata_len = (6 + host_enc.len()) as u16;
+    p.extend_from_slice(&srv_rdata_len.to_be_bytes());
+    p.extend_from_slice(&[0x00, 0x00]); // Priority
+    p.extend_from_slice(&[0x00, 0x00]); // Weight
+    p.extend_from_slice(&port.to_be_bytes());
+    p.extend_from_slice(&host_enc);
+
+    // Answer 2: TXT (empty)
+    p.extend_from_slice(&inst_enc);
+    p.extend_from_slice(&[0x00, 0x10]); // Type TXT
+    p.extend_from_slice(&[0x80, 0x01]); // Class IN + cache-flush
+    p.extend_from_slice(&4500u32.to_be_bytes());
+    p.extend_from_slice(&[0x00, 0x01]);
+    p.push(0x00);
+
+    // Additional: A record (so phone can resolve the SRV target hostname)
+    p.extend_from_slice(&host_enc);
+    p.extend_from_slice(&[0x00, 0x01]); // Type A
+    p.extend_from_slice(&[0x80, 0x01]); // Class IN + cache-flush
+    p.extend_from_slice(&120u32.to_be_bytes());
+    p.extend_from_slice(&[0x00, 0x04]);
+    p.extend_from_slice(&ip.octets());
+
+    p
+}
+
+#[allow(dead_code)]
+/// Build an mDNS response containing only an A record for hostname resolution.
+fn build_a_response(hostname: &str, ip: Ipv4Addr) -> Vec<u8> {
+    let host_enc = dns_encode_name(hostname);
+    let mut p = Vec::with_capacity(64);
+
+    p.extend_from_slice(&[0x00, 0x00]); // Transaction ID
+    p.extend_from_slice(&[0x84, 0x00]); // Flags: QR=1 AA=1
+    p.extend_from_slice(&[0x00, 0x00]); // QDCOUNT
+    p.extend_from_slice(&[0x00, 0x01]); // ANCOUNT: 1
+    p.extend_from_slice(&[0x00, 0x00]); // NSCOUNT
+    p.extend_from_slice(&[0x00, 0x00]); // ARCOUNT
+
+    p.extend_from_slice(&host_enc);
+    p.extend_from_slice(&[0x00, 0x01]); // Type A
+    p.extend_from_slice(&[0x80, 0x01]); // Class IN + cache-flush
+    p.extend_from_slice(&120u32.to_be_bytes());
+    p.extend_from_slice(&[0x00, 0x04]);
+    p.extend_from_slice(&ip.octets());
+
+    p
+}
+
+/// Build an mDNS query packet for a given name and query type.
+#[allow(dead_code)]
+fn build_mdns_query(name: &str, qtype: u16) -> Vec<u8> {
+    let name_enc = dns_encode_name(name);
+    let mut pkt = Vec::with_capacity(12 + name_enc.len() + 4);
+    // Header
+    pkt.extend_from_slice(&[0x00, 0x00]); // ID
+    pkt.extend_from_slice(&[0x00, 0x00]); // Flags: standard query
+    pkt.extend_from_slice(&[0x00, 0x01]); // QDCOUNT: 1
+    pkt.extend_from_slice(&[0x00, 0x00]); // ANCOUNT
+    pkt.extend_from_slice(&[0x00, 0x00]); // NSCOUNT
+    pkt.extend_from_slice(&[0x00, 0x00]); // ARCOUNT
+    // Question
+    pkt.extend_from_slice(&name_enc);
+    pkt.extend_from_slice(&qtype.to_be_bytes()); // Type
+    pkt.extend_from_slice(&[0x00, 0x01]); // Class IN
+    pkt
+}
+
+/// Skip a DNS name in wire format (handles both inline labels and compression pointers).
+#[allow(dead_code)]
+fn dns_skip_name(data: &[u8], mut pos: usize) -> Option<usize> {
+    loop {
+        if pos >= data.len() { return None; }
+        let len = data[pos] as usize;
+        if len == 0 {
+            return Some(pos + 1);
+        }
+        if len & 0xC0 == 0xC0 {
+            // Compression pointer — 2 bytes total
+            if pos + 1 >= data.len() { return None; }
+            return Some(pos + 2);
+        }
+        pos += 1 + len;
+        if pos > data.len() { return None; }
+    }
+}
+
+/// Parse an mDNS response to extract SRV (port) and A (IP) records.
+/// Returns `Some((ip, port))` if both are found, filtering out loopback/unspecified IPs.
+#[allow(dead_code)]
+fn parse_mdns_srv_and_a(data: &[u8]) -> Option<(Ipv4Addr, u16)> {
+    if data.len() < 12 { return None; }
+    if data[2] & 0x80 == 0 { return None; } // Must be response
+
+    let qdcount = u16::from_be_bytes([data[4], data[5]]) as usize;
+    let ancount = u16::from_be_bytes([data[6], data[7]]) as usize;
+    let nscount = u16::from_be_bytes([data[8], data[9]]) as usize;
+    let arcount = u16::from_be_bytes([data[10], data[11]]) as usize;
+
+    let mut pos = 12usize;
+
+    // Skip questions
+    for _ in 0..qdcount {
+        pos = dns_skip_name(data, pos)?;
+        if pos + 4 > data.len() { return None; }
+        pos += 4; // type + class
+    }
+
+    let mut found_port: Option<u16> = None;
+    let mut found_ip: Option<Ipv4Addr> = None;
+    let total_records = ancount + nscount + arcount;
+
+    for _ in 0..total_records {
+        if pos >= data.len() { break; }
+        pos = dns_skip_name(data, pos)?;
+        if pos + 10 > data.len() { break; }
+
+        let rtype = u16::from_be_bytes([data[pos], data[pos + 1]]);
+        let rdlength = u16::from_be_bytes([data[pos + 8], data[pos + 9]]) as usize;
+        let rdata_start = pos + 10;
+        let rdata_end = rdata_start + rdlength;
+        if rdata_end > data.len() { break; }
+
+        match rtype {
+            33 => { // SRV: priority(2) + weight(2) + port(2) + target
+                if rdlength >= 6 {
+                    let port = u16::from_be_bytes([data[rdata_start + 4], data[rdata_start + 5]]);
+                    found_port = Some(port);
+                }
+            }
+            1 => { // A: 4 bytes IP
+                if rdlength == 4 {
+                    let ip = Ipv4Addr::new(
+                        data[rdata_start],
+                        data[rdata_start + 1],
+                        data[rdata_start + 2],
+                        data[rdata_start + 3],
+                    );
+                    if !ip.is_loopback() && !ip.is_unspecified() {
+                        found_ip = Some(ip);
+                    }
+                }
+            }
+            _ => {}
+        }
+
+        pos = rdata_end;
+    }
+
+    match (found_ip, found_port) {
+        (Some(ip), Some(port)) => Some((ip, port)),
+        _ => None,
+    }
+}
+
+/// Discover the phone's `_adb-tls-pairing._tcp` service via ADB's built-in
+/// mDNS daemon.
+///
+/// Polls `adb mdns services` periodically.  ADB's mDNS implementation handles
+/// all the platform-specific port 5353, multicast, and DNS Client Service
+/// conflicts that plague raw-socket approaches on Windows.
+///
+/// Returns `(IP, port)` when the phone's pairing service matching our QR
+/// service name is found.
+async fn discover_via_adb_mdns(
+    service_name: &str,
+    adb_path: &str,
+    cancel: &Arc<AtomicBool>,
+    app: &tauri::AppHandle,
+) -> Result<(String, u16), String> {
+    let log = |msg: String| { let _ = app.emit("qr-pairing-log", &msg); };
+
+    let start = std::time::Instant::now();
+    let mut poll_count = 0u32;
+
+    log(format!("[mDNS] Waiting for phone to register service {}…", service_name));
+
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("cancelled".into());
+        }
+        if start.elapsed().as_secs() >= PAIRING_TIMEOUT_SECS {
+            return Err(
+                "QR pairing timed out — the phone never registered the pairing service.\n\
+                 Make sure you scanned the QR code on the phone \
+                 (Settings → Developer Options → Wireless debugging → Pair device with QR code)."
+                    .into(),
+            );
+        }
+
+        poll_count += 1;
+
+        let (stdout, _stderr, _ok) =
+            run_cmd_async_lenient(adb_path, &["mdns", "services"]).await.unwrap_or_default();
+
+        // Look for our service name in the output.
+        // ADB output format:
+        //   adb-SERIAL123\t_adb-tls-pairing._tcp.\t192.168.1.100:37215
+        for line in stdout.lines() {
+            if !line.contains('\t') {
+                continue;
+            }
+            let parts: Vec<&str> = line.split('\t').collect();
+            if parts.len() < 3 {
+                continue;
+            }
+            let name = parts[0].trim();
+            let svc_type = parts[1].trim();
+            let addr = parts[2].trim();
+
+            // Match by service name AND pairing type
+            if name == service_name && svc_type.contains("pairing") {
+                if let Some((ip, port)) = parse_ip_port(addr) {
+                    log(format!("[mDNS] ✓ Discovered phone's pairing service: {}:{}", ip, port));
+                    return Ok((ip, port));
+                }
+            }
+        }
+
+        if poll_count <= 5 || poll_count % 10 == 0 {
+            log(format!("[mDNS] → Polled ADB mDNS (attempt #{})", poll_count));
+        }
+
+        // Poll every 1.5 seconds — fast enough to catch the service promptly,
+        // slow enough to not hammer ADB with commands.
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    }
+}
+
+/// Extract (IP, port) from an "ip:port" string.
+fn parse_ip_port(s: &str) -> Option<(String, u16)> {
+    let (ip_str, port_str) = s.rsplit_once(':')?;
+    let port = port_str.parse::<u16>().ok()?;
+    // Basic sanity: must contain at least one dot for IPv4
+    if !ip_str.contains('.') {
+        return None;
+    }
+    Some((ip_str.to_string(), port))
+}
+
+// Old mDNS responder kept for reference (no longer used — we are now a client/browser)
+#[allow(dead_code)]
 async fn raw_mdns_announce_loop(
     service_name: String,
     hostname: String,
     port: u16,
     ip_str: String,
+    all_ips: Vec<Ipv4Addr>,
     cancel: Arc<AtomicBool>,
     app: tauri::AppHandle,
 ) {
     let log = |msg: String| { let _ = app.emit("qr-pairing-log", &msg); };
 
-    let ip: Ipv4Addr = match ip_str.parse() {
+    let primary_ip: Ipv4Addr = match ip_str.parse() {
         Ok(v) => v,
         Err(e) => { log(format!("[raw-mDNS] Bad IP '{}': {}", ip_str, e)); return; }
     };
 
-    let packet = build_mdns_announcement(&service_name, &hostname, port, ip);
+    let inst_response = build_instance_response(&service_name, &hostname, port, primary_ip);
+    let a_response = build_a_response(&hostname, primary_ip);
+    let mcast = Ipv4Addr::new(224, 0, 0, 251);
 
-    // Try binding to port 5353 (RFC 6762 requires source port 5353 for mDNS
-    // responses).  Fall back to ephemeral if 5353 is taken.
-    let socket = match std::net::UdpSocket::bind("0.0.0.0:5353") {
-        Ok(s) => { log("[raw-mDNS] ✓ Bound to source port 5353".into()); s }
-        Err(_) => match std::net::UdpSocket::bind("0.0.0.0:0") {
-            Ok(s) => {
-                let p = s.local_addr().map(|a| a.port()).unwrap_or(0);
-                log(format!("[raw-mDNS] ⚠ Port 5353 taken, using ephemeral port {} (some devices may ignore)", p));
-                s
-            }
-            Err(e) => { log(format!("[raw-mDNS] Socket bind failed: {}", e)); return; }
-        }
+    // DNS wire-format markers for detecting relevant queries
+    let svc_marker = dns_encode_name("_adb-tls-pairing._tcp.local.");
+    let host_marker = dns_encode_name(&hostname);
+
+    // Build a set of our own IPs so we can ignore queries from ourselves / ADB on our PC
+    let own_ips: std::collections::HashSet<Ipv4Addr> = all_ips.iter().copied().collect();
+
+    // Create socket with SO_REUSEADDR so we can share port 5353 with other
+    // mDNS daemons (Windows DNS Client, ADB, browsers, etc.)
+    let socket = match socket2::Socket::new(
+        socket2::Domain::IPV4,
+        socket2::Type::DGRAM,
+        Some(socket2::Protocol::UDP),
+    ) {
+        Ok(s) => s,
+        Err(e) => { log(format!("[raw-mDNS] Socket creation failed: {}", e)); return; }
     };
 
-    let _ = socket.join_multicast_v4(&Ipv4Addr::new(224, 0, 0, 251), &ip);
-    let _ = socket.set_multicast_ttl_v4(255);
-    let _ = socket.set_nonblocking(true);
+    let _ = socket.set_reuse_address(true);
+    if let Err(e) = socket.bind(&socket2::SockAddr::from(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 5353))) {
+        log(format!("[raw-mDNS] ⚠ Bind to :5353 failed ({}), trying ephemeral…", e));
+        if let Err(e2) = socket.bind(&socket2::SockAddr::from(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))) {
+            log(format!("[raw-mDNS] Bind failed entirely: {}", e2));
+            return;
+        }
+    }
 
-    let dest: std::net::SocketAddr = (Ipv4Addr::new(224, 0, 0, 251), 5353).into();
-    log(format!("[raw-mDNS] Announcing {} → {}:{} ({} bytes/pkt)", service_name, ip_str, port, packet.len()));
+    let _ = socket.set_nonblocking(true);
+    // RFC 6762 §11: ALL mDNS responses (including unicast) MUST have IP TTL=255.
+    // Android's mDNSResponder silently drops packets with TTL != 255.
+    match socket.set_ttl(255) {
+        Ok(()) => {},
+        Err(e) => log(format!("[raw-mDNS] ⚠ Failed to set TTL=255: {} — Android may ignore our responses!", e)),
+    }
+
+    // Disable multicast loopback — we never send multicast, but this also
+    // prevents us from seeing our own packets echoed back by the OS.
+    let _ = socket.set_multicast_loop_v4(false);
+
+    // Join multicast group on every interface so we RECEIVE queries from all segments
+    for ip in &all_ips {
+        let _ = socket.join_multicast_v4(&mcast, ip);
+    }
+
+    let iface_list: Vec<String> = all_ips.iter().map(|ip| ip.to_string()).collect();
+    log(format!("[raw-mDNS] ✓ Listening on {} interface(s): {}", all_ips.len(), iface_list.join(", ")));
+    log(format!("[raw-mDNS] Service: {} → {}:{} (unicast-only, no multicast)", service_name, ip_str, port));
+
+    let mut query_count = 0u32;
 
     while !cancel.load(Ordering::Relaxed) {
-        match socket.send_to(&packet, dest) {
-            Ok(_) => {}
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-            Err(e) => { log(format!("[raw-mDNS] send error: {}", e)); }
+        // ── Drain incoming mDNS packets — respond to queries for our service or hostname ──
+        loop {
+            let mut buf = [std::mem::MaybeUninit::<u8>::uninit(); 1500];
+            match socket.recv_from(&mut buf) {
+                Ok((len, from_addr)) => {
+                    let data = unsafe {
+                        std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)
+                    };
+                    // Only process DNS queries (QR bit = 0)
+                    if len <= 12 || data[2] & 0x80 != 0 {
+                        continue;
+                    }
+
+                    // Ignore queries from our own PC (Windows DNS Client, ADB, etc.)
+                    // Only respond to queries from OTHER hosts (i.e. the phone).
+                    if let Some(sock_addr) = from_addr.as_socket_ipv4() {
+                        if own_ips.contains(sock_addr.ip()) {
+                            continue;
+                        }
+                    }
+
+                    let is_svc_query = data.windows(svc_marker.len()).any(|w| w == svc_marker.as_slice());
+                    let is_host_query = data.windows(host_marker.len()).any(|w| w == host_marker.as_slice());
+
+                    if is_svc_query || is_host_query {
+                        query_count += 1;
+                        let addr_str = from_addr.as_socket()
+                            .map(|a| a.to_string())
+                            .unwrap_or_else(|| "?".into());
+
+                        // Parse query name + type for diagnostics
+                        let qinfo = {
+                            let mut pos = 12usize;
+                            let mut labels: Vec<String> = Vec::new();
+                            while pos < len {
+                                let ll = data[pos] as usize;
+                                if ll == 0 { pos += 1; break; }
+                                pos += 1;
+                                if pos + ll <= len {
+                                    labels.push(String::from_utf8_lossy(&data[pos..pos+ll]).to_string());
+                                    pos += ll;
+                                } else { break; }
+                            }
+                            let qtype = if pos + 2 <= len { u16::from_be_bytes([data[pos], data[pos+1]]) } else { 0 };
+                            let qclass = if pos + 4 <= len { u16::from_be_bytes([data[pos+2], data[pos+3]]) } else { 0 };
+                            format!("{} type={} class=0x{:04x}", labels.join("."), qtype, qclass)
+                        };
+
+                        // Choose the right response based on query type
+                        let (response, kind) = if is_svc_query {
+                            // Instance query (ANY/SRV for service) → SRV+TXT in answers, A in additional
+                            (&inst_response, "instance(SRV+TXT+A)")
+                        } else {
+                            // Hostname query (A for yeshua1.local.) → A record only
+                            (&a_response, "hostname(A)")
+                        };
+
+                        log(format!("[raw-mDNS] ← Query #{} from {}: {} → responding with {}", query_count, addr_str, qinfo, kind));
+
+                        // Send UNICAST response directly to querier (TTL=255 set on socket).
+                        // We intentionally do NOT multicast — see doc comment above.
+                        match socket.send_to(response, &from_addr) {
+                            Ok(n) => log(format!("[raw-mDNS]   → Sent {} bytes unicast to {}", n, addr_str)),
+                            Err(e) => log(format!("[raw-mDNS]   → Unicast send FAILED: {}", e)),
+                        }
+                        // Brief pause, then send again for reliability (UDP is unreliable)
+                        std::thread::sleep(std::time::Duration::from_millis(50));
+                        let _ = socket.send_to(response, &from_addr);
+                    }
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(_) => break,
+            }
         }
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Brief sleep — poll ~10×/sec for responsive query handling
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 }
 
 // ─── TLS ─────────────────────────────────────────────────────────────────────
 
+/// TLS certificate verifier that accepts any certificate (for ADB pairing).
+/// ADB pairing uses self-signed certificates with `SSL_VERIFY_NONE`.
+#[derive(Debug)]
+#[allow(dead_code)]
+struct NoVerifier;
+
+impl tokio_rustls::rustls::client::danger::ServerCertVerifier for NoVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[tokio_rustls::rustls::pki_types::CertificateDer<'_>],
+        _server_name: &tokio_rustls::rustls::pki_types::ServerName<'_>,
+        _ocsp: &[u8],
+        _now: tokio_rustls::rustls::pki_types::UnixTime,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::ServerCertVerified,
+        tokio_rustls::rustls::Error,
+    > {
+        Ok(tokio_rustls::rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &tokio_rustls::rustls::pki_types::CertificateDer<'_>,
+        _dss: &tokio_rustls::rustls::DigitallySignedStruct,
+    ) -> Result<
+        tokio_rustls::rustls::client::danger::HandshakeSignatureValid,
+        tokio_rustls::rustls::Error,
+    > {
+        Ok(tokio_rustls::rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<tokio_rustls::rustls::SignatureScheme> {
+        use tokio_rustls::rustls::SignatureScheme;
+        vec![
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::ED25519,
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
+        ]
+    }
+}
+
+/// Build a [`TlsConnector`] for connecting to the phone's pairing server.
+/// Uses TLS 1.3 only with no certificate verification (matching AOSP).
+#[allow(dead_code)]
+fn build_tls_connector() -> Result<TlsConnector, String> {
+    let config = tokio_rustls::rustls::ClientConfig::builder_with_protocol_versions(
+        &[&tokio_rustls::rustls::version::TLS13],
+    )
+    .dangerous()
+    .with_custom_certificate_verifier(Arc::new(NoVerifier))
+    .with_no_client_auth();
+
+    Ok(TlsConnector::from(Arc::new(config)))
+}
+
+#[allow(dead_code)]
 /// Generate a self-signed TLS certificate and build a [`TlsAcceptor`].
-///
-/// AOSP's pairing server uses an ephemeral RSA-2048 self-signed cert with
-/// `SSL_VERIFY_NONE` — neither side verifies the other's certificate.
-/// We use rcgen's default (ECDSA P-256) which BoringSSL also supports.
 fn build_tls_acceptor() -> Result<TlsAcceptor, String> {
     let ck = rcgen::generate_simple_self_signed(vec!["adb".into()])
         .map_err(|e| format!("TLS cert generation failed: {e}"))?;
@@ -589,6 +1212,7 @@ fn build_tls_acceptor() -> Result<TlsAcceptor, String> {
 
 /// Result of the firewall setup attempt.
 #[derive(Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 enum FirewallStatus {
     /// Temporary port-specific rules were added (should be cleaned up).
     TempRulesAdded,
@@ -629,6 +1253,7 @@ async fn check_program_rule_exists() -> bool {
 /// Try to add temporary port-specific inbound rules (TCP for pairing +
 /// UDP 5353 for mDNS).  Requires admin — will fail silently if not elevated.
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 async fn try_add_temp_rules(port: u16) -> bool {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -702,6 +1327,7 @@ async fn try_add_program_rule_elevated() -> bool {
 
 /// Remove the temporary port-specific firewall rules added by [`try_add_temp_rules`].
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 async fn try_remove_temp_rules(port: u16) {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -771,7 +1397,7 @@ pub struct QrPairingResult {
 
 // ─── Tauri Commands ──────────────────────────────────────────────────────────
 
-/// Start QR code pairing: advertise mDNS, show QR, wait for phone to connect.
+/// Start QR code pairing: show QR, discover phone's mDNS service, connect to it.
 ///
 /// Returns the QR code info immediately. The pairing protocol runs in the
 /// background and emits a `qr-pairing-result` event when done.
@@ -799,15 +1425,6 @@ pub(crate) async fn start_qr_pairing(
     // Detect local IP
     let local_ip = get_local_ip()?;
 
-    // Bind TCP listener on an ephemeral port
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:0")
-        .await
-        .map_err(|e| format!("TCP bind failed: {}", e))?;
-    let port = listener
-        .local_addr()
-        .map_err(|e| format!("local_addr failed: {}", e))?
-        .port();
-
     // Generate random service name and password
     let service_name = format!("adb-{}", random_alphanum(8));
     let password = random_alphanum(10);
@@ -820,7 +1437,7 @@ pub(crate) async fn start_qr_pairing(
         service_name: service_name.clone(),
         password: password.clone(),
         ip: local_ip.clone(),
-        port,
+        port: 0, // Port is determined by the phone, not us
     };
 
     // Set up the background task
@@ -834,7 +1451,7 @@ pub(crate) async fn start_qr_pairing(
 
     let handle = tokio::spawn(async move {
         let result =
-            run_pairing_server(listener, &svc_name, &pw, &ip, port, &adb_pub_key, &cancel_clone, &adb, &app_handle)
+            run_pairing_client(&svc_name, &pw, &ip, &adb_pub_key, &cancel_clone, &adb, &app_handle)
                 .await;
 
         let pairing_result = match result {
@@ -881,376 +1498,92 @@ pub(crate) async fn cancel_qr_pairing(
     Ok(())
 }
 
-/// Run the pairing server: firewall → TLS cert → mDNS advertisement → TCP accept → TLS → SPAKE2.
-async fn run_pairing_server(
-    listener: tokio::net::TcpListener,
+/// Run the pairing client: discover phone's service via ADB mDNS → `adb pair`.
+///
+/// In QR pairing, the phone is the SERVER and we are the CLIENT:
+///  1. We generated the QR code with a random service name and password
+///  2. The phone scans the QR, registers the service via mDNS, starts a TLS listener
+///  3. We discover the phone's service via `adb mdns services`
+///  4. We pair using `adb pair <ip>:<port> <password>`
+///
+/// This delegates the TLS + SPAKE2 handshake to ADB itself, which handles
+/// all platform-specific quirks (mDNS port sharing, Windows DNS Client, etc.).
+async fn run_pairing_client(
     service_name: &str,
     password: &str,
-    local_ip: &str,
-    port: u16,
-    adb_pub_key: &str,
+    _local_ip: &str,
+    _adb_pub_key: &str,
     cancel: &Arc<AtomicBool>,
     adb_path: &str,
     app: &tauri::AppHandle,
 ) -> Result<String, String> {
-    // Helper to emit progress strings the frontend can show in its log panel
     let log = |msg: String| {
         let _ = app.emit("qr-pairing-log", &msg);
     };
 
-    // 0. Ensure Windows Firewall allows inbound connections (TCP for pairing,
-    //    UDP 5353 for mDNS).  The phone makes an INBOUND TCP connection to our
-    //    port AND discovers us via mDNS multicast — both are blocked by default.
-    let fw_status = if cfg!(target_os = "windows") {
+    // 0. Ensure Windows Firewall allows our program (needed for mDNS UDP 5353).
+    if cfg!(target_os = "windows") {
         if check_program_rule_exists().await {
             log("✓ Firewall: program rule active".into());
-            FirewallStatus::ProgramRuleOk
-        } else if try_add_temp_rules(port).await {
-            log(format!("✓ Firewall rules added for TCP port {} and mDNS", port));
-            FirewallStatus::TempRulesAdded
         } else {
             log("Requesting firewall access (you may see a UAC prompt)…".into());
             if try_add_program_rule_elevated().await {
                 log("✓ Firewall: program rule added (persists for future sessions)".into());
-                FirewallStatus::ProgramRuleOk
             } else {
-                let exe_hint = std::env::current_exe()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|_| "<app path>".into());
-                log("⚠ Could not add firewall rule. Pairing will likely fail.".into());
-                log("  → Run this command in an admin terminal to fix permanently:".into());
-                log(format!(
-                    "    netsh advfirewall firewall add rule name=\"{}\" dir=in action=allow program=\"{}\" enable=yes",
-                    PROGRAM_RULE_NAME, exe_hint
-                ));
-                FirewallStatus::Failed
+                log("⚠ Could not add firewall rule. mDNS discovery may be affected.".into());
             }
         }
+    }
+
+    // 1. Check ADB mDNS daemon
+    let (mdns_check, mdns_check_stderr, _) =
+        run_cmd_async_lenient(adb_path, &["mdns", "check"]).await.unwrap_or_default();
+    let combined_check = format!("{}\n{}", mdns_check, mdns_check_stderr);
+    if combined_check.contains("mdns daemon") || combined_check.contains("Openscreen") {
+        log("✓ ADB mDNS daemon available".into());
     } else {
-        FirewallStatus::Failed // non-Windows, no firewall handling needed
-    };
-
-    // 1. Kill ADB server to free mDNS port 5353.
-    //    On Windows, ADB's built-in mDNS daemon and our mdns-sd daemon both
-    //    bind to UDP 5353.  Windows delivers incoming multicast packets to
-    //    only ONE of the competing sockets, so the phone's mDNS query for
-    //    our pairing service gets swallowed by ADB's daemon (which ignores
-    //    it).  Killing ADB temporarily gives our daemon exclusive access.
-    log("Stopping ADB server temporarily (freeing mDNS port)…".into());
-    #[cfg(target_os = "windows")]
-    {
-        const CNW: u32 = 0x0800_0000;
-        // Graceful kill-server (don't use run_cmd_async_lenient — it checks
-        // the global OPERATION_CANCEL flag which may be set)
-        let _ = tokio::process::Command::new(adb_path)
-            .args(["kill-server"])
-            .creation_flags(CNW)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await;
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-        // Force-kill any remaining adb.exe processes (belt-and-suspenders)
-        let taskkill = tokio::process::Command::new("taskkill")
-            .args(["/F", "/IM", "adb.exe"])
-            .creation_flags(CNW)
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await;
-        if matches!(taskkill, Ok(ref s) if s.success()) {
-            log("  (force-killed remaining adb.exe processes)".into());
-        }
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = tokio::process::Command::new(adb_path)
-            .args(["kill-server"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .await;
-    }
-    // Wait for OS to fully release the UDP 5353 socket
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-    // Diagnostic: check what's still using UDP port 5353
-    #[cfg(target_os = "windows")]
-    {
-        const CNW: u32 = 0x0800_0000;
-        if let Ok(output) = tokio::process::Command::new("cmd")
-            .args(["/C", "netstat -anop udp | findstr :5353"])
-            .creation_flags(CNW)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .output()
-            .await
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.trim().is_empty() {
-                log("✓ Port 5353 is free — no competing mDNS daemons".into());
-            } else {
-                for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
-                    log(format!("⚠ Port 5353 still in use: {}", line.trim()));
-                }
-                // Identify the process(es) holding the port
-                for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
-                    if let Some(pid) = line.split_whitespace().last() {
-                        if let Ok(task_out) = tokio::process::Command::new("cmd")
-                            .args(["/C", &format!("tasklist /FI \"PID eq {}\" /FO CSV /NH", pid)])
-                            .creation_flags(CNW)
-                            .stdout(std::process::Stdio::piped())
-                            .stderr(std::process::Stdio::null())
-                            .output()
-                            .await
-                        {
-                            let name = String::from_utf8_lossy(&task_out.stdout);
-                            if !name.trim().is_empty() {
-                                log(format!("  → Process: {}", name.lines().next().unwrap_or("").trim()));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        log("⚠ ADB mDNS daemon check did not confirm availability — will try anyway".into());
     }
 
-    // 2. Build ephemeral TLS acceptor (self-signed cert, TLS 1.3 only, no client-cert verify)
-    let tls_acceptor = build_tls_acceptor()?;
-    log("✓ TLS 1.3 certificate generated".into());
-
-    // 3. Start mDNS advertisement
-    //    The phone discovers our pairing server via mDNS after scanning the QR.
-    //    Passing an empty IP lets the library auto-detect ALL host addresses,
-    //    so both WiFi and Ethernet IPs appear in the A/AAAA records.
-    let mdns = mdns_sd::ServiceDaemon::new()
-        .map_err(|e| format!("mDNS daemon failed to start: {}", e))?;
-
-    // Enable multicast loopback so our self-test can verify discovery
-    match mdns.set_multicast_loop_v4(true) {
-        Ok(()) => {}
-        Err(e) => log(format!("  ⚠ multicast loopback setting failed: {:?}", e)),
-    }
-
-    let hostname = {
-        let machine = std::env::var("COMPUTERNAME")
-            .or_else(|_| std::env::var("HOSTNAME"))
-            .unwrap_or_else(|_| service_name.to_string())
-            .to_lowercase()
-            .chars()
-            .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-            .collect::<String>();
-        if machine.len() < 2 { service_name.to_string() } else { format!("{}.local.", machine) }
-    };
-    let service_info = mdns_sd::ServiceInfo::new(
-        "_adb-tls-pairing._tcp.local.",
+    // 2. Discover phone's pairing service via `adb mdns services`
+    log("Waiting for phone to scan QR code…".into());
+    let (phone_ip, phone_port) = discover_via_adb_mdns(
         service_name,
-        &hostname,
-        "",   // empty → register() auto-fills from ALL host interfaces
-        port,
-        None::<std::collections::HashMap<String, String>>,
-    )
-    .map_err(|e| format!("mDNS service creation failed: {}", e))?;
+        adb_path,
+        cancel,
+        app,
+    ).await?;
 
-    let fullname = service_info.get_fullname().to_string();
-    mdns.register(service_info.clone())
-        .map_err(|e| format!("mDNS registration failed: {}", e))?;
+    log(format!("✓ Found phone's pairing service at {}:{}", phone_ip, phone_port));
 
-    log(format!("✓ mDNS service registered: {} (host {}, port {})", service_name, &hostname, port));
-    log(format!("  (IPs auto-detected from all interfaces; TCP listener at 0.0.0.0:{})", port));
-
-    // 2b. Start mDNS event monitor — forward daemon events as diagnostic logs
-    //     so we can see if queries arrive and responses are sent.
-    let monitor_app = app.clone();
-    let monitor_cancel = cancel.clone();
-    if let Ok(monitor_rx) = mdns.monitor() {
-        tokio::task::spawn_blocking(move || {
-            while !monitor_cancel.load(Ordering::Relaxed) {
-                match monitor_rx.recv_timeout(std::time::Duration::from_secs(2)) {
-                    Ok(event) => {
-                        let msg = format!("[mDNS] {:?}", event);
-                        // Truncate very long messages (e.g. full DNS packets)
-                        let msg = if msg.len() > 300 { format!("{}…", &msg[..300]) } else { msg };
-                        let _ = monitor_app.emit("qr-pairing-log", &msg);
-                    }
-                    Err(_) => {
-                        // Timeout or disconnected — sleep briefly to avoid spinning
-                        // if the channel was closed, then check cancel flag next iteration
-                        std::thread::sleep(std::time::Duration::from_millis(200));
-                    }
-                }
-            }
-        });
-    }
-
-    // 2c. Self-test: browse for our own service to verify it's discoverable
-    let self_test_passed = if let Ok(browse_rx) = mdns.browse("_adb-tls-pairing._tcp.local.") {
-        let found = tokio::task::spawn_blocking({
-            let target = fullname.clone();
-            move || {
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
-                while std::time::Instant::now() < deadline {
-                    match browse_rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                        Ok(mdns_sd::ServiceEvent::ServiceResolved(info)) => {
-                            if info.get_fullname() == target {
-                                return true;
-                            }
-                        }
-                        Ok(_) => continue,
-                        Err(_) => continue,
-                    }
-                }
-                false
-            }
-        })
+    // 3. Pair using `adb pair <ip>:<port> <password>`
+    log(format!("Pairing with {}:{} via ADB…", phone_ip, phone_port));
+    let target = format!("{}:{}", phone_ip, phone_port);
+    let (stdout, stderr, _) = run_cmd_async_lenient(adb_path, &["pair", &target, password])
         .await
-        .unwrap_or(false);
-        let _ = mdns.stop_browse("_adb-tls-pairing._tcp.local.");
-        if found {
-            log("✓ mDNS self-test passed — service is discoverable".into());
-        } else {
-            log("⚠ mDNS self-test: could not verify discovery".into());
-        }
-        found
+        .map_err(|e| format!("adb pair command failed to run: {}", e))?;
+
+    let combined = format!("{}\n{}", stdout, stderr);
+    if stdout.contains("Successfully paired") {
+        log("✓ Pairing successful!".into());
+    } else if combined.contains("Failed") || combined.contains("error") || combined.contains("refused") {
+        return Err(format!("Pairing failed: {}", combined.trim()));
+    } else if combined.contains("timed out") || combined.contains("timeout") {
+        return Err("Pairing timed out. The phone may have closed the pairing dialog.".into());
+    } else if stdout.trim().is_empty() && stderr.trim().is_empty() {
+        return Err("Pairing failed: no response from ADB.".into());
     } else {
-        log("⚠ mDNS self-test: browse failed to start".into());
-        false
-    };
-
-    // 2d. If mdns-sd daemon can't discover its own service, start a raw mDNS
-    //     announcer as fallback.  This sends gratuitous DNS response packets
-    //     directly to the multicast group, bypassing the daemon's socket issues.
-    let raw_announcer = if !self_test_passed {
-        log("Starting raw mDNS announcer as fallback…".into());
-        Some(tokio::spawn(raw_mdns_announce_loop(
-            service_name.to_string(),
-            hostname.clone(),
-            port,
-            local_ip.to_string(),
-            cancel.clone(),
-            app.clone(),
-        )))
-    } else {
-        None
-    };
-
-    log("Waiting for phone to scan QR and connect…".into());
-
-    // Give the initial announcement a moment to propagate
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-    // 3. Wait for the phone to connect (with periodic diagnostics)
-    let accept_future = listener.accept();
-    tokio::pin!(accept_future);
-
-    let start = std::time::Instant::now();
-    let mut warned_firewall = false;
-    let mut last_reannounce = std::time::Instant::now();
-
-    let result = loop {
-        tokio::select! {
-            accept_result = &mut accept_future => {
-                match accept_result {
-                    Ok((tcp_stream, addr)) => {
-                        let device_ip = addr.ip().to_string();
-                        log(format!("✓ TCP connection from {}", addr));
-
-                        // 4. TLS 1.3 handshake
-                        log("Starting TLS 1.3 handshake…".into());
-                        let mut tls_stream = tls_acceptor.accept(tcp_stream).await
-                            .map_err(|e| format!("TLS handshake failed: {}", e))?;
-                        log("✓ TLS handshake complete".into());
-
-                        // 5. Run SPAKE2 + PeerInfo exchange over TLS
-                        log("Running SPAKE2 key exchange…".into());
-                        handle_pairing(&mut tls_stream, password.as_bytes(), adb_pub_key).await?;
-                        log("✓ Pairing protocol complete!".into());
-
-                        break Ok(device_ip);
-                    }
-                    Err(e) => break Err(format!("TCP accept failed: {}", e)),
-                }
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
-                // ── Periodic check: cancel, diagnostics, timeout ──
-                if cancel.load(Ordering::Relaxed) {
-                    break Err("cancelled".to_string());
-                }
-
-                let elapsed = start.elapsed().as_secs();
-
-                // Re-announce mDNS more aggressively initially:
-                // every 5 s for the first 30 s, then every 15 s
-                let reannounce_interval = if elapsed < 30 { 5 } else { 15 };
-                if last_reannounce.elapsed().as_secs() >= reannounce_interval {
-                    last_reannounce = std::time::Instant::now();
-                    let re_info = mdns_sd::ServiceInfo::new(
-                        "_adb-tls-pairing._tcp.local.",
-                        service_name,
-                        &hostname,
-                        "",   // auto-detect IPs
-                        port,
-                        None::<std::collections::HashMap<String, String>>,
-                    );
-                    if let Ok(ri) = re_info {
-                        let _ = mdns.register(ri);
-                    }
-                    log("(re-announced mDNS service)".into());
-                }
-
-                // Diagnostic warning after 15 s with no connection
-                if elapsed >= 15 && !warned_firewall {
-                    warned_firewall = true;
-                    log("⚠ No connection received after 15 s — possible causes:".into());
-                    if cfg!(target_os = "windows") && fw_status == FirewallStatus::Failed {
-                        log("  • Windows Firewall is blocking inbound connections (most likely cause)".into());
-                        log("    → Accept the UAC prompt if it appears, or add a firewall rule manually".into());
-                    }
-                    log("  • mDNS multicast may not traverse between WiFi and wired LAN".into());
-                    log("    → Most routers bridge multicast fine; if yours doesn't, try connecting your PC via WiFi".into());
-                    log(format!("  • Server listening at {}:{}", local_ip, port));
-                }
-
-                // Timeout
-                if elapsed >= PAIRING_TIMEOUT_SECS {
-                    break Err(
-                        "QR pairing timed out — the phone never connected. \
-                         Check Windows Firewall and ensure mDNS multicast works between \
-                         your phone's WiFi and your PC's network."
-                            .to_string(),
-                    );
-                }
-            }
-        }
-    };
-
-    // Clean up raw announcer
-    if let Some(h) = raw_announcer { h.abort(); }
-
-    // Clean up mDNS regardless of result
-    let _ = mdns.unregister(&fullname);
-    let _ = mdns.shutdown();
-
-    // Clean up temporary firewall rules (program-level rules persist intentionally)
-    if fw_status == FirewallStatus::TempRulesAdded {
-        try_remove_temp_rules(port).await;
+        // Treat unknown output as possible success (some ADB versions differ)
+        log(format!("ADB pair output: {}", combined.trim()));
     }
 
-    // Restart ADB server (was killed earlier to free mDNS port 5353)
-    log("Restarting ADB server…".into());
-    let _ = run_cmd_async_lenient(adb_path, &["start-server"]).await;
+    // 4. Auto-connect: after pairing, the phone advertises a _adb-tls-connect service
+    let device_ip = phone_ip.clone();
+    log("Pairing succeeded — waiting for device to advertise connect service…".into());
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let _ = try_auto_connect(adb_path, &device_ip).await;
 
-    // If pairing succeeded, try to auto-connect via mDNS discovery
-    if let Ok(ref device_ip) = result {
-        log("Pairing succeeded — waiting for device to advertise connect service…".into());
-        // Give the phone a moment to start its connect service
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-        // Try to find the device's connect port via mDNS and auto-connect
-        let _ = try_auto_connect(adb_path, device_ip).await;
-    }
-
-    result
+    Ok(device_ip)
 }
 
 /// After successful pairing, try to auto-connect to the device by scanning
@@ -1463,6 +1796,29 @@ mod tests {
         assert!(pkt_str.contains("adb-test1234"));
         // IP bytes should be present: 192.168.0.100
         assert!(pkt.windows(4).any(|w| w == [192, 168, 0, 100]));
+    }
+
+    #[test]
+    fn parse_ip_port_valid() {
+        assert_eq!(
+            parse_ip_port("192.168.0.23:37215"),
+            Some(("192.168.0.23".to_string(), 37215))
+        );
+    }
+
+    #[test]
+    fn parse_ip_port_no_port() {
+        assert_eq!(parse_ip_port("192.168.0.23"), None);
+    }
+
+    #[test]
+    fn parse_ip_port_bad_port() {
+        assert_eq!(parse_ip_port("192.168.0.23:abc"), None);
+    }
+
+    #[test]
+    fn parse_ip_port_no_dot() {
+        assert_eq!(parse_ip_port("localhost:5555"), None);
     }
 }
 
