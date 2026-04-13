@@ -8,6 +8,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+- **Unified firewall setup and improved mDNS discovery** — consolidated firewall rule management and enhanced mDNS service discovery methods for more reliable wireless device detection
+
+### Fixed
+- **Device log noise during pairing** — debounced device log updates so "Device update" messages no longer flood the log panel during wireless pairing flows
+- **Duplicate event handling in wireless ADB hook** — stored callbacks in refs so the event-listener effect never re-registers, preventing double toasts and duplicate log entries from race conditions
+
 ---
 
 ## [1.9.0] — 2026-04-13
