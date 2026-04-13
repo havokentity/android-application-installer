@@ -1,5 +1,5 @@
 // ─── Wireless ADB Hook ───────────────────────────────────────────────────────
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import type { DeviceInfo, LogEntry, MdnsService } from "../types";
 import type { ToastLevel } from "../components/Toast";
@@ -220,6 +220,16 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
   const [qrPairingInfo, setQrPairingInfo] = useState<QrPairingInfo | null>(null);
   const [isQrPairing, setIsQrPairing] = useState(false);
 
+  // Store callbacks in refs so the event-listener effect never re-registers.
+  // This avoids a race where the async unlisten overlaps with a new listener,
+  // causing duplicate event handling (double toasts, double log entries).
+  const addLogRef = useRef(addLog);
+  const addToastRef = useRef(addToast);
+  const onDeviceChangeRef = useRef(onDeviceChange);
+  addLogRef.current = addLog;
+  addToastRef.current = addToast;
+  onDeviceChangeRef.current = onDeviceChange;
+
   // Listen for QR pairing result events from the backend
   useEffect(() => {
     const unlistenResult = listen<QrPairingResult>("qr-pairing-result", (event) => {
@@ -227,31 +237,28 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
       setIsQrPairing(false);
       setQrPairingInfo(null);
       if (result.success) {
-        addLog("success", `QR pairing successful${result.device_ip ? ` with ${result.device_ip}` : ""}!`);
-        addToast("Device paired via QR code", "success");
-        // The push-based device tracker (adb track-devices) already detects
-        // the new device automatically.  Schedule a safety-net refresh in case
-        // the tracker missed it (e.g. mDNS serial settling).
-        setTimeout(() => onDeviceChange?.(), 3000);
+        addLogRef.current("success", `QR pairing successful${result.device_ip ? ` with ${result.device_ip}` : ""}!`);
+        addToastRef.current("Device paired via QR code", "success");
+        setTimeout(() => onDeviceChangeRef.current?.(), 3000);
       } else {
         const err = result.error || "Unknown error";
         if (err.includes("cancelled")) {
-          addLog("info", "QR pairing cancelled.");
+          addLogRef.current("info", "QR pairing cancelled.");
         } else {
-          addLog("error", `QR pairing failed: ${err}`);
-          addToast(`QR pairing failed: ${err}`, "error");
+          addLogRef.current("error", `QR pairing failed: ${err}`);
+          addToastRef.current(`QR pairing failed: ${err}`, "error");
         }
       }
     });
     // Forward backend pairing progress to the log panel
     const unlistenLog = listen<string>("qr-pairing-log", (event) => {
-      addLog("info", `[QR] ${event.payload}`);
+      addLogRef.current("info", `[QR] ${event.payload}`);
     });
     return () => {
       unlistenResult.then((fn) => fn());
       unlistenLog.then((fn) => fn());
     };
-  }, [addLog, addToast, onDeviceChange]);
+  }, []);
 
   const canPair = !!(adbPath && isValidIp(pairIp) && isValidPort(pairPort) && isValidPairingCode(pairingCode) && !isPairing);
   const canConnect = !!(adbPath && isValidIp(connectIp) && isValidPort(connectPort) && !isConnecting);

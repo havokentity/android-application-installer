@@ -168,14 +168,14 @@ function App() {
 
   // ── Devices ───────────────────────────────────────────────────────────
   const dev = useDeviceState(adbPath, adbStatus, addLog);
+  const onDeviceChange = useCallback(() => {
+    // Quiet refresh immediately, then again after a delay for mDNS twin discovery.
+    dev.refreshDevicesQuiet();
+    setTimeout(() => dev.refreshDevicesQuiet(), 2000);
+  }, [dev.refreshDevicesQuiet]);
   const wireless = useWirelessAdb({
     adbPath, addLog, addToast,
-    onDeviceChange: () => {
-      // Quiet refresh immediately, then again after a delay for mDNS twin discovery.
-      // Uses quiet (non-verbose) refresh to avoid log spam and UI churn.
-      dev.refreshDevicesQuiet();
-      setTimeout(() => dev.refreshDevicesQuiet(), 2000);
-    },
+    onDeviceChange,
   });
 
   // Enrich devices with alternate serials from mDNS discovery data.
