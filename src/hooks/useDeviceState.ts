@@ -75,7 +75,9 @@ export function useDeviceState(
       const rawDevs = await api.getDevices(adbPath);
       const deduped = deduplicateDevices(rawDevs);
       setDevices(deduped);
-      prevDeviceFingerprint.current = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
+      // Store the RAW fingerprint (not deduped) so it's consistent with
+      // applyDeviceUpdate's format — prevents fingerprint desync.
+      prevDeviceFingerprint.current = rawDevs.map((d) => `${d.serial}:${d.state}`).sort().join(",");
       if (deduped.length > 0) {
         setSelectedDevice((prev) => {
           if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
@@ -108,10 +110,6 @@ export function useDeviceState(
     } catch (e) { console.warn("Quiet device refresh failed:", e); }
   }, [adbPath, applyDeviceUpdate]);
 
-  // Sync raw fingerprint ref when devices state changes externally
-  useEffect(() => {
-    prevDeviceFingerprint.current = devices.map((d) => `${d.serial}:${d.state}`).sort().join(",");
-  }, [devices]);
 
   // ── Push-based tracking with one-shot fallback ─────────────────────
   useEffect(() => {
@@ -181,8 +179,10 @@ export function useDeviceState(
 
     startTracking();
 
-    // Also refresh on window focus
-    const onFocus = () => refreshDevicesQuiet();
+    // Also refresh on window focus — but only when push tracking is NOT active.
+    // When the tracker is running it provides real-time updates; a concurrent
+    // poll can race with it and produce duplicate "Device update" logs.
+    const onFocus = () => { if (!trackingActive.current) refreshDevicesQuiet(); };
     window.addEventListener("focus", onFocus);
 
     return () => {
