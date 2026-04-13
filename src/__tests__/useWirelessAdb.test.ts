@@ -583,15 +583,15 @@ describe("useWirelessAdb", () => {
     expect(result.current.needsPairing).toBe(false);
   });
 
-  it("promptPairing copies connectIp into pairIp and clears pair fields", () => {
+  it("promptPairing copies connectIp into pairIp and clears pair fields", async () => {
     const addLog = vi.fn();
     const { result } = renderHook(() => useWirelessAdb({ ...defaults, addLog }));
     act(() => {
       result.current.setConnectIp("192.168.0.23");
       result.current.setConnectPort("38355");
     });
-    act(() => {
-      result.current.promptPairing();
+    await act(async () => {
+      await result.current.promptPairing();
     });
     expect(result.current.pairIp).toBe("192.168.0.23");
     expect(result.current.pairPort).toBe("");

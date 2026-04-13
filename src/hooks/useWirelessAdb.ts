@@ -179,7 +179,7 @@ export interface WirelessAdbState {
   cancelWirelessOp: () => Promise<void>;
   // pairing prompt after connect failure
   needsPairing: boolean;
-  promptPairing: () => void;
+  promptPairing: () => Promise<void>;
   // mDNS discovery
   discoveredDevices: MdnsService[];
   isScanning: boolean;
@@ -404,14 +404,42 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
     }
   }, [adbPath, isScanning, mdnsSupported, addLog, addToast, onDeviceChange]);
 
-  /** Copy the connect IP into the pairing fields so the user only needs port + code. */
-  const promptPairing = useCallback(() => {
+  /** Pre-fill pairing fields from the connect IP, looking up the correct
+   *  pairing port from mDNS discovery (pairing port ≠ connect port).
+   *  If no pairing service is cached, triggers a quick scan first. */
+  const promptPairing = useCallback(async () => {
     setPairIp(connectIp);
-    setPairPort("");
     setPairingCode("");
     setNeedsPairing(false);
-    addLog("info", `Pairing fields pre-filled with ${connectIp}. Enter the pairing port and code from your device.`);
-  }, [connectIp, addLog]);
+
+    // Look up the pairing service for this IP from already-discovered services
+    let pairingSvc = discoveredDevices.find(
+      (s) => s.service_type.includes("pairing") && s.ip_port.split(":")[0] === connectIp,
+    );
+
+    // If not found, do a quick mDNS scan to discover it
+    if (!pairingSvc && adbPath) {
+      try {
+        addLog("info", "Scanning for pairing service...");
+        const services = await api.adbMdnsServices(adbPath);
+        setDiscoveredDevices(services);
+        pairingSvc = services.find(
+          (s) => s.service_type.includes("pairing") && s.ip_port.split(":")[0] === connectIp,
+        );
+      } catch (e) {
+        console.warn("Auto-scan for pairing service failed:", e);
+      }
+    }
+
+    if (pairingSvc) {
+      const port = pairingSvc.ip_port.split(":")[1] || "";
+      setPairPort(port);
+      addLog("info", `Pairing fields pre-filled with ${connectIp}:${port} from network discovery. Enter the pairing code from your device.`);
+    } else {
+      setPairPort("");
+      addLog("info", `Pairing IP pre-filled with ${connectIp}. Enter the pairing port and code from your device (or scan for devices to auto-detect the port).`);
+    }
+  }, [connectIp, discoveredDevices, adbPath, addLog]);
 
   /** Auto-fill IP and port from a discovered service for pair or connect. */
   const selectDiscovered = useCallback((svc: MdnsService) => {
