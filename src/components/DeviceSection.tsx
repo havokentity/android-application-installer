@@ -1,3 +1,4 @@
+import { useRef, useEffect } from "react";
 import {
   Smartphone, RefreshCw, Download, Play, Rocket, Square,
   AlertTriangle, Search, Loader2, ChevronDown, ChevronRight, Trash2, X,
@@ -75,7 +76,7 @@ interface DeviceSectionProps {
   onAdbPathChange: (path: string, status: DetectionStatus) => void;
   onDetectAdb: () => void;
   expanded: boolean;
-  onToggleExpanded: () => void;
+  onSetExpanded: (v: boolean) => void;
   installAllDevices: boolean;
   onInstallAllDevicesChange: (checked: boolean) => void;
   installMode: InstallMode;
@@ -96,7 +97,7 @@ interface DeviceSectionProps {
 export function DeviceSection({
   devices, selectedDevice, onSelectDevice, loadingDevices, onRefreshDevices,
   adbPath, adbStatus, adbManaged, onAdbPathChange, onDetectAdb,
-  expanded, onToggleExpanded,
+  expanded, onSetExpanded,
   installAllDevices, onInstallAllDevicesChange,
   installMode, onInstallModeChange,
   isInstalling, canInstall, packageName,
@@ -117,6 +118,22 @@ export function DeviceSection({
   const uniqueActiveDevices = deduplicateDevices(activeDevices);
   // Show mode toggle when the selected device is wireless
   const selectedIsWireless = !!(selectedDeviceInfo && isWirelessDevice(selectedDeviceInfo.serial));
+
+  // Ref for scrolling to the pairing prompt when it appears
+  const pairPromptRef = useRef<HTMLDivElement>(null);
+
+  // When needsPairing becomes true, expand everything and scroll to the prompt
+  useEffect(() => {
+    if (wireless.needsPairing) {
+      onSetExpanded(true);
+      wireless.setWifiExpanded(true);
+      // Scroll after a brief delay so the DOM has expanded
+      requestAnimationFrame(() => {
+        pairPromptRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      });
+    }
+  }, [wireless.needsPairing]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Determine which modes are available
   const hasDirectMode = selectedIsWireless && (
     isIpPortDevice(selectedDeviceInfo!.serial) ||
@@ -129,7 +146,7 @@ export function DeviceSection({
 
   return (
     <section className={`section collapsible ${!deviceConnected ? "device-attention" : ""}`}>
-      <div className="section-header clickable device-header" onClick={onToggleExpanded}>
+      <div className="section-header clickable device-header" onClick={() => onSetExpanded(!expanded)}>
         <div className="device-header-left">
           {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           <Settings size={16} /><span>Device</span>
@@ -369,7 +386,7 @@ export function DeviceSection({
                 </div>
                 <p className="hint">IP & port shown on the Wireless Debugging screen (different port from pairing)</p>
                 {wireless.needsPairing && (
-                  <div className="wifi-pair-prompt">
+                  <div className="wifi-pair-prompt" ref={pairPromptRef}>
                     <AlertTriangle size={12} />
                     <span>Device doesn't appear to be paired.</span>
                     <button

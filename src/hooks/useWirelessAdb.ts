@@ -307,6 +307,7 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
         // If the failure looks like a pairing issue, prompt user to pair first
         if (msg.includes("failed to connect") || msg.includes("connection refused") || msg.includes("no response")) {
           setNeedsPairing(true);
+          setWifiExpanded(true);
         }
       }
     } finally {

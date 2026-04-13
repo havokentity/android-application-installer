@@ -81,7 +81,7 @@ const defaults = {
   onAdbPathChange: vi.fn(),
   onDetectAdb: vi.fn(),
   expanded: true,
-  onToggleExpanded: vi.fn(),
+  onSetExpanded: vi.fn(),
   installAllDevices: false,
   onInstallAllDevicesChange: vi.fn(),
   installMode: "direct" as const,
@@ -125,11 +125,11 @@ describe("DeviceSection", () => {
     expect(screen.queryByText("ADB Path")).not.toBeInTheDocument();
   });
 
-  it("calls onToggleExpanded when header is clicked", () => {
-    const onToggle = vi.fn();
-    render(<DeviceSection {...defaults} onToggleExpanded={onToggle} />);
+  it("calls onSetExpanded when header is clicked", () => {
+    const onSetExpanded = vi.fn();
+    render(<DeviceSection {...defaults} onSetExpanded={onSetExpanded} />);
     fireEvent.click(screen.getByText("Device"));
-    expect(onToggle).toHaveBeenCalledOnce();
+    expect(onSetExpanded).toHaveBeenCalledOnce();
   });
 
   it("shows 'No devices connected' when device list is empty", () => {
@@ -610,9 +610,14 @@ describe("DeviceSection", () => {
   // ── Pairing Prompt ─────────────────────────────────────────────────────
 
   it("shows pairing prompt when needsPairing is true", () => {
-    const wireless = { ...wirelessDefaults, wifiExpanded: true, needsPairing: true };
-    render(<DeviceSection {...defaults} expanded={true} wireless={wireless} />);
+    const onSetExpanded = vi.fn();
+    const setWifiExpanded = vi.fn();
+    const wireless = { ...wirelessDefaults, wifiExpanded: true, needsPairing: true, setWifiExpanded };
+    render(<DeviceSection {...defaults} expanded={true} onSetExpanded={onSetExpanded} wireless={wireless} />);
     expect(screen.getByText(/doesn't appear to be paired/)).toBeInTheDocument();
+    // The needsPairing effect should expand the device section and WiFi panel
+    expect(onSetExpanded).toHaveBeenCalledWith(true);
+    expect(setWifiExpanded).toHaveBeenCalledWith(true);
   });
 
   it("does not show pairing prompt when needsPairing is false", () => {

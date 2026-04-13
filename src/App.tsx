@@ -555,7 +555,7 @@ function App() {
       adbPath={adbPath} adbStatus={adbStatus} adbManaged={adbManaged}
       onAdbPathChange={handleAdbPathChange}
       onDetectAdb={detectAdb}
-      expanded={dev.deviceExpanded} onToggleExpanded={() => dev.setDeviceExpanded(!dev.deviceExpanded)}
+      expanded={dev.deviceExpanded} onSetExpanded={dev.setDeviceExpanded}
       installAllDevices={dev.installAllDevices} onInstallAllDevicesChange={dev.setInstallAllDevices}
       installMode={dev.installMode} onInstallModeChange={handleInstallModeChange}
       isInstalling={isInstalling} canInstall={canInstall} packageName={file.packageName}
