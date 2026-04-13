@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getVersion } from "@tauri-apps/api/app";
@@ -122,14 +122,18 @@ function App() {
   // ── ADB detection ────────────────────────────────────────────────────
   const [adbPath, setAdbPath] = useState("");
   const [adbStatus, setAdbStatus] = useState<"unknown" | "found" | "not-found">("unknown");
+  const adbDetected = useRef(false);
 
   const detectAdb = useCallback(async () => {
     try {
       const path = await api.findAdb();
       setAdbPath(path);
       setAdbStatus("found");
-      addLog("success", `ADB found: ${path}`);
-      addToast("ADB detected successfully", "success");
+      if (!adbDetected.current) {
+        adbDetected.current = true;
+        addLog("success", `ADB found: ${path}`);
+        addToast("ADB detected successfully", "success");
+      }
       localStorage.removeItem("adbPath"); // clear manual override on auto-detect success
     } catch (e) {
       // Fall back to persisted manual ADB path

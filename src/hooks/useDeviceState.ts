@@ -23,7 +23,7 @@ export function useDeviceState(
   );
   const [deviceDetails, setDeviceDetails] = useState<Record<string, DeviceDetails>>({});
   const prevDeviceFingerprint = useRef("");
-  const prevDedupedFingerprint = useRef("");
+  const lastLoggedDedupFp = useRef("");
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
   const fetchingDetailsFor = useRef<Set<string>>(new Set());
@@ -40,23 +40,29 @@ export function useDeviceState(
     const deduped = deduplicateDevices(devs);
     setDevices(deduped);
 
-    // Only log when the DEDUPLICATED result actually changed.
-    // Without this, wireless devices that appear under multiple serials
-    // (mDNS + IP:port) cause repeated "Device update" logs even though
-    // the deduplication collapses them to the same single device.
-    const dedupedFp = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
-    const dedupedChanged = dedupedFp !== prevDedupedFingerprint.current;
-    prevDedupedFingerprint.current = dedupedFp;
+    // Only log when the DEDUPLICATED result actually changed from
+    // what we last told the user.  We compare device-count + states
+    // (not exact serials) because deduplication can flip the chosen serial
+    // when a twin transport appears (mDNS → IP:port) — same device, different serial.
+    // This ref is ONLY updated when we log, so intermediate state syncs can't reset it.
+    const dedupedFp = `${deduped.length}:${deduped.map((d) => d.state).sort().join(",")}`;
+    const dedupedChanged = dedupedFp !== lastLoggedDedupFp.current;
 
     if (deduped.length > 0) {
       setSelectedDevice((prev) => {
         if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
         return prev;
       });
-      if (logChange && dedupedChanged) addLog("info", `Device update: ${deduped.length} device(s) connected`);
+      if (logChange && dedupedChanged) {
+        lastLoggedDedupFp.current = dedupedFp;
+        addLog("info", `Device update: ${deduped.length} device(s) connected`);
+      }
     } else {
       setSelectedDevice("");
-      if (logChange && dedupedChanged) addLog("info", "All devices disconnected.");
+      if (logChange && dedupedChanged) {
+        lastLoggedDedupFp.current = dedupedFp;
+        addLog("info", "All devices disconnected.");
+      }
     }
   }, [addLog]);
 
@@ -102,10 +108,9 @@ export function useDeviceState(
     } catch (e) { console.warn("Quiet device refresh failed:", e); }
   }, [adbPath, applyDeviceUpdate]);
 
-  // Sync refs
+  // Sync raw fingerprint ref when devices state changes externally
   useEffect(() => {
     prevDeviceFingerprint.current = devices.map((d) => `${d.serial}:${d.state}`).sort().join(",");
-    prevDedupedFingerprint.current = prevDeviceFingerprint.current;
   }, [devices]);
 
   // ── Push-based tracking with one-shot fallback ─────────────────────

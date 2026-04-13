@@ -229,8 +229,9 @@ export function useWirelessAdb({ adbPath, addLog, addToast, onDeviceChange }: Us
       if (result.success) {
         addLog("success", `QR pairing successful${result.device_ip ? ` with ${result.device_ip}` : ""}!`);
         addToast("Device paired via QR code", "success");
-        onDeviceChange?.();
-        // Extra refresh after a delay for the device to fully connect
+        // The push-based device tracker (adb track-devices) already detects
+        // the new device automatically.  Schedule a safety-net refresh in case
+        // the tracker missed it (e.g. mDNS serial settling).
         setTimeout(() => onDeviceChange?.(), 3000);
       } else {
         const err = result.error || "Unknown error";
