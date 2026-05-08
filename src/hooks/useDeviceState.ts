@@ -171,6 +171,10 @@ export function useDeviceState(
         }, INITIAL_TRACKING_TIMEOUT_MS);
       } catch (e) {
         console.warn("Device tracking failed, falling back to polling:", e);
+        addLog(
+          "warning",
+          `Device tracking unavailable — falling back to polling every ${POLLING_FALLBACK_INTERVAL_MS / 1000} seconds.`,
+        );
         trackingActive.current = false;
 
         // Tracking failed — do a one-shot device refresh + start polling
