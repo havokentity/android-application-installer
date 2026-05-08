@@ -1,0 +1,52 @@
+# Dependabot — auto-bumps pinned action SHAs, npm packages, and cargo crates.
+# Weekly cadence on Mondays (same day as the cron-driven Audit workflow).
+#
+# Groups bundle related packages into a single PR so a coordinated bump
+# (e.g. all @tauri-apps/* together) doesn't fragment into N separate reviews.
+
+version: 2
+updates:
+  # Rewrites the pinned SHAs in .github/workflows/*.yml when an action
+  # publishes a new tag. The trailing `# v6` comment gets updated too.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      tauri-js:
+        patterns:
+          - "@tauri-apps/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"
+    groups:
+      tauri-rs:
+        patterns:
+          - "tauri"
+          - "tauri-*"
+          - "tauri-plugin-*"
