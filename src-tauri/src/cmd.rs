@@ -288,12 +288,43 @@ pub(crate) fn set_cancel_flag(cancel: bool) {
     }
 }
 
-/// Write text content to a file at the given path.
-/// Used by the frontend to save logs and other exported text.
+/// Show a save dialog and write text content to the file the user picks.
+///
+/// The path is chosen via Tauri's native save dialog inside this command;
+/// the frontend never specifies the filesystem path. This prevents a
+/// compromised renderer from using `save_text_file` as an arbitrary file
+/// write primitive.
+///
+/// Returns Ok(true) if the file was saved, Ok(false) if the user cancelled.
 #[tauri::command]
-pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String> {
-    std::fs::write(&path, &content)
-        .map_err(|e| format!("Failed to write file '{}': {}", path, e))
+pub(crate) fn save_text_file(
+    app: tauri::AppHandle,
+    title: String,
+    suggested_filename: String,
+    content: String,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title(&title)
+        .set_file_name(&suggested_filename)
+        .add_filter("Log Files", &["log", "txt"])
+        .blocking_save_file();
+
+    let Some(file_path) = file_path else {
+        return Ok(false);
+    };
+
+    let path = file_path
+        .as_path()
+        .ok_or_else(|| "Dialog returned non-filesystem path".to_string())?
+        .to_path_buf();
+
+    std::fs::write(&path, content.as_bytes())
+        .map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
+    Ok(true)
 }
 
 /// Send a native OS notification.
