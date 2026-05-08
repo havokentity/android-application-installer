@@ -220,8 +220,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ── Wait until tauri-action's uploads are visible on the release ─────
+      # tauri-action returns once each platform's upload completes, but the
+      # release asset listing can lag for a few seconds while GitHub's API
+      # cache catches up. A fixed `sleep` is flaky — too short on a slow run,
+      # too long on a fast one. Poll until every pattern we'll consume below
+      # is present, with a hard cap.
       - name: Wait for release assets to propagate
-        run: sleep 15
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Patterns matching the assets the next step will download.
+          EXPECTED=("aarch64.app.tar.gz" "x64.app.tar.gz" ".AppImage" "x64-setup.exe")
+          TIMEOUT=180
+          INTERVAL=5
+          ELAPSED=0
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            ASSETS=$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' 2>/dev/null || echo "")
+            MISSING=()
+            for pat in "${EXPECTED[@]}"; do
+              if ! echo "$ASSETS" | grep -qF "$pat"; then
+                MISSING+=("$pat")
+              fi
+            done
+            if [ ${#MISSING[@]} -eq 0 ]; then
+              echo "All expected assets visible after ${ELAPSED}s"
+              exit 0
+            fi
+            echo "Waiting (${ELAPSED}s elapsed) — still missing: ${MISSING[*]}"
+            sleep $INTERVAL
+            ELAPSED=$((ELAPSED + INTERVAL))
+          done
+          echo "::warning::Timed out after ${TIMEOUT}s waiting for assets — proceeding (missing: ${MISSING[*]})"
 
       # ── Download release assets, create updater bundles, sign, upload ───
       - name: Create updater bundles and sign
