@@ -57,7 +57,12 @@ function runLoud(cmd) {
 
 // ─── Validate args ───────────────────────────────────────────────────────────
 
-const arg = process.argv[2];
+// Accept flags in any position so `release.mjs --skip-tests patch` and
+// `release.mjs patch --skip-tests` behave the same. Picking argv[2] blindly
+// could otherwise treat `--skip-tests` as the version string.
+const cliArgs = process.argv.slice(2);
+const skipTests = cliArgs.includes("--skip-tests");
+const arg = cliArgs.find((a) => !a.startsWith("--"));
 
 if (!arg) {
   console.error(`
@@ -101,8 +106,6 @@ try {
 console.log(`\n  Branch: ${branch}`);
 
 // ─── Run tests ───────────────────────────────────────────────────────────────
-
-const skipTests = process.argv.includes("--skip-tests");
 
 if (skipTests) {
   console.log("\n  ⚠  Skipping tests (--skip-tests flag)\n");
