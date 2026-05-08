@@ -84,6 +84,19 @@ function App() {
 
   // ── Operation progress listener ────────────────────────────────────
   useEffect(() => {
+    // Track the auto-hide timeouts we schedule so a fast unmount doesn't
+    // leave them running and firing setOperationState after teardown.
+    const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+    const scheduleHide = (delay: number, predicate: (s: OperationProgress | null) => boolean) => {
+      const t = setTimeout(() => {
+        pendingTimeouts.delete(t);
+        setOperationState((prev) => {
+          if (prev.type !== "idle" && predicate(prev.progress)) return { ...prev, progress: null };
+          return prev;
+        });
+      }, delay);
+      pendingTimeouts.add(t);
+    };
     const unlisten = listen<OperationProgress>("operation-progress", (event) => {
       const p = event.payload;
       setOperationState((prev) => {
@@ -91,18 +104,16 @@ function App() {
         return { ...prev, progress: p };
       });
       if (p.status === "done") {
-        setTimeout(() => setOperationState((prev) => {
-          if (prev.type !== "idle" && prev.progress?.status === "done") return { ...prev, progress: null };
-          return prev;
-        }), OPERATION_DONE_AUTO_HIDE_MS);
+        scheduleHide(OPERATION_DONE_AUTO_HIDE_MS, (prog) => prog?.status === "done");
       } else if (p.status === "error" || p.status === "cancelled") {
-        setTimeout(() => setOperationState((prev) => {
-          if (prev.type !== "idle" && (prev.progress?.status === "error" || prev.progress?.status === "cancelled")) return { ...prev, progress: null };
-          return prev;
-        }), OPERATION_ERROR_AUTO_HIDE_MS);
+        scheduleHide(OPERATION_ERROR_AUTO_HIDE_MS, (prog) => prog?.status === "error" || prog?.status === "cancelled");
       }
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      for (const t of pendingTimeouts) clearTimeout(t);
+      pendingTimeouts.clear();
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   // ── Recent files ───────────────────────────────────────────────────

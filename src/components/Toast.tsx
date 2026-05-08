@@ -1,5 +1,5 @@
 // ─── Toast Notification System ────────────────────────────────────────────────
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { CheckCircle, AlertTriangle, XCircle, Info, X } from "lucide-react";
 
 export type ToastLevel = "success" | "error" | "warning" | "info";
@@ -13,9 +13,9 @@ export interface Toast {
 
 let toastIdCounter = 0;
 
-// Match the `transition-duration` on `.toast-exit` in App.css so the
-// element stays mounted long enough to play the fade-out animation
-// before being removed from state.
+// Must match the duration of the `toast-slide-out` animation on
+// `.toast-exit` in App.css so the element stays mounted long enough
+// to play the fade-out before being removed from state.
 const TOAST_EXIT_ANIMATION_MS = 300;
 
 export function useToast(duration = 3500) {
@@ -23,11 +23,18 @@ export function useToast(duration = 3500) {
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
 
   const removeToast = useCallback((id: number) => {
-    // Mark as exiting for animation, then remove
+    // Mark as exiting for animation, then remove. The exit timer is
+    // tracked in timersRef under the same id so the unmount cleanup
+    // below clears it — otherwise a fast unmount could fire setState
+    // on an unmounted hook.
     setToasts((prev) => prev.map((t) => t.id === id ? { ...t, exiting: true } : t));
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_EXIT_ANIMATION_MS);
-    const timer = timersRef.current.get(id);
-    if (timer) { clearTimeout(timer); timersRef.current.delete(id); }
+    const existing = timersRef.current.get(id);
+    if (existing) clearTimeout(existing);
+    const exitTimer = setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+      timersRef.current.delete(id);
+    }, TOAST_EXIT_ANIMATION_MS);
+    timersRef.current.set(id, exitTimer);
   }, []);
 
   const addToast = useCallback((message: string, level: ToastLevel = "info") => {
@@ -36,6 +43,16 @@ export function useToast(duration = 3500) {
     const timer = setTimeout(() => removeToast(id), duration);
     timersRef.current.set(id, timer);
   }, [duration, removeToast]);
+
+  // Capture the ref into a local so the cleanup closure doesn't read
+  // a possibly-replaced ref at unmount time.
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+    };
+  }, []);
 
   return { toasts, addToast, removeToast };
 }
