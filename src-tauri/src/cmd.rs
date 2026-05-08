@@ -336,14 +336,16 @@ pub(crate) fn save_text_file(
 pub(crate) fn send_notification(title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
-        let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
-        let script = format!(
-            r#"display notification "{}" with title "{}" sound name "default""#,
-            escaped_body, escaped_title
-        );
+        // Pass title/body as script arguments instead of embedding them in
+        // the AppleScript source. The previous approach only escaped \ and
+        // ", which left backticks, $, parentheses, and embedded newlines
+        // free to break out of the string literal. Reading them via `argv`
+        // means osascript treats them purely as data — no escaping needed.
+        let script = r#"on run argv
+            display notification (item 2 of argv) with title (item 1 of argv) sound name "default"
+        end run"#;
         std::process::Command::new("osascript")
-            .args(["-e", &script])
+            .args(["-e", script, "--", &title, &body])
             .output()
             .map_err(|e| format!("Notification failed: {}", e))?;
         Ok(())
