@@ -168,9 +168,17 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
   }, []);
 
   // ── Drag & drop ───────────────────────────────────────────────────
+  // Captured-ref pattern: `onDragDropEvent` returns a Promise<UnlistenFn>.
+  // If the component unmounts before the promise resolves, the previous
+  // pattern (`unlisten.then(fn => fn())`) could lose the unsubscribe call;
+  // we instead track unmount via `cancelled` and either store the fn for
+  // cleanup or call it immediately on resolve if we're already gone.
   useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+
     const win = getCurrentWindow();
-    const unlisten = win.onDragDropEvent((event) => {
+    win.onDragDropEvent((event) => {
       if (event.payload.type === "enter") {
         setIsDragOver(true);
         // Check if the dragged file is supported
@@ -199,8 +207,17 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
           }
         }
       }
-    });
-    return () => { unlisten.then((fn) => fn()); };
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlistenFn = fn;
+      })
+      .catch((e) => console.warn("Drag-drop listener setup failed:", e));
+
+    return () => {
+      cancelled = true;
+      unlistenFn?.();
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Window title with current file ─────────────────────────────────
