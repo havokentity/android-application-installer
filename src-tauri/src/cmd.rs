@@ -288,12 +288,43 @@ pub(crate) fn set_cancel_flag(cancel: bool) {
     }
 }
 
-/// Write text content to a file at the given path.
-/// Used by the frontend to save logs and other exported text.
+/// Show a save dialog and write text content to the file the user picks.
+///
+/// The path is chosen via Tauri's native save dialog inside this command;
+/// the frontend never specifies the filesystem path. This prevents a
+/// compromised renderer from using `save_text_file` as an arbitrary file
+/// write primitive.
+///
+/// Returns Ok(true) if the file was saved, Ok(false) if the user cancelled.
 #[tauri::command]
-pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String> {
-    std::fs::write(&path, &content)
-        .map_err(|e| format!("Failed to write file '{}': {}", path, e))
+pub(crate) fn save_text_file(
+    app: tauri::AppHandle,
+    title: String,
+    suggested_filename: String,
+    content: String,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let file_path = app
+        .dialog()
+        .file()
+        .set_title(&title)
+        .set_file_name(&suggested_filename)
+        .add_filter("Log Files", &["log", "txt"])
+        .blocking_save_file();
+
+    let Some(file_path) = file_path else {
+        return Ok(false);
+    };
+
+    let path = file_path
+        .as_path()
+        .ok_or_else(|| "Dialog returned non-filesystem path".to_string())?
+        .to_path_buf();
+
+    std::fs::write(&path, content.as_bytes())
+        .map_err(|e| format!("Failed to write file '{}': {}", path.display(), e))?;
+    Ok(true)
 }
 
 /// Send a native OS notification.
@@ -305,16 +336,25 @@ pub(crate) fn save_text_file(path: String, content: String) -> Result<(), String
 pub(crate) fn send_notification(title: String, body: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        let escaped_title = title.replace('\\', "\\\\").replace('"', "\\\"");
-        let escaped_body = body.replace('\\', "\\\\").replace('"', "\\\"");
-        let script = format!(
-            r#"display notification "{}" with title "{}" sound name "default""#,
-            escaped_body, escaped_title
-        );
-        std::process::Command::new("osascript")
-            .args(["-e", &script])
+        // Pass title/body as script arguments instead of embedding them in
+        // the AppleScript source. The previous approach only escaped \ and
+        // ", which left backticks, $, parentheses, and embedded newlines
+        // free to break out of the string literal. Reading them via `argv`
+        // means osascript treats them purely as data — no escaping needed.
+        let script = r#"on run argv
+            display notification (item 2 of argv) with title (item 1 of argv) sound name "default"
+        end run"#;
+        let output = std::process::Command::new("osascript")
+            .args(["-e", script, "--", &title, &body])
             .output()
             .map_err(|e| format!("Notification failed: {}", e))?;
+        // Command::output() only fails if the process can't be spawned, so
+        // a non-zero exit (permission denied, AppleScript runtime error,
+        // etc.) is silent unless we check the status explicitly.
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("osascript failed: {}", stderr.trim()));
+        }
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]

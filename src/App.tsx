@@ -637,15 +637,14 @@ function App() {
   );
 
   const saveLogs = useCallback(async () => {
-    const outputPath = await save({
-      title: "Save Log", defaultPath: `install-log-${new Date().toISOString().slice(0, 10)}.log`,
-      filters: [{ name: "Log Files", extensions: ["log", "txt"] }],
-    });
-    if (!outputPath) return;
     const text = logs.map(e => `[${e.time}] [${e.level.toUpperCase()}] ${e.message}`).join("\n");
     try {
-      await api.saveTextFile(outputPath, text);
-      addToast("Log saved successfully", "success");
+      const saved = await api.saveTextFile(
+        "Save Log",
+        `install-log-${new Date().toISOString().slice(0, 10)}.log`,
+        text,
+      );
+      if (saved) addToast("Log saved successfully", "success");
     } catch (e) {
       addToast(`Failed to save log: ${e}`, "error");
     }

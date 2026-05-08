@@ -183,8 +183,12 @@ export const releaseCancelToken = (token: string) =>
 
 // ─── File I/O ─────────────────────────────────────────────────────────────────
 
-export const saveTextFile = (path: string, content: string) =>
-  invoke("save_text_file", { path, content });
+export const saveTextFile = (
+  title: string,
+  suggestedFilename: string,
+  content: string,
+): Promise<boolean> =>
+  invoke<boolean>("save_text_file", { title, suggestedFilename, content });
 
 // ─── Notifications ────────────────────────────────────────────────────────
 

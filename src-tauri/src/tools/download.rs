@@ -3,7 +3,7 @@
 
 use serde::Serialize;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use tauri::{AppHandle, Emitter};
 
 use super::config::mark_tool_updated;
@@ -472,6 +472,32 @@ fn extract_archive(archive_path: &PathBuf, dest_dir: &PathBuf) -> Result<(), Str
     Ok(())
 }
 
+/// Returns true if `entry_name` from a zip archive is safe to extract under
+/// `dest_dir`. Rejects absolute paths, `..` traversals, Windows drive
+/// prefixes, and anything that would resolve outside `dest_dir`.
+///
+/// The previous implementation only checked `name.contains("..")` which
+/// missed entries like `/etc/passwd` (no `..` but absolute), `C:\Windows\…`
+/// (Windows prefix), and entries where `..` only appears after path
+/// normalisation. See the zip-slip CVE class (CVE-2018-1002209 etc.).
+fn is_safe_zip_entry(entry_name: &str, dest_dir: &Path) -> bool {
+    let entry_path = Path::new(entry_name);
+    if entry_path.is_absolute() {
+        return false;
+    }
+    if entry_path.components().any(|c| {
+        matches!(
+            c,
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir
+        )
+    }) {
+        return false;
+    }
+    // Defense-in-depth: even after rejecting traversal components, ensure the
+    // joined result still lives under dest_dir.
+    dest_dir.join(entry_path).starts_with(dest_dir)
+}
+
 /// Synchronously extract a ZIP file into `dest_dir`.
 pub(crate) fn extract_zip(zip_path: &PathBuf, dest_dir: &PathBuf) -> Result<(), String> {
     let file = fs::File::open(zip_path).map_err(|e| format!("Failed to open zip: {}", e))?;
@@ -485,7 +511,7 @@ pub(crate) fn extract_zip(zip_path: &PathBuf, dest_dir: &PathBuf) -> Result<(), 
 
         // Sanitize to prevent zip-slip attacks
         let name = entry.name().to_string();
-        if name.contains("..") {
+        if !is_safe_zip_entry(&name, dest_dir) {
             continue;
         }
 
@@ -562,5 +588,30 @@ mod tests {
         let result = extract_zip(&bad_zip, &dir);
         assert!(result.is_err());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn safe_zip_entry_accepts_normal_paths() {
+        let dest = Path::new("/tmp/aai_extract");
+        assert!(is_safe_zip_entry("foo.txt", dest));
+        assert!(is_safe_zip_entry("nested/dir/file.txt", dest));
+        assert!(is_safe_zip_entry("a/b/c.bin", dest));
+    }
+
+    #[test]
+    fn safe_zip_entry_rejects_traversal() {
+        let dest = Path::new("/tmp/aai_extract");
+        assert!(!is_safe_zip_entry("../etc/passwd", dest));
+        assert!(!is_safe_zip_entry("foo/../../etc/passwd", dest));
+        assert!(!is_safe_zip_entry("foo/../../../bar", dest));
+        assert!(!is_safe_zip_entry("..", dest));
+    }
+
+    #[test]
+    fn safe_zip_entry_rejects_absolute() {
+        let dest = Path::new("/tmp/aai_extract");
+        // Absolute Unix paths
+        assert!(!is_safe_zip_entry("/etc/passwd", dest));
+        assert!(!is_safe_zip_entry("/foo/bar", dest));
     }
 }
