@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.9.2] — 2026-05-08
 ### Security
 - **Hardened zip extraction against zip-slip** — replaced the substring `..` check with proper component-based validation; rejects absolute paths, parent-dir traversals, and Windows drive prefixes, then defense-in-depth verifies the joined path stays inside the destination
 - **`save_text_file` no longer accepts a frontend-supplied path** — the native save dialog now opens inside Rust so a compromised renderer cannot use the command as an arbitrary file write primitive
