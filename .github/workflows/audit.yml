@@ -1,0 +1,53 @@
+name: Audit
+
+# Reports known-vulnerability advisories for npm and cargo dependencies.
+# Runs on PRs, pushes to main, and weekly to catch newly-published
+# advisories against existing pinned versions. Non-blocking — findings
+# show up as workflow warnings; the workflow itself doesn't fail merges.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 14 * * 1" # 14:00 UTC every Monday
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: 22
+          cache: "npm"
+
+      # --omit=dev: only check production deps. Dev tooling vulns are out
+      # of scope for shipped users, and a new advisory shouldn't gate a
+      # PR that doesn't touch package.json.
+      - name: npm audit (production deps)
+        continue-on-error: true
+        run: npm audit --omit=dev
+
+  cargo-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit
+        continue-on-error: true
+        working-directory: src-tauri
+        run: cargo audit
