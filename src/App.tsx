@@ -39,6 +39,15 @@ import { useToast, ToastContainer } from "./components/Toast";
 // LogPanel separately caps display to ~200; this caps the underlying array.
 const MAX_LOG_ENTRIES = 1000;
 
+// Auto-clear the operation progress display after the operation finishes,
+// so the bar disappears once the user has seen the final state.
+const OPERATION_DONE_AUTO_HIDE_MS = 1500;
+const OPERATION_ERROR_AUTO_HIDE_MS = 500;
+
+// After a wireless device connects, wait briefly for the second mDNS twin
+// transport to register before refreshing the device list a second time.
+const MDNS_REDISCOVERY_DELAY_MS = 2000;
+
 function App() {
   // ── Layout, theme & easter egg ────────────────────────────────────────
   const { layout, theme, setTheme, sidePanelWidth, toggleLayout, onDividerMouseDown, appRef } = useLayout();
@@ -75,6 +84,19 @@ function App() {
 
   // ── Operation progress listener ────────────────────────────────────
   useEffect(() => {
+    // Track the auto-hide timeouts we schedule so a fast unmount doesn't
+    // leave them running and firing setOperationState after teardown.
+    const pendingTimeouts = new Set<ReturnType<typeof setTimeout>>();
+    const scheduleHide = (delay: number, predicate: (s: OperationProgress | null) => boolean) => {
+      const t = setTimeout(() => {
+        pendingTimeouts.delete(t);
+        setOperationState((prev) => {
+          if (prev.type !== "idle" && predicate(prev.progress)) return { ...prev, progress: null };
+          return prev;
+        });
+      }, delay);
+      pendingTimeouts.add(t);
+    };
     const unlisten = listen<OperationProgress>("operation-progress", (event) => {
       const p = event.payload;
       setOperationState((prev) => {
@@ -82,18 +104,16 @@ function App() {
         return { ...prev, progress: p };
       });
       if (p.status === "done") {
-        setTimeout(() => setOperationState((prev) => {
-          if (prev.type !== "idle" && prev.progress?.status === "done") return { ...prev, progress: null };
-          return prev;
-        }), 1500);
+        scheduleHide(OPERATION_DONE_AUTO_HIDE_MS, (prog) => prog?.status === "done");
       } else if (p.status === "error" || p.status === "cancelled") {
-        setTimeout(() => setOperationState((prev) => {
-          if (prev.type !== "idle" && (prev.progress?.status === "error" || prev.progress?.status === "cancelled")) return { ...prev, progress: null };
-          return prev;
-        }), 500);
+        scheduleHide(OPERATION_ERROR_AUTO_HIDE_MS, (prog) => prog?.status === "error" || prog?.status === "cancelled");
       }
     });
-    return () => { unlisten.then((fn) => fn()); };
+    return () => {
+      for (const t of pendingTimeouts) clearTimeout(t);
+      pendingTimeouts.clear();
+      unlisten.then((fn) => fn());
+    };
   }, []);
 
   // ── Recent files ───────────────────────────────────────────────────
@@ -178,7 +198,7 @@ function App() {
   const onDeviceChange = useCallback(() => {
     // Quiet refresh immediately, then again after a delay for mDNS twin discovery.
     dev.refreshDevicesQuiet();
-    setTimeout(() => dev.refreshDevicesQuiet(), 2000);
+    setTimeout(() => dev.refreshDevicesQuiet(), MDNS_REDISCOVERY_DELAY_MS);
   }, [dev.refreshDevicesQuiet]);
   const wireless = useWirelessAdb({
     adbPath, addLog, addToast,
