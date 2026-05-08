@@ -36,7 +36,7 @@ rand = "0.8"
 tauri-plugin-notification = "2.3.3"
 notify-rust = "4.11"
 curve25519-dalek = { version = "4", features = ["rand_core", "digest"] }
-sha2 = "0.10"
+sha2 = "0.11"
 hkdf = "0.12"
 mdns-sd = "0.19"
 qrcode = "0.14"
