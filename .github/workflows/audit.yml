@@ -44,8 +44,11 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
 
+      # Pinning the version keeps the supply-chain story consistent with the
+      # action SHAs above: an unsolicited cargo-audit release (or a hijacked
+      # crates.io publish) doesn't silently land in CI. Bump intentionally.
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --locked --version 0.22.1
 
       - name: cargo audit
         continue-on-error: true
