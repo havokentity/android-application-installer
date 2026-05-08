@@ -223,25 +223,41 @@ export function useDeviceState(
   }, [selectedDevice, devices.length]);
 
   // ── Fetch device details (Android version, API level, storage) ────
-  const fetchDeviceDetails = useCallback(async (serial: string) => {
+  // Two safety properties layered together:
+  //   1. fetchingDetailsFor dedups concurrent calls for the same serial so a
+  //      churning device list doesn't fan out into duplicate ADB invocations.
+  //   2. signal.aborted lets the effect's cleanup discard a result that
+  //      arrives after the device list moved on. Tauri's invoke doesn't
+  //      honour AbortSignal natively, so we drop the value post-resolve
+  //      instead of truly cancelling the ADB call.
+  // Trade-off: if a fetch is in-flight when the effect aborts, the dedup
+  // entry blocks the next effect from re-issuing for that serial — its
+  // details stay missing until the next devices change. In practice
+  // devices keeps churning during pairing, so the next change re-fetches.
+  const fetchDeviceDetails = useCallback(async (serial: string, signal: AbortSignal) => {
     if (!adbPath) return;
-    // Skip if already fetched or currently in-flight
     if (fetchingDetailsFor.current.has(serial)) return;
     fetchingDetailsFor.current.add(serial);
     try {
       const details = await api.getDeviceDetails(adbPath, serial);
+      if (signal.aborted) return;
       setDeviceDetails((prev) => ({ ...prev, [serial]: details }));
-    } catch (e) { console.warn(`Failed to get details for ${serial}:`, e); }
-    finally { fetchingDetailsFor.current.delete(serial); }
+    } catch (e) {
+      if (!signal.aborted) console.warn(`Failed to get details for ${serial}:`, e);
+    } finally {
+      fetchingDetailsFor.current.delete(serial);
+    }
   }, [adbPath]);
 
   // Auto-fetch details for selected device and all online devices
   useEffect(() => {
     if (!adbPath) return;
+    const controller = new AbortController();
     const online = devices.filter((d) => d.state === "device");
     for (const d of online) {
-      fetchDeviceDetails(d.serial);
+      fetchDeviceDetails(d.serial, controller.signal);
     }
+    return () => controller.abort();
   }, [devices, adbPath, fetchDeviceDetails]);
 
   return {
