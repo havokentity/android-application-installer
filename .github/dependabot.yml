@@ -26,9 +26,14 @@ updates:
     commit-message:
       prefix: "deps"
     groups:
+      # Runtime Tauri packages should bump together to stay in sync with
+      # the Rust `tauri` crate version. The CLI is a dev-only build tool
+      # whose major bumps are independent and deserve their own review.
       tauri-js:
         patterns:
           - "@tauri-apps/*"
+        exclude-patterns:
+          - "@tauri-apps/cli"
       react:
         patterns:
           - "react"
