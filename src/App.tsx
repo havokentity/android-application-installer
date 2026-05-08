@@ -35,6 +35,10 @@ import { useToast, ToastContainer } from "./components/Toast";
 
 // ─── App Component ────────────────────────────────────────────────────────────
 
+// Cap log storage so a long session can't balloon memory or slow re-renders.
+// LogPanel separately caps display to ~200; this caps the underlying array.
+const MAX_LOG_ENTRIES = 1000;
+
 function App() {
   // ── Layout, theme & easter egg ────────────────────────────────────────
   const { layout, theme, setTheme, sidePanelWidth, toggleLayout, onDividerMouseDown, appRef } = useLayout();
@@ -44,7 +48,10 @@ function App() {
   // ── Logging ──────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const addLog = useCallback((level: LogEntry["level"], message: string) => {
-    setLogs((prev) => [...prev, { id: nextLogId(), time: now(), level, message }]);
+    setLogs((prev) => {
+      const next = [...prev, { id: nextLogId(), time: now(), level, message }];
+      return next.length > MAX_LOG_ENTRIES ? next.slice(-MAX_LOG_ENTRIES) : next;
+    });
   }, []);
 
   // ── General state ─────────────────────────────────────────────────

@@ -174,8 +174,8 @@ export function useFileState({ addLog, recordRecentFile, onAabSelected, getAabTo
       if (event.payload.type === "enter") {
         setIsDragOver(true);
         // Check if the dragged file is supported
-        const paths = (event.payload as any).paths;
-        if (paths && paths.length > 0 && !paths.some((p: string) => getFileType(p))) {
+        const paths = event.payload.paths;
+        if (paths.length > 0 && !paths.some((p) => getFileType(p))) {
           setIsDragRejected(true);
         } else {
           setIsDragRejected(false);

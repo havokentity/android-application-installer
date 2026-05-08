@@ -230,16 +230,23 @@ fn derive_aes_key(spake2_key: &[u8]) -> Result<[u8; 16], String> {
 }
 
 /// Build a 12-byte GCM nonce from a counter (LE u64, padded with zeros).
-fn make_nonce(counter: u64) -> [u8; 12] {
+///
+/// Refuses `u64::MAX` so that any future caller incrementing the counter
+/// cannot wrap to 0 and reuse a nonce — IV reuse with the same key breaks
+/// AES-GCM confidentiality and authenticity catastrophically.
+fn make_nonce(counter: u64) -> Result<[u8; 12], String> {
+    if counter == u64::MAX {
+        return Err("AES-GCM nonce counter exhausted".into());
+    }
     let mut nonce = [0u8; 12];
     nonce[..8].copy_from_slice(&counter.to_le_bytes());
-    nonce
+    Ok(nonce)
 }
 
 /// Encrypt data with AES-128-GCM.
 fn aes_encrypt(key: &[u8; 16], nonce_counter: u64, plaintext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes128Gcm::new(Key::<Aes128Gcm>::from_slice(key));
-    let nonce = make_nonce(nonce_counter);
+    let nonce = make_nonce(nonce_counter)?;
     cipher
         .encrypt(Nonce::from_slice(&nonce), plaintext)
         .map_err(|e| format!("AES-GCM encrypt failed: {}", e))
@@ -248,7 +255,7 @@ fn aes_encrypt(key: &[u8; 16], nonce_counter: u64, plaintext: &[u8]) -> Result<V
 /// Decrypt data with AES-128-GCM.
 fn aes_decrypt(key: &[u8; 16], nonce_counter: u64, ciphertext: &[u8]) -> Result<Vec<u8>, String> {
     let cipher = Aes128Gcm::new(Key::<Aes128Gcm>::from_slice(key));
-    let nonce = make_nonce(nonce_counter);
+    let nonce = make_nonce(nonce_counter)?;
     cipher
         .decrypt(Nonce::from_slice(&nonce), ciphertext)
         .map_err(|e| format!("AES-GCM decrypt failed: {}", e))
@@ -554,15 +561,20 @@ mod tests {
 
     #[test]
     fn make_nonce_format() {
-        let n = make_nonce(0);
+        let n = make_nonce(0).unwrap();
         assert_eq!(n, [0u8; 12]);
 
-        let n = make_nonce(1);
+        let n = make_nonce(1).unwrap();
         assert_eq!(n[0], 1);
         assert_eq!(n[1..], [0u8; 11]);
 
-        let n = make_nonce(256);
+        let n = make_nonce(256).unwrap();
         assert_eq!(n[0], 0);
         assert_eq!(n[1], 1);
+    }
+
+    #[test]
+    fn make_nonce_rejects_max() {
+        assert!(make_nonce(u64::MAX).is_err());
     }
 }
