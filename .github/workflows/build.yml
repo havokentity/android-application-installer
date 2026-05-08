@@ -232,8 +232,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Patterns matching the assets the next step will download.
-          EXPECTED=("aarch64.app.tar.gz" "x64.app.tar.gz" ".AppImage" "x64-setup.exe")
+          # End-of-line regex patterns matching the exact suffixes the next
+          # step will download (`*_aarch64.app.tar.gz`, `*_x64.app.tar.gz`,
+          # `*.AppImage`, `*_x64-setup.exe`). Anchoring with $ avoids false
+          # positives — e.g. a stray `*.AppImage.tar.gz` left over from an
+          # earlier run shouldn't satisfy the .AppImage requirement.
+          EXPECTED=('_aarch64\.app\.tar\.gz$' '_x64\.app\.tar\.gz$' '\.AppImage$' '_x64-setup\.exe$')
           TIMEOUT=180
           INTERVAL=5
           ELAPSED=0
@@ -241,7 +245,7 @@ jobs:
             ASSETS=$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name' 2>/dev/null || echo "")
             MISSING=()
             for pat in "${EXPECTED[@]}"; do
-              if ! echo "$ASSETS" | grep -qF "$pat"; then
+              if ! echo "$ASSETS" | grep -qE "$pat"; then
                 MISSING+=("$pat")
               fi
             done
