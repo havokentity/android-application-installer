@@ -344,10 +344,17 @@ pub(crate) fn send_notification(title: String, body: String) -> Result<(), Strin
         let script = r#"on run argv
             display notification (item 2 of argv) with title (item 1 of argv) sound name "default"
         end run"#;
-        std::process::Command::new("osascript")
+        let output = std::process::Command::new("osascript")
             .args(["-e", script, "--", &title, &body])
             .output()
             .map_err(|e| format!("Notification failed: {}", e))?;
+        // Command::output() only fails if the process can't be spawned, so
+        // a non-zero exit (permission denied, AppleScript runtime error,
+        // etc.) is silent unless we check the status explicitly.
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("osascript failed: {}", stderr.trim()));
+        }
         Ok(())
     }
     #[cfg(not(target_os = "macos"))]
