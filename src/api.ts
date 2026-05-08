@@ -188,7 +188,7 @@ export const saveTextFile = (
   suggestedFilename: string,
   content: string,
 ): Promise<boolean> =>
-  invoke("save_text_file", { title, suggestedFilename, content });
+  invoke<boolean>("save_text_file", { title, suggestedFilename, content });
 
 // ─── Notifications ────────────────────────────────────────────────────────
 
