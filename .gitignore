@@ -20,6 +20,7 @@ pnpm-debug.log*
 !.vscode/extensions.json
 .idea/*
 !.idea/runConfigurations/
+.claude/
 *.suo
 *.ntvs*
 *.njsproj
