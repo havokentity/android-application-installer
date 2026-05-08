@@ -26,6 +26,7 @@ export function useDeviceState(
   const lastLoggedDedupFp = useRef("");
   const trackingActive = useRef(false);
   const refreshInProgress = useRef(false);
+  const fetchingDetailsFor = useRef<Set<string>>(new Set());
   // Debounce log for device-count changes: after wireless pairing ADB briefly
   // reports both mDNS and IP:port transports as separate devices before the
   // properties needed for deduplication (model, product) are populated.
@@ -222,19 +223,29 @@ export function useDeviceState(
   }, [selectedDevice, devices.length]);
 
   // ── Fetch device details (Android version, API level, storage) ────
-  // The signal lets callers cancel — when the device list churns (wireless
-  // pairing in particular), an in-flight result for a now-stale list could
-  // otherwise overwrite fresh state. Tauri's `invoke` doesn't honour
-  // AbortSignal natively, so we discard the result post-resolve instead of
-  // truly cancelling the underlying ADB call.
+  // Two safety properties layered together:
+  //   1. fetchingDetailsFor dedups concurrent calls for the same serial so a
+  //      churning device list doesn't fan out into duplicate ADB invocations.
+  //   2. signal.aborted lets the effect's cleanup discard a result that
+  //      arrives after the device list moved on. Tauri's invoke doesn't
+  //      honour AbortSignal natively, so we drop the value post-resolve
+  //      instead of truly cancelling the ADB call.
+  // Trade-off: if a fetch is in-flight when the effect aborts, the dedup
+  // entry blocks the next effect from re-issuing for that serial — its
+  // details stay missing until the next devices change. In practice
+  // devices keeps churning during pairing, so the next change re-fetches.
   const fetchDeviceDetails = useCallback(async (serial: string, signal: AbortSignal) => {
     if (!adbPath) return;
+    if (fetchingDetailsFor.current.has(serial)) return;
+    fetchingDetailsFor.current.add(serial);
     try {
       const details = await api.getDeviceDetails(adbPath, serial);
       if (signal.aborted) return;
       setDeviceDetails((prev) => ({ ...prev, [serial]: details }));
     } catch (e) {
       if (!signal.aborted) console.warn(`Failed to get details for ${serial}:`, e);
+    } finally {
+      fetchingDetailsFor.current.delete(serial);
     }
   }, [adbPath]);
 
