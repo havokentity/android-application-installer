@@ -39,6 +39,15 @@ import { useToast, ToastContainer } from "./components/Toast";
 // LogPanel separately caps display to ~200; this caps the underlying array.
 const MAX_LOG_ENTRIES = 1000;
 
+// Auto-clear the operation progress display after the operation finishes,
+// so the bar disappears once the user has seen the final state.
+const OPERATION_DONE_AUTO_HIDE_MS = 1500;
+const OPERATION_ERROR_AUTO_HIDE_MS = 500;
+
+// After a wireless device connects, wait briefly for the second mDNS twin
+// transport to register before refreshing the device list a second time.
+const MDNS_REDISCOVERY_DELAY_MS = 2000;
+
 function App() {
   // ── Layout, theme & easter egg ────────────────────────────────────────
   const { layout, theme, setTheme, sidePanelWidth, toggleLayout, onDividerMouseDown, appRef } = useLayout();
@@ -85,12 +94,12 @@ function App() {
         setTimeout(() => setOperationState((prev) => {
           if (prev.type !== "idle" && prev.progress?.status === "done") return { ...prev, progress: null };
           return prev;
-        }), 1500);
+        }), OPERATION_DONE_AUTO_HIDE_MS);
       } else if (p.status === "error" || p.status === "cancelled") {
         setTimeout(() => setOperationState((prev) => {
           if (prev.type !== "idle" && (prev.progress?.status === "error" || prev.progress?.status === "cancelled")) return { ...prev, progress: null };
           return prev;
-        }), 500);
+        }), OPERATION_ERROR_AUTO_HIDE_MS);
       }
     });
     return () => { unlisten.then((fn) => fn()); };
@@ -178,7 +187,7 @@ function App() {
   const onDeviceChange = useCallback(() => {
     // Quiet refresh immediately, then again after a delay for mDNS twin discovery.
     dev.refreshDevicesQuiet();
-    setTimeout(() => dev.refreshDevicesQuiet(), 2000);
+    setTimeout(() => dev.refreshDevicesQuiet(), MDNS_REDISCOVERY_DELAY_MS);
   }, [dev.refreshDevicesQuiet]);
   const wireless = useWirelessAdb({
     adbPath, addLog, addToast,

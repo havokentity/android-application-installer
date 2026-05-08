@@ -8,6 +8,17 @@ import * as api from "../api";
 
 export type InstallMode = "direct" | "verified";
 
+// Wait this long after wireless pairing for ADB's mDNS + IP:port transports
+// to settle into a stable deduplicated list before logging the change.
+const DEVICE_LOG_DEBOUNCE_MS = 1500;
+
+// If `adb track-devices` returns no event within this window after start,
+// assume zero devices are connected and clear the loading state.
+const INITIAL_TRACKING_TIMEOUT_MS = 3000;
+
+// Polling cadence used as a fallback when `adb track-devices` is unavailable.
+const POLLING_FALLBACK_INTERVAL_MS = 8000;
+
 export function useDeviceState(
   adbPath: string,
   adbStatus: DetectionStatus,
@@ -80,7 +91,7 @@ export function useDeviceState(
           }
           pendingDeviceLog.current = null;
         }
-      }, 1500);
+      }, DEVICE_LOG_DEBOUNCE_MS);
     }
   }, [addLog]);
 
@@ -157,7 +168,7 @@ export function useDeviceState(
         // (happens when zero devices are connected).
         setTimeout(() => {
           if (!cancelled) setLoadingDevices(false);
-        }, 3000);
+        }, INITIAL_TRACKING_TIMEOUT_MS);
       } catch (e) {
         console.warn("Device tracking failed, falling back to polling:", e);
         trackingActive.current = false;
@@ -190,7 +201,7 @@ export function useDeviceState(
 
         if (!cancelled) {
           setLoadingDevices(false);
-          intervalId = setInterval(refreshDevicesQuiet, 8000);
+          intervalId = setInterval(refreshDevicesQuiet, POLLING_FALLBACK_INTERVAL_MS);
         }
       }
     };

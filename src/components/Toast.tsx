@@ -13,6 +13,11 @@ export interface Toast {
 
 let toastIdCounter = 0;
 
+// Match the `transition-duration` on `.toast-exit` in App.css so the
+// element stays mounted long enough to play the fade-out animation
+// before being removed from state.
+const TOAST_EXIT_ANIMATION_MS = 300;
+
 export function useToast(duration = 3500) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const timersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
@@ -20,7 +25,7 @@ export function useToast(duration = 3500) {
   const removeToast = useCallback((id: number) => {
     // Mark as exiting for animation, then remove
     setToasts((prev) => prev.map((t) => t.id === id ? { ...t, exiting: true } : t));
-    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 300);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), TOAST_EXIT_ANIMATION_MS);
     const timer = timersRef.current.get(id);
     if (timer) { clearTimeout(timer); timersRef.current.delete(id); }
   }, []);
