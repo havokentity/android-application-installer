@@ -10,11 +10,8 @@
     "core:window:allow-center",
     "core:window:allow-set-title",
     "core:app:default",
-    "opener:default",
     "dialog:default",
-    "notification:default",
     "updater:default",
-    "process:allow-restart",
-    "process:allow-exit"
+    "process:allow-restart"
   ]
 }
