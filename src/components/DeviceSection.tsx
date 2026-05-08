@@ -428,10 +428,12 @@ export function DeviceSection({
                 )}
                 {wireless.isQrPairing && wireless.qrPairingInfo && (
                   <div className="qr-pairing-dialog">
-                    <div
-                      className="qr-pairing-code"
-                      dangerouslySetInnerHTML={{ __html: wireless.qrPairingInfo.qr_svg }}
-                    />
+                    <div className="qr-pairing-code">
+                      <img
+                        alt="QR code for wireless ADB pairing"
+                        src={`data:image/svg+xml,${encodeURIComponent(wireless.qrPairingInfo.qr_svg)}`}
+                      />
+                    </div>
                     <div className="qr-pairing-instructions">
                       <p className="qr-pairing-step"><strong>On your Android phone:</strong></p>
                       <ol className="qr-pairing-steps">
