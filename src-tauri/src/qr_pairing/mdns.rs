@@ -828,7 +828,8 @@ async fn raw_mdns_announce_loop(
     let _ = socket.set_nonblocking(true);
     // RFC 6762 §11: ALL mDNS responses (including unicast) MUST have IP TTL=255.
     // Android's mDNSResponder silently drops packets with TTL != 255.
-    match socket.set_ttl(255) {
+    // socket2 0.6 renamed set_ttl → set_ttl_v4 (and added a v6 variant).
+    match socket.set_ttl_v4(255) {
         Ok(()) => {},
         Err(e) => log(format!("[raw-mDNS] ⚠ Failed to set TTL=255: {} — Android may ignore our responses!", e)),
     }
