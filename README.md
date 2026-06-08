@@ -7,7 +7,7 @@
 **Install APK & AAB files onto Android devices — no SDK required.**
 
 [![Build & Release](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml/badge.svg)](https://github.com/havokentity/android-application-installer/actions/workflows/build.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri_2-FFC131?logo=tauri&logoColor=333)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React_19-61DAFB?logo=react&logoColor=333)](https://react.dev/)
 [![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)](https://www.rust-lang.org/)
@@ -377,4 +377,4 @@ The public key is already embedded in `tauri.conf.json`. Only the private key ne
 
 ## 📄 License
 
-[MIT](LICENSE)
+[GPL-3.0-only](LICENSE)
