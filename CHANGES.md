@@ -7,6 +7,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+### Changed
+- **Updater manifest served from the release itself** — CI now uploads `updater.json` as a release asset and the updater checks `releases/latest/download/updater.json` first, so new versions are visible the instant a release is published; the raw.githubusercontent.com URL (CDN-cached ~5 min) remains as a fallback endpoint
 
 ---
 

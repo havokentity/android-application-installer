@@ -352,6 +352,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/generate-updater-json.mjs ${{ github.ref_name }}
 
+      # Upload updater.json as a release asset so the primary updater endpoint
+      # (releases/latest/download/updater.json) flips over the moment this
+      # release becomes "latest" — the raw.githubusercontent.com fallback
+      # endpoint lags up to ~5 minutes behind due to CDN caching.
+      - name: Upload updater.json to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.ref_name }}" updater.json --clobber
+
       - name: Commit and push updater.json
         run: |
           git config user.name "github-actions[bot]"

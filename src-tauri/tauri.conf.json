@@ -27,6 +27,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
+        "https://github.com/havokentity/android-application-installer/releases/latest/download/updater.json",
         "https://raw.githubusercontent.com/havokentity/android-application-installer/main/updater.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJCOTNBNjRGMzcwRDZCQkUKUldTK2F3MDNUNmFUdThIYWMzeGVDTlBRVmxNaVNTTHVuM29LeVRKTVEvRE5qMUVlYnNmMTRacUMK"

@@ -173,7 +173,8 @@ After the push, the GitHub Actions workflow triggers automatically:
 4. The `update-updater-json` job then:
    - Fetches `.sig` files from the release
    - Writes `updater.json`
-   - Commits `updater.json` to `main`
+   - Uploads `updater.json` as a release asset (primary updater endpoint — available instantly via `releases/latest/download/updater.json`)
+   - Commits `updater.json` to `main` (fallback endpoint via raw.githubusercontent.com; CDN-cached ~5 min)
 
 > **Build time:** Typically 15–25 minutes for all platforms.
 
