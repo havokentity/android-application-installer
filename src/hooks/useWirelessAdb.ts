@@ -39,7 +39,28 @@ export interface DeduplicatedDevice extends DeviceInfo {
  *
  * The discarded twin's serial is stored as `alternateSerial` on the surviving entry.
  */
-export function deduplicateDevices(devices: DeviceInfo[]): DeduplicatedDevice[] {
+/** adb transiently lists an mDNS transport under its bare GUID
+ *  ("adb-XXXX-YYYY") while (re)connecting, alongside or instead of the full
+ *  service serial ("adb-XXXX-YYYY._adb-tls-connect._tcp"). When both forms of
+ *  the same transport appear, keep the online one (the full form on a tie) so
+ *  the transitional GUID entry can never be selected as an install target. */
+function mergeGuidTwins(devices: DeviceInfo[]): DeviceInfo[] {
+  const baseOf = (s: string) => s.split("._adb-tls")[0];
+  return devices.filter((d) => {
+    if (!d.serial.startsWith("adb-")) return true;
+    const twin = devices.find(
+      (o) => o.serial !== d.serial && o.serial.startsWith("adb-") && baseOf(o.serial) === baseOf(d.serial),
+    );
+    if (!twin) return true;
+    const dOnline = d.state === "device";
+    const twinOnline = twin.state === "device";
+    if (dOnline !== twinOnline) return dOnline;
+    return isMdnsDevice(d.serial);
+  });
+}
+
+export function deduplicateDevices(rawDevices: DeviceInfo[]): DeduplicatedDevice[] {
+  const devices = mergeGuidTwins(rawDevices);
   const result: DeduplicatedDevice[] = [];
   const consumed = new Set<string>();
 

@@ -67,7 +67,7 @@ export function useDeviceState(
 
     if (deduped.length > 0) {
       setSelectedDevice((prev) => {
-        if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
+        if (!prev || !deduped.find((d) => d.serial === prev)) return (deduped.find((d) => d.state === "device") ?? deduped[0]).serial;
         return prev;
       });
     } else {
@@ -109,7 +109,7 @@ export function useDeviceState(
       prevDeviceFingerprint.current = rawDevs.map((d) => `${d.serial}:${d.state}`).sort().join(",");
       if (deduped.length > 0) {
         setSelectedDevice((prev) => {
-          if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
+          if (!prev || !deduped.find((d) => d.serial === prev)) return (deduped.find((d) => d.state === "device") ?? deduped[0]).serial;
           return prev;
         });
         addLog("info", `Found ${deduped.length} device(s)`);
@@ -186,7 +186,7 @@ export function useDeviceState(
             prevDeviceFingerprint.current = deduped.map((d) => `${d.serial}:${d.state}`).sort().join(",");
             if (deduped.length > 0) {
               setSelectedDevice((prev) => {
-                if (!prev || !deduped.find((d) => d.serial === prev)) return deduped[0].serial;
+                if (!prev || !deduped.find((d) => d.serial === prev)) return (deduped.find((d) => d.state === "device") ?? deduped[0]).serial;
                 return prev;
               });
               addLog("info", `Found ${deduped.length} device(s)`);

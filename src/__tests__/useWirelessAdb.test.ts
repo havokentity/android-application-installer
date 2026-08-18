@@ -118,6 +118,44 @@ describe("deduplicateDevices", () => {
     expect(result[0].serial).toBe("192.168.0.23:38355");
   });
 
+  it("merges a transitional GUID entry with its online full-form mDNS twin", () => {
+    const devices = [
+      { ...makeDevice("adb-10BF190RC9001UZ-jvFPtf"), state: "offline" },
+      makeDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp");
+  });
+
+  it("keeps the GUID entry when it is the online one", () => {
+    const devices = [
+      makeDevice("adb-10BF190RC9001UZ-jvFPtf"),
+      { ...makeDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp", "I2401", "ossi"), state: "offline" },
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("adb-10BF190RC9001UZ-jvFPtf");
+  });
+
+  it("prefers the full-form serial when GUID and full form are both online", () => {
+    const devices = [
+      makeDevice("adb-10BF190RC9001UZ-jvFPtf"),
+      makeDevice("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp", "I2401", "ossi"),
+    ];
+    const result = deduplicateDevices(devices);
+    expect(result).toHaveLength(1);
+    expect(result[0].serial).toBe("adb-10BF190RC9001UZ-jvFPtf._adb-tls-connect._tcp");
+  });
+
+  it("does not merge GUID-like serials of different devices", () => {
+    const devices = [
+      makeDevice("adb-AAAA-1111", "Pixel 7", "panther"),
+      makeDevice("adb-BBBB-2222._adb-tls-connect._tcp", "I2401", "ossi"),
+    ];
+    expect(deduplicateDevices(devices)).toHaveLength(2);
+  });
+
   it("does not deduplicate USB and wireless devices with same model", () => {
     const devices = [
       makeDevice("ABC123", "Pixel 7", "panther"),

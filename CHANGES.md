@@ -7,6 +7,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+### Fixed
+- **Device tracker now reports offline↔online transitions** — `adb track-devices` events were only emitted when the set of serials changed, so a WiFi device whose transport went offline (screen sleep, WiFi power-save) with the same serial kept showing as connected until something else forced a refresh; the change fingerprint now includes the device state, matching what the frontend already expected
+- **Auto-reconnect offline wireless devices before install/launch** — when the selected device is a wireless transport that ADB reports as offline, the app now disconnects the stale transport and reconnects the IP:port target before installing or launching (a stale transport otherwise answers `adb connect` with "already connected" while staying offline); best-effort, with a hint to re-toggle wireless debugging if the port changed
+- **Backend preflight before APK/AAB installs revives half-dead WiFi transports** — a dropped WiFi TCP connection can linger in `adb devices` as online until something uses it, making bundletool fail with "Unable to find the requested device"; installs now poke the device with a cheap shell command first, and if the transport is dead, disconnect/reconnect IP:port targets and poll for up to 8 s before failing with an actionable message (toggle Wireless debugging and retry); as a last resort for wireless targets the preflight restarts the ADB server once to force a fresh mDNS discovery round (adb auto-reconnects paired devices afterwards), also attempting `adb connect` on full-form mDNS serials, extending the wait to ~15 s
+- **Transitional mDNS GUID serials no longer break wireless installs** — while (re)connecting, adb briefly lists a wireless transport under its bare GUID (`adb-XXXX-YYYY`) before switching to the full service serial (`adb-XXXX-YYYY._adb-tls-connect._tcp`); a GUID captured by the UI in that window was later rejected by adb/bundletool as an unknown device. The install preflight now re-resolves the requested serial to whichever form adb currently lists online, device deduplication merges GUID/full-form twins of the same transport (preferring the online entry), and device auto-selection prefers online devices
 
 ---
 

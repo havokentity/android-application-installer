@@ -327,6 +327,31 @@ function App() {
     return preferred;
   }, [dev.installMode, dev.devices]);
 
+  /** Best-effort reconnect for a wireless device that ADB reports as offline.
+   *  WiFi power-save often drops the ADB TCP connection while the transport
+   *  stays listed as offline — and `adb connect` against a stale transport
+   *  replies "already connected" without recovering, so disconnect it first.
+   *  Failures are non-fatal; the operation proceeds and errors normally. */
+  const ensureWirelessConnected = useCallback(async (devInfo: DeduplicatedDevice) => {
+    if (devInfo.state === "device") return;
+    const ipTarget = isIpPortDevice(devInfo.serial)
+      ? devInfo.serial
+      : devInfo.alternateSerial && isIpPortDevice(devInfo.alternateSerial)
+        ? devInfo.alternateSerial
+        : null;
+    if (!ipTarget) return;
+    addLog("info", `${devInfo.model || devInfo.serial} is offline — reconnecting ${ipTarget}...`);
+    try { await api.adbDisconnect(adbPath, ipTarget); } catch { /* stale transport may already be gone */ }
+    const ok = await wireless.connectDirect(ipTarget);
+    if (ok) {
+      // Give ADB a moment to bring the fresh transport online.
+      await new Promise((r) => setTimeout(r, 1000));
+      addLog("success", `Reconnected to ${ipTarget}.`);
+    } else {
+      addLog("warning", `Could not reconnect to ${ipTarget}. If the port changed, toggle wireless debugging on the phone and reconnect.`);
+    }
+  }, [adbPath, addLog, wireless.connectDirect]);
+
   const install = async (andRun = false) => {
     const filesToInstall = file.selectedFiles.length > 0 ? file.selectedFiles : file.selectedFile ? [file.selectedFile] : [];
     if (filesToInstall.length === 0) { addLog("error", "Please select a file first."); addToast("No file selected", "error"); return; }
@@ -345,6 +370,14 @@ function App() {
         : [];
 
     if (targetDevices.length === 0) { addLog("error", "Please select a device first."); addToast("No device selected", "error"); return; }
+
+    // If the single selected target is a wireless device that went offline
+    // (WiFi power-save, screen sleep), try one reconnect before installing.
+    // The install-all path already filters to online devices only.
+    if (!(dev.installAllDevices && enrichedDevices.length > 1) && dev.selectedDevice) {
+      const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
+      if (devInfo) await ensureWirelessConnected(devInfo);
+    }
 
     if (file.fileType === "aab" || filesToInstall.some((f) => f.toLowerCase().endsWith(".aab"))) {
       if (!aab.javaPath || aab.javaStatus !== "found") { addLog("error", "Java is required for AAB installation. Please install a JDK."); return; }
@@ -446,6 +479,7 @@ function App() {
     if (!file.packageName || !dev.selectedDevice) { addLog("error", "Please enter a package name and select a device."); addToast("Package name or device missing", "error"); return; }
     const devInfo = enrichedDevices.find((d) => d.serial === dev.selectedDevice);
     const effectiveSerial = devInfo ? resolveSerial(devInfo) : dev.selectedDevice;
+    if (devInfo) await ensureWirelessConnected(devInfo);
     try {
       addLog("info", `Launching ${file.packageName}...`);
       addLog("success", await api.launchApp(adbPath, effectiveSerial, file.packageName));

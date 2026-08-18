@@ -479,8 +479,14 @@ pub(crate) async fn start_device_tracking(
 
                 let output = String::from_utf8_lossy(&payload).to_string();
                 let devices = parse_device_list(&output);
+                // Fingerprint serial AND state so offline↔online transitions of the
+                // same transport (common for WiFi devices) are emitted too — the
+                // frontend's applyDeviceUpdate relies on receiving these.
                 let new_serials = {
-                    let mut s: Vec<String> = devices.iter().map(|d| d.serial.clone()).collect();
+                    let mut s: Vec<String> = devices
+                        .iter()
+                        .map(|d| format!("{}:{}", d.serial, d.state))
+                        .collect();
                     s.sort();
                     s.join(",")
                 };
@@ -691,6 +697,159 @@ pub(crate) async fn adb_disconnect(
     parse_disconnect_result(&stdout, &stderr)
 }
 
+/// Return true if the serial looks like a raw TCP `ip:port` transport
+/// (as opposed to a USB serial or an mDNS service name).
+pub(crate) fn is_ip_port_serial(serial: &str) -> bool {
+    if serial.contains("_tcp") {
+        return false;
+    }
+    match serial.rsplit_once(':') {
+        Some((host, port)) => !host.is_empty() && port.parse::<u16>().is_ok(),
+        None => false,
+    }
+}
+
+/// Resolve `requested` to a serial adb can actually target right now.
+///
+/// During mDNS (re)connection adb transiently lists the transport under its
+/// bare GUID ("adb-XXXX-YYYY") before switching to the full service serial
+/// ("adb-XXXX-YYYY._adb-tls-connect._tcp"), so a serial captured by the UI
+/// moments earlier may no longer exist verbatim. Prefers an exact online
+/// match, then an online GUID/full-form twin.
+pub(crate) fn resolve_listed_serial(devices: &[DeviceInfo], requested: &str) -> Option<String> {
+    if devices
+        .iter()
+        .any(|d| d.serial == requested && d.state == "device")
+    {
+        return Some(requested.to_string());
+    }
+    let base = requested.split("._adb-tls").next().unwrap_or(requested);
+    if !base.starts_with("adb-") {
+        return None;
+    }
+    devices
+        .iter()
+        .find(|d| {
+            d.state == "device"
+                && d.serial.split("._adb-tls").next().unwrap_or(d.serial.as_str()) == base
+        })
+        .map(|d| d.serial.clone())
+}
+
+/// Run a cheap shell command on the device to prove the transport is alive.
+async fn poke_device(adb_path: &str, serial: &str) -> bool {
+    matches!(
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            run_cmd_async_lenient(adb_path, &["-s", serial, "shell", "echo", "1"]),
+        )
+        .await,
+        Ok(Ok((_, _, true)))
+    )
+}
+
+/// Verify the target device is actually reachable before an install.
+///
+/// A WiFi transport can linger in `adb devices` as "device" after the phone
+/// silently dropped the TCP connection (screen sleep, WiFi power-save) — adb
+/// only notices when something uses the transport. bundletool then fails with
+/// "Unable to find the requested device". Poking with a cheap shell command
+/// forces adb to detect the dead link; ip:port serials are then reconnected
+/// (disconnect first — a dead transport answers `adb connect` with "already
+/// connected" while staying dead) and polled until the deadline.
+/// Returns the serial to use for the install — usually `serial` itself, but
+/// possibly its GUID/full-form mDNS twin when adb renamed the transport.
+async fn ensure_device_online(
+    app: &tauri::AppHandle,
+    op: &str,
+    adb_path: &str,
+    serial: &str,
+    cancel: &AtomicBool,
+) -> Result<String, String> {
+    use tokio::time::{sleep, timeout, Duration, Instant};
+
+    if poke_device(adb_path, serial).await {
+        return Ok(serial.to_string());
+    }
+
+    let reconnectable = is_ip_port_serial(serial);
+    let is_wireless = reconnectable || serial.starts_with("adb-");
+    let started = Instant::now();
+    let mut deadline = started + Duration::from_secs(8);
+    let mut server_restarted = false;
+
+    loop {
+        if cancel.load(Ordering::Relaxed) {
+            return Err("Operation cancelled.".into());
+        }
+        if reconnectable {
+            // A dead TCP transport answers `adb connect` with "already
+            // connected" while staying dead — disconnect it first.
+            let _ = timeout(
+                Duration::from_secs(3),
+                run_cmd_async_lenient(adb_path, &["disconnect", serial]),
+            )
+            .await;
+            let _ = timeout(
+                Duration::from_secs(4),
+                run_cmd_async_lenient(adb_path, &["connect", serial]),
+            )
+            .await;
+        } else if serial.contains("._adb-tls") {
+            // Full-form mDNS serials can be targeted by `adb connect` too
+            // (adb resolves the instance name via mDNS).
+            let _ = timeout(
+                Duration::from_secs(4),
+                run_cmd_async_lenient(adb_path, &["connect", serial]),
+            )
+            .await;
+        }
+        // Re-list devices: the transport may now be online under the exact
+        // serial or a GUID/full-form twin of it.
+        if let Ok(Ok((out, _, _))) = timeout(
+            Duration::from_secs(5),
+            run_cmd_async_lenient(adb_path, &["devices"]),
+        )
+        .await
+        {
+            if let Some(target) = resolve_listed_serial(&parse_device_list(&out), serial) {
+                if poke_device(adb_path, &target).await {
+                    return Ok(target);
+                }
+            }
+        }
+        // Last resort for wireless targets: adb's mDNS discovery can go
+        // stale (same known adb issue worked around in adb_mdns_services).
+        // Restarting the server forces a fresh discovery round, after which
+        // adb auto-reconnects paired wireless-debugging devices.
+        if is_wireless && !server_restarted && started.elapsed() >= Duration::from_secs(3) {
+            emit_op_progress(
+                app, op, serial, "running",
+                "Restarting ADB to rediscover the device...", Some(1), Some(1), true,
+            );
+            let _ = run_cmd_async_lenient(adb_path, &["kill-server"]).await;
+            let _ = run_cmd_async_lenient(adb_path, &["start-server"]).await;
+            sleep(Duration::from_secs(2)).await;
+            server_restarted = true;
+            // Give discovery + auto-reconnect time to do their round.
+            deadline = Instant::now() + Duration::from_secs(7);
+        }
+        if Instant::now() >= deadline {
+            break;
+        }
+        sleep(Duration::from_millis(700)).await;
+    }
+
+    Err(format!(
+        "Device '{}' is not responding over WiFi.\n\n\
+         On the phone, toggle Wireless debugging off and on, wait a few seconds \
+         for it to reconnect, then try again.\n\n\
+         Tip: many phones shut down Wireless debugging when the screen sleeps or \
+         to save battery — keeping the screen awake during installs avoids this.",
+        serial
+    ))
+}
+
 /// Install an APK onto the specified device (async with progress & cancellation).
 ///
 /// On Windows, ADB's built-in `install` command (both streamed and `--no-streaming`)
@@ -713,6 +872,20 @@ pub(crate) async fn install_apk(
     cancel_token: Option<String>,
 ) -> Result<String, String> {
     let cancel = get_cancel_flag(&cancel_token);
+
+    emit_op_progress(
+        &app, "install_apk", &device, "running",
+        "Checking device connection...", Some(1), Some(1), true,
+    );
+
+    let device = match ensure_device_online(&app, "install_apk", &adb_path, &device, &cancel).await {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+            emit_op_progress(&app, "install_apk", &device, status, &e, None, None, false);
+            return Err(e);
+        }
+    };
 
     emit_op_progress(
         &app, "install_apk", &device, "running",
@@ -908,6 +1081,23 @@ pub(crate) async fn install_aab(
     cancel_token: Option<String>,
 ) -> Result<String, String> {
     let cancel = get_cancel_flag(&cancel_token);
+
+    // 0. Preflight: bundletool resolves the device itself (via ddmlib) and
+    // fails with "Unable to find the requested device" when a WiFi transport
+    // has silently died — verify/revive the connection first.
+    emit_op_progress(
+        &app, "install_aab", &device, "running",
+        "Checking device connection...", Some(1), Some(2), true,
+    );
+    let device = match ensure_device_online(&app, "install_aab", &adb_path, &device, &cancel).await {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            let status = if e.contains("cancelled") { "cancelled" } else { "error" };
+            emit_op_progress(&app, "install_aab", &device, status, &e, None, None, false);
+            return Err(e);
+        }
+    };
+
     // 1. Prepare temp .apks output path
     let stem = Path::new(&aab_path)
         .file_stem()
@@ -1382,6 +1572,96 @@ mod tests {
         let output = "\n\nABC123\tdevice\n\n";
         let devices = parse_device_list(output);
         assert_eq!(devices.len(), 1);
+    }
+
+    // ── resolve_listed_serial tests ──────────────────────────────────────
+
+    fn dev(serial: &str, state: &str) -> DeviceInfo {
+        DeviceInfo {
+            serial: serial.into(),
+            state: state.into(),
+            model: String::new(),
+            product: String::new(),
+            transport_id: String::new(),
+        }
+    }
+
+    #[test]
+    fn resolve_exact_online_match() {
+        let devices = vec![dev("192.168.1.5:5555", "device")];
+        assert_eq!(
+            resolve_listed_serial(&devices, "192.168.1.5:5555"),
+            Some("192.168.1.5:5555".into())
+        );
+    }
+
+    #[test]
+    fn resolve_guid_to_full_mdns_serial() {
+        let devices = vec![dev("adb-ABC123-defGhi._adb-tls-connect._tcp", "device")];
+        assert_eq!(
+            resolve_listed_serial(&devices, "adb-ABC123-defGhi"),
+            Some("adb-ABC123-defGhi._adb-tls-connect._tcp".into())
+        );
+    }
+
+    #[test]
+    fn resolve_full_mdns_serial_to_guid() {
+        let devices = vec![dev("adb-ABC123-defGhi", "device")];
+        assert_eq!(
+            resolve_listed_serial(&devices, "adb-ABC123-defGhi._adb-tls-connect._tcp"),
+            Some("adb-ABC123-defGhi".into())
+        );
+    }
+
+    #[test]
+    fn resolve_skips_offline_twin() {
+        let devices = vec![dev("adb-ABC123-defGhi._adb-tls-connect._tcp", "offline")];
+        assert_eq!(resolve_listed_serial(&devices, "adb-ABC123-defGhi"), None);
+    }
+
+    #[test]
+    fn resolve_no_twin_for_non_adb_serial() {
+        let devices = vec![dev("USB123SERIAL", "device")];
+        assert_eq!(resolve_listed_serial(&devices, "OTHER456"), None);
+    }
+
+    #[test]
+    fn resolve_prefers_exact_over_twin() {
+        let devices = vec![
+            dev("adb-ABC123-defGhi._adb-tls-connect._tcp", "device"),
+            dev("adb-ABC123-defGhi", "device"),
+        ];
+        assert_eq!(
+            resolve_listed_serial(&devices, "adb-ABC123-defGhi"),
+            Some("adb-ABC123-defGhi".into())
+        );
+    }
+
+    // ── is_ip_port_serial tests ──────────────────────────────────────────
+
+    #[test]
+    fn ip_port_serial_detected() {
+        assert!(is_ip_port_serial("192.168.1.100:5555"));
+        assert!(is_ip_port_serial("10.0.0.7:43567"));
+    }
+
+    #[test]
+    fn usb_serial_not_ip_port() {
+        assert!(!is_ip_port_serial("ABC123DEF"));
+        assert!(!is_ip_port_serial("R58M12345"));
+    }
+
+    #[test]
+    fn mdns_serial_not_ip_port() {
+        assert!(!is_ip_port_serial("adb-ABC123-defGhi._adb-tls-connect._tcp"));
+        assert!(!is_ip_port_serial("adb-ABC123-defGhi._adb-tls-connect._tcp."));
+    }
+
+    #[test]
+    fn malformed_port_not_ip_port() {
+        assert!(!is_ip_port_serial("192.168.1.100:notaport"));
+        assert!(!is_ip_port_serial(":5555"));
+        assert!(!is_ip_port_serial("192.168.1.100:"));
     }
 
     // ── Wireless ADB parse tests ─────────────────────────────────────────
