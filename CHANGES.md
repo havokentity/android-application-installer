@@ -7,6 +7,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/).
 ---
 
 ## [Unreleased]
+
+---
+
+## [1.9.3] — 2026-08-18
 ### Fixed
 - **Device tracker now reports offline↔online transitions** — `adb track-devices` events were only emitted when the set of serials changed, so a WiFi device whose transport went offline (screen sleep, WiFi power-save) with the same serial kept showing as connected until something else forced a refresh; the change fingerprint now includes the device state, matching what the frontend already expected
 - **Auto-reconnect offline wireless devices before install/launch** — when the selected device is a wireless transport that ADB reports as offline, the app now disconnects the stale transport and reconnects the IP:port target before installing or launching (a stale transport otherwise answers `adb connect` with "already connected" while staying offline); best-effort, with a hint to re-toggle wireless debugging if the port changed
