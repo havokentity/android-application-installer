@@ -76,7 +76,7 @@ dependencies = [
  "curve25519-dalek",
  "futures-util",
  "hkdf",
- "indexmap 1.9.3",
+ "indexmap 2.14.0",
  "mdns-sd",
  "notify-rust",
  "qrcode",
