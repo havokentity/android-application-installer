@@ -28,7 +28,7 @@ serde_json = "1"
 reqwest = { version = "0.12", features = ["stream", "rustls-tls"], default-features = false }
 tokio = { version = "1", features = ["rt", "fs", "io-util", "process", "time", "macros"] }
 futures-util = "0.3"
-zip = "2"
+zip = "4"
 axmldecoder = "0.5"
 indexmap = "1"
 aes-gcm = "0.10"
